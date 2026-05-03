@@ -1,0 +1,34 @@
+idf_component_register(
+    SRCS 
+        "main.cpp" 
+        "src/WifiManager.cpp" 
+        "src/HttpService.cpp" 
+        "src/MqttManager.cpp"
+        "src/PayloadManager.cpp"
+        "src/WatchdogManager.cpp" 
+        "src/CryptoManager.cpp"
+        "src/CaptivePortal.cpp"
+        "src/AppState.cpp"
+        "src/OtaManager.cpp"
+        "src/CommandProcessor.cpp"
+        
+    INCLUDE_DIRS 
+        "." 
+        "src"
+    EMBED_TXTFILES "cert/rootCA.crt"
+    REQUIRES 
+        mqtt
+        driver 
+        mdns
+        nvs_flash 
+        esp_wifi 
+        esp_event 
+        esp_http_client 
+        esp_timer 
+        mbedtls 
+        app_update 
+        json 
+        esp_partition
+        esp_http_server
+        esp_https_ota
+)

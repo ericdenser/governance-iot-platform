@@ -1,0 +1,12 @@
+mqtt:
+  broker-url: ssl://${HOST_IP}:8883
+  client-id: agents
+  topic: telemetria/#
+  
+ 
+  keystore-path: classpath:certs/agents.p12
+  keystore-password: ${AGENT_KEYSTORE_PASS}
+  
+
+  truststore-path: classpath:certs/truststore.p12
+  truststore-password: ${AGENT_TRUSTSTORE_PASS}

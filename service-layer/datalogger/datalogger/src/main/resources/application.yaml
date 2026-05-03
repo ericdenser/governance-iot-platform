@@ -1,0 +1,8 @@
+server:
+  port: 8081 
+
+influxdb:
+  url: http://localhost:8086
+  token: ${INFLUX_TOKEN} 
+  org: mackenzie
+  bucket: telemetry_bucket
