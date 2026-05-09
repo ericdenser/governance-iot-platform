@@ -167,6 +167,7 @@ static void handle_wifi_connecting() {
 }
 
 // ---- TIME_SYNC --------------------------------------------------------------
+// ---- TIME_SYNC --------------------------------------------------------------
 static void handle_time_sync() {
     SLOG_I("Iniciando sincronização NTP (servidor: pool.ntp.org)...");
 
@@ -174,33 +175,51 @@ static void handle_time_sync() {
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
 
+    setenv("TZ", "BRT3", 1); 
+    tzset();
+
     int retry = 0;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < 15) {
+    time_t now = 0;
+    struct tm timeinfo = {0};
+
+    // Em vez de checar o status do SNTP, checamos se o ano atual passou de 2024
+    while (retry < 15) {
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        
+        // tm_year conta os anos desde 1900. Portanto, 124 = 2024.
+        if (timeinfo.tm_year >= 124) {
+            break; // O tempo sincronizou perfeitamente!
+        }
+        
         SLOG_I("Aguardando resposta NTP... (%d/15)", retry + 1);
         vTaskDelay(pdMS_TO_TICKS(2000));
         WatchdogManager::reset();
         retry++;
     }
 
-    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET) {
-        SLOG_W("NTP não respondeu após %d tentativas. Continuando sem sincronização.", retry);
-    } else {
-        time_t now;
-        struct tm timeinfo;
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        SLOG_I("Relógio sincronizado: %s", asctime(&timeinfo));
+    // Se saiu do loop e ainda estamos em 1970, deu erro crítico.
+    if (timeinfo.tm_year < 124) {
+        SLOG_E("Falha crítica: NTP não sincronizou. A conexao mTLS será recusada.");
+        // Usamos o WIFI_TIMEOUT pois o seu handle_error já tem lógica 
+        // para dar um delay e tentar conectar de novo sem reiniciar o ESP.
+        AppState::setError(ErrorCode::WIFI_TIMEOUT, 
+                           "Falha ao obter tempo da internet", 
+                           {TAG, "handle_time_sync"});
+        return; 
     }
+
+    SLOG_I("Relógio sincronizado: %s", asctime(&timeinfo));
 
     bool isProvisioned = CryptoManager::isProvisioned();
     SLOG_I("Certificado mTLS presente: %s. Próximo estado: %s",
            isProvisioned ? "SIM" : "NÃO",
-           isProvisioned ? "MQTT_CONNECTING" : "PROVISIONING");
+           isProvisioned ? "MQTT_INIT" : "PROVISIONING");
 
     if (!isProvisioned) {
         AppState::transition(DeviceState::PROVISIONING, {TAG, "handle_time_sync"});
     } else {
-        AppState::transition(DeviceState::MQTT_WAITING_CONNECT, {TAG, "handle_time_sync"});
+        AppState::transition(DeviceState::MQTT_INIT, {TAG, "handle_time_sync"});
     }
 }
 
@@ -285,8 +304,7 @@ static void handle_operational() {
         MqttManager::subscribe(topicCmd, 1);
         isSubscribed = true;
     }
-
-
+    
     int64_t now = esp_timer_get_time() / 1000; 
 
     // Telemetria periódica
@@ -306,7 +324,7 @@ static void handle_operational() {
         const char* payload = json.build();
 
         char topic[64];
-        snprintf(topic, sizeof(topic), "telemetria/%s", g_macAddress.c_str());
+        snprintf(topic, sizeof(topic), "telemetry/%s", g_macAddress.c_str());
 
         SLOG_I("Publicando telemetria. Tópico: [%s] | Payload: %s", topic, payload);
         MqttManager::publish(payload, topic);
@@ -418,7 +436,7 @@ extern "C" void app_main(void) {
             case DeviceState::TIME_SYNC:        handle_time_sync();        break;
             case DeviceState::PROVISIONING:     handle_provisioning();     break;
             case DeviceState::MQTT_INIT:        handle_mqtt_connecting();  break;
-            case DeviceState::MQTT_WAITING_CONNECT:  
+            case DeviceState::MQTT_WAITING_CONNECT:  vTaskDelay(pdMS_TO_TICKS(5000)); break;
             case DeviceState::OPERATIONAL:      handle_operational();      break;
             case DeviceState::OTA_FOUND:        handle_ota();              break;
             case DeviceState::ERROR:            handle_error();            break;

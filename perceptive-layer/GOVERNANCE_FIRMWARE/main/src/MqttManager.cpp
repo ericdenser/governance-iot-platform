@@ -25,7 +25,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
         case MQTT_EVENT_CONNECTED: 
             ESP_LOGI(TAG, "Conectado ao Broker MQTT com sucesso!");
+
             AppState::transition(DeviceState::OPERATIONAL, {TAG, "mqtt_event_handler"});
+            
             break;
 
         case MQTT_EVENT_DISCONNECTED: {

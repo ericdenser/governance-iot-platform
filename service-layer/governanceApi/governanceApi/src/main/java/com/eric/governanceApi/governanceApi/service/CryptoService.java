@@ -29,6 +29,8 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.FileInputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -39,6 +41,7 @@ import java.security.cert.X509Certificate;
 import java.util.Date;
 
 @Service
+@Slf4j
 public class CryptoService {
 
     @Value("classpath:certs/rootCA.p12")
@@ -83,7 +86,7 @@ public class CryptoService {
 
     // Assina o CSR e devolve o PEM e o objeto X509Certificate.
     public SignedCertificateData signDeviceCSR(String pemCsr, String macAddress) throws Exception {
-        System.out.println("A processar e assinar CSR para o MAC: " + macAddress);
+        log.info("A processar e assinar CSR para o MAC: " + macAddress);
         
         PemReader pemReader = new PemReader(new StringReader(pemCsr));
         PemObject pemObject = pemReader.readPemObject();
@@ -101,6 +104,7 @@ public class CryptoService {
         X500Name subject = new X500Name("CN=" + macAddress + ", O=Mackenzie IoT Devices"); 
         
         long now = System.currentTimeMillis();
+        log.info("NOW: " + now);
         Date startDate = new Date(now - 600000L);
         Date endDate = new Date(now + 365L * 24 * 60 * 60 * 1000); // Válido por 1 ano
         BigInteger serialNumber = BigInteger.valueOf(new SecureRandom().nextLong()).abs();
@@ -140,7 +144,7 @@ public class CryptoService {
     }
 
     public X509CRL generateCRL(List<String> revokedPems) throws Exception {
-        System.out.println("Gerando nova Lista de Revogação (CRL)...");
+        log.info("Atualizando lista de CRL");
 
         X500Name issuer = X500Name.getInstance(caCert.getSubjectX500Principal().getEncoded());
         Date now = new Date();
