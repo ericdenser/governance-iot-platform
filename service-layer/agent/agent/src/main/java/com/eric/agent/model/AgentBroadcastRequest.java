@@ -10,9 +10,9 @@ import java.util.List;
   O Agent publica em: commands/<MAC>/<subtopic> com o payload fornecido.
   
   Funciona para qualquer comando:
-    OTA    -> subtopic="ota",    payload={"version":4,"url":"http://..."}
-    REBOOT -> subtopic="reboot", payload={"command":"reboot","delay_ms":3000}
-    SLEEP  -> subtopic="sleep",  payload={"command":"sleep","duration_s":3600}
+    OTA    -> subtopic="ota",    payload={"version":4,"url":"..."}
+    REBOOT -> subtopic="reboot", payload={"command":"reboot"}
+    SLEEP  -> subtopic="sleep",  payload={"command":"sleep"}
  */
 public record AgentBroadcastRequest(
 

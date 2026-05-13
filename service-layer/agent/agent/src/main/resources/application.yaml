@@ -1,7 +1,7 @@
 mqtt:
   broker-url: ssl://${HOST_IP}:8883
   client-id: agents
-  topic: telemetry/#
+  topic: status/#
   
  
   keystore-path: classpath:certs/agents.p12

@@ -17,7 +17,7 @@ void AppState::init() {
 }
 
 
-//  transition() — única forma de mudar estado; thread-safe + log automático
+//  transition() — única forma de mudar estado
 void AppState::transition(DeviceState next, const Source& source) {
     if (_mutex == NULL) return;
 
@@ -34,7 +34,7 @@ void AppState::transition(DeviceState next, const Source& source) {
 }
 
 
-//  setError() — registra contexto + transiciona para ERROR automaticamente
+//  setError() — registra contexto e transiciona para ERROR automaticamente
 void AppState::setError(ErrorCode code, const std::string& msg, const Source& source) {
     if (_mutex == NULL) return;
 
@@ -99,6 +99,7 @@ const char* AppState::toString(DeviceState state) {
         case DeviceState::WIFI_CONNECTING:      return "WIFI_CONNECTING";
         case DeviceState::TIME_SYNC:            return "TIME_SYNC";
         case DeviceState::PROVISIONING:         return "PROVISIONING";
+        case DeviceState::PROVISIONING_SUCCESS: return "PROVISIONING_SUCCESS";
         case DeviceState::MQTT_WAITING_CONNECT: return "MQTT_WAITING_CONNECT";
         case DeviceState::MQTT_INIT:            return "MQTT_INIT";
         case DeviceState::OPERATIONAL:          return "OPERATIONAL";

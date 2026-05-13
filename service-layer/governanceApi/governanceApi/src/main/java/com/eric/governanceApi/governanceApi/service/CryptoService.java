@@ -123,10 +123,10 @@ public class CryptoService {
         // 2. Restrição Básica 
         certBuilder.addExtension(Extension.basicConstraints, true, new BasicConstraints(false));
 
-        // 3. Key Usage (Libera a assinatura do Handshake TLS)
+        // 3. Key Usage 
         certBuilder.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
 
-        // 4. Extended Key Usage (Libera o login do Cliente no Mosquitto)
+        // 4. Extended Key Usage
         certBuilder.addExtension(Extension.extendedKeyUsage, true, new ExtendedKeyUsage(KeyPurposeId.id_kp_clientAuth));
 
         ContentSigner signer = new JcaContentSignerBuilder("SHA256withECDSA").setProvider("BC").build(caKeyPair.getPrivate());
@@ -148,7 +148,7 @@ public class CryptoService {
 
         X500Name issuer = X500Name.getInstance(caCert.getSubjectX500Principal().getEncoded());
         Date now = new Date();
-        // A lista é válida por 180 dias, mas geraremos uma nova sempre que um novo dispositivo for bloqueado
+        // A lista é válida por 180 dias
         Date nextUpdate = new Date(now.getTime() + 180L * 24 * 60 * 60 * 1000); 
 
         X509v2CRLBuilder crlBuilder = new X509v2CRLBuilder(issuer, now);

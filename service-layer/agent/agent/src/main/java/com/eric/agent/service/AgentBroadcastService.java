@@ -18,7 +18,7 @@ public class AgentBroadcastService {
 
     /*
      Publica o payload no tópico commands/<MAC>/<subtopic> para cada MAC.
-     Interpreta o tipo de comando (OTA, reboot, sleep, etc.
+     Interpreta o tipo de comando OTA, reboot, etc.
     */
     public Map<String, Object> broadcast(AgentBroadcastRequest request) {
 

@@ -82,7 +82,6 @@ public class GlobalExceptionHandler {
                         .body(ApiResponse.error("INFRA_503", ex.getMessage(), request.getRequestURI()));
         }
 
-        // CORREÇÃO: Espaço adicionado no erro genérico
         @ExceptionHandler(Exception.class)
         public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex, HttpServletRequest request) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

@@ -1,0 +1,10 @@
+fazer:
+1. terminar eventhandler service: componentes para subscrever, event log, dispatcher, controller
+
+2. arrumar agent para mandar status pro eventhandler
+
+3. alinhar modulo ota no esp32
+
+4. testar fluxo inteiro de provisioning ate baixar .bin 
+
+

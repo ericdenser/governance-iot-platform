@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.eric.agent.model.DataDTO;
+import com.eric.agent.model.StatusDTO;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -24,10 +24,10 @@ import java.security.KeyStore;
 public class MqttAgent {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final DataForwardingService dataForwardingService;
+    private final StatusForwardingService statusForwardingService;
 
-    public MqttAgent(DataForwardingService dataForwardingService) {
-        this.dataForwardingService = dataForwardingService;
+    public MqttAgent(StatusForwardingService statusForwardingService) {
+        this.statusForwardingService = statusForwardingService;
     }
 
     @Value("${mqtt.broker-url}")
@@ -78,8 +78,8 @@ public class MqttAgent {
                     log.info("Mensagem recebida em [{}]: {}", topic, payload);
 
                     try {
-                        DataDTO dto = objectMapper.readValue(payload, DataDTO.class);
-                        dataForwardingService.postDataLogger(dto);
+                        StatusDTO dto = objectMapper.readValue(payload, StatusDTO.class);
+                        //statusForwardingService.postDataLogger(dto);
                     } catch (Exception e) {
                         log.warn("Erro ao processar mensagem: {}", e.getMessage());
                     }
@@ -91,7 +91,6 @@ public class MqttAgent {
 
             client.connect(options);
             client.subscribe(topic);
-            log.info("Agent conectado com mTLS. Escutando: {}", topic);
 
         } catch (Exception e) {
             log.error("Erro fatal ao iniciar Agent MQTT: {}", e.getMessage(), e);

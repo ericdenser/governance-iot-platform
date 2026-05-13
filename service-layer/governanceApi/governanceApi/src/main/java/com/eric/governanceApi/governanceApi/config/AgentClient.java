@@ -12,9 +12,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Cliente REST que encapsula toda comunicação com o Agent MQTT.
- * Qualquer service que precise publicar no broker usa este client,
- * eliminando duplicação de lógica HTTP + tratamento de erro.
+ * Cliente REST que encapsula toda comunicação com o Agent.
+ * Qualquer service que precise publicar no broker usa este client.
  */
 @Slf4j
 @Component
@@ -35,11 +34,6 @@ public class AgentClient {
 
     /**
      * Envia um broadcast ao Agent para publicar em commands/<MAC>/<subtopic>.
-     *
-     * @param subtopic  ex: "ota", "reboot", "sleep"
-     * @param payload   JSON que o ESP vai receber (já serializado)
-     * @param targetMacs lista de MACs destino
-     * @return resposta do Agent com publishedTo e failed
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> broadcast(String subtopic, String payload, List<String> targetMacs) {

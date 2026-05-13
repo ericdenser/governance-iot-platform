@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * Renova o CRL automaticamente 
- * Sem isso, se nenhum device for revogado dentro do período de
+ * Se nenhum device for revogado dentro do período de
  * validade do CRL, o broker para de aceitar conexões
  */
 @Slf4j

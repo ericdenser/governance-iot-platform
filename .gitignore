@@ -9,6 +9,8 @@
 keys/
 **/certs/
 .env
+*.md
+*.txt
 
 **/build/
 **/managed_components/

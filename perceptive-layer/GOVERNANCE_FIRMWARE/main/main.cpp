@@ -27,7 +27,7 @@
 #define MAX_WIFI_RETRIES        10
 #define URL_PROVISIONING        "http://192.168.15.64:8082/api/provisioning/activate"
 #define URL_ERROR_REPORT        "http://192.168.15.64:8082/api/provisioning/error"
-#define TELEMETRY_INTERVAL_MS   7000
+#define ADVERTISE_INTERVAL_MS   5000
 
 static const char* TAG = "MAIN";
 
@@ -43,7 +43,7 @@ static const char* TAG = "MAIN";
 // =============================================================================
 static std::string  g_macAddress;
 static std::string  g_msgOut;
-static int64_t      g_lastTelemetryMs = 0;
+static int64_t      g_lastAdvertiseMs = 0;
 
 static PayloadManager json;
 
@@ -167,55 +167,31 @@ static void handle_wifi_connecting() {
 }
 
 // ---- TIME_SYNC --------------------------------------------------------------
-// ---- TIME_SYNC --------------------------------------------------------------
 static void handle_time_sync() {
     SLOG_I("Iniciando sincronização NTP (servidor: pool.ntp.org)...");
-
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
-
-    setenv("TZ", "BRT3", 1); 
-    tzset();
-
     int retry = 0;
-    time_t now = 0;
-    struct tm timeinfo = {0};
-
-    // Em vez de checar o status do SNTP, checamos se o ano atual passou de 2024
-    while (retry < 15) {
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        
-        // tm_year conta os anos desde 1900. Portanto, 124 = 2024.
-        if (timeinfo.tm_year >= 124) {
-            break; // O tempo sincronizou perfeitamente!
-        }
-        
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < 15) {
         SLOG_I("Aguardando resposta NTP... (%d/15)", retry + 1);
         vTaskDelay(pdMS_TO_TICKS(2000));
         WatchdogManager::reset();
         retry++;
     }
-
-    // Se saiu do loop e ainda estamos em 1970, deu erro crítico.
-    if (timeinfo.tm_year < 124) {
-        SLOG_E("Falha crítica: NTP não sincronizou. A conexao mTLS será recusada.");
-        // Usamos o WIFI_TIMEOUT pois o seu handle_error já tem lógica 
-        // para dar um delay e tentar conectar de novo sem reiniciar o ESP.
-        AppState::setError(ErrorCode::WIFI_TIMEOUT, 
-                           "Falha ao obter tempo da internet", 
-                           {TAG, "handle_time_sync"});
-        return; 
+    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET) {
+        SLOG_W("NTP não respondeu após %d tentativas. Continuando sem sincronização.", retry);
+    } else {
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        SLOG_I("Relógio sincronizado: %s", asctime(&timeinfo));
     }
-
-    SLOG_I("Relógio sincronizado: %s", asctime(&timeinfo));
-
     bool isProvisioned = CryptoManager::isProvisioned();
     SLOG_I("Certificado mTLS presente: %s. Próximo estado: %s",
            isProvisioned ? "SIM" : "NÃO",
-           isProvisioned ? "MQTT_INIT" : "PROVISIONING");
-
+           isProvisioned ? "MQTT_CONNECTING" : "PROVISIONING");
     if (!isProvisioned) {
         AppState::transition(DeviceState::PROVISIONING, {TAG, "handle_time_sync"});
     } else {
@@ -266,37 +242,30 @@ static void handle_provisioning() {
         return;
     }
 
-    // Execução não chega aqui — handleProvisioningResponse chama esp_restart()
+    // Execução não chega aqui -> handleProvisioningResponse chama esp_restart()
     SLOG_I("Certificado salvo. Reiniciando para aplicar...");
 }
 
 // ---- MQTT_CONNECTING --------------------------------------------------------
 static void handle_mqtt_connecting() {
 
-    SLOG_I("Carregando certificado mTLS da NVS e iniciando cliente MQTT...");
+    MqttManager::init_mqtt();
 
     MqttManager::setCallback([](const std::string& topic, const std::string& payload) {
         ESP_LOGI(TAG, "Processador Central recebeu o comando %s do tópico: %s", topic.c_str(), payload.c_str());
-        
   
         bool success = CommandProcessor::manage(topic, payload);
         if (!success) {
             SLOG_E("Command Processor falhou.");
         }
     });
-    
-
-    MqttManager::init_mqtt();
-
-    AppState::transition(DeviceState::MQTT_WAITING_CONNECT, {TAG, "handle_mqtt_connecting"});
-
+   
     std::string mac = WifiManager::getMacAddress();
     std::string topicCmd = "commands/" + mac + "/#";
 }
 
-// ---- OPERATIONAL ------------------------------------------------------------
-static void handle_operational() {
-
+// ---- PROVISIONING SUCCESS ------------------------------------------------------------
+static void handle_provisioning_success() {
 
     static bool isSubscribed = false;
     if (!isSubscribed) {
@@ -305,31 +274,32 @@ static void handle_operational() {
         isSubscribed = true;
     }
     
-    int64_t now = esp_timer_get_time() / 1000; 
+    int64_t now = esp_timer_get_time() / 10000; 
 
-    // Telemetria periódica
-    if (now - g_lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
-        g_lastTelemetryMs = now;
+    // Avisa periodicamente que esta pronto para receber o firmware
+    if (now - g_lastAdvertiseMs >= ADVERTISE_INTERVAL_MS) {
+        g_lastAdvertiseMs = now;
 
         std::string ssid = WifiManager::getSSID();
         std::string ip   = WifiManager::getIp();
+        std::string currentState = AppState::toString(AppState::get());
         int rssi         = WifiManager::getRssi();
+
 
         json.add("mac",              g_macAddress);
         json.add("firmware_version", FIRMWARE_VERSION);
         json.add("ssid",             ssid);
-        json.add("ip",               ip);
-        json.add("rssi",             rssi);
+        json.add("status",           currentState);
 
         const char* payload = json.build();
 
         char topic[64];
-        snprintf(topic, sizeof(topic), "telemetry/%s", g_macAddress.c_str());
+        snprintf(topic, sizeof(topic), "status/%s", g_macAddress.c_str());
 
-        SLOG_I("Publicando telemetria. Tópico: [%s] | Payload: %s", topic, payload);
+        SLOG_I("Publicando advertise. Tópico: [%s] | Payload: %s", topic, payload);
         MqttManager::publish(payload, topic);
         json.clear();
-        SLOG_I("Telemetria publicada. IP: %s | RSSI: %d dBm", ip.c_str(), rssi);
+        SLOG_I("Advertise publicado: status -> %s", currentState.c_str());
     }
 
     vTaskDelay(pdMS_TO_TICKS(500));
@@ -435,16 +405,18 @@ extern "C" void app_main(void) {
             case DeviceState::WIFI_CONNECTING:  handle_wifi_connecting();  break;
             case DeviceState::TIME_SYNC:        handle_time_sync();        break;
             case DeviceState::PROVISIONING:     handle_provisioning();     break;
+            case DeviceState::PROVISIONING_SUCCESS:      handle_provisioning_success();      break;
             case DeviceState::MQTT_INIT:        handle_mqtt_connecting();  break;
             case DeviceState::MQTT_WAITING_CONNECT:  vTaskDelay(pdMS_TO_TICKS(5000)); break;
-            case DeviceState::OPERATIONAL:      handle_operational();      break;
             case DeviceState::OTA_FOUND:        handle_ota();              break;
             case DeviceState::ERROR:            handle_error();            break;
             case DeviceState::REBOOTING:        handle_rebooting();        break;
             case DeviceState::OTA_DOWNLOADING:                             break;
+            case DeviceState::OPERATIONAL:    
             case DeviceState::HTTP_INIT:
             case DeviceState::HTTP_REQUEST:
                         break;
         }
     }
 }
+

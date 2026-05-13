@@ -14,6 +14,7 @@ enum class DeviceState {
     WIFI_CONNECTING,    // Tentando conectar à rede WiFi salva
     TIME_SYNC,          // Sincronizando relógio via NTP (necessário para mTLS)
     PROVISIONING,       // Enviando CSR ao MDM para obter certificado
+    PROVISIONING_SUCCESS, // Pronto para receber o firmware definitivo
     MQTT_WAITING_CONNECT,    
     MQTT_INIT,          // Inicializando cliente MQTT com mTLS
     OPERATIONAL,        // Loop principal — telemetria, status, OTA checks

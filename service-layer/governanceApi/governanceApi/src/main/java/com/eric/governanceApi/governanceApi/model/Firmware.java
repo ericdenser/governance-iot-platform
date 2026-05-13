@@ -21,7 +21,7 @@ public class Firmware {
     private int version;
 
     @Column(nullable = false)
-    private String filename;           // firmware_v4_a3b2c1d4e5f6.bin
+    private String filename;           
 
     @Column(nullable = false)
     private String originalFilename;   // nome do arquivo que o usuário subiu
