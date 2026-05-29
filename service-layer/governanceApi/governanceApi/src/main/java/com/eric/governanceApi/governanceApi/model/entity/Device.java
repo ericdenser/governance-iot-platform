@@ -1,4 +1,4 @@
-package com.eric.governanceApi.governanceApi.model;
+package com.eric.governanceApi.governanceApi.model.entity;
 
 import java.time.LocalDateTime;
 import lombok.Data;

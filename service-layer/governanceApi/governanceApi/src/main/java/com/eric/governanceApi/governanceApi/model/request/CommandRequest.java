@@ -1,4 +1,4 @@
-package com.eric.governanceApi.governanceApi.model;
+package com.eric.governanceApi.governanceApi.model.request;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import jakarta.validation.constraints.NotEmpty;

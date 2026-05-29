@@ -1,7 +1,8 @@
-package com.eric.eventhandler.event_handler.model;
+package com.eric.eventhandler.event_handler.model.entity;
 
 import java.time.LocalDateTime;
 
+import com.eric.eventhandler.event_handler.enums.DeviceState;
 import com.eric.eventhandler.event_handler.enums.EventType;
 
 import jakarta.persistence.Column;
@@ -15,6 +16,8 @@ import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+
+// Registrar os subscribers e seus eventos
 @Entity
 @Table(name = "event_log")
 @Data
@@ -30,16 +33,15 @@ public class EventLog {
     @Column(nullable = false)
     private EventType eventType;
 
-
     @Column(nullable = false)
     private String deviceMac;
 
     @Column(length = 2000)
     private String payload;
 
-    private String previousStatus;
-    private String newStatus;
+    private DeviceState previousStatus;
+    private DeviceState newStatus;
 
-    private LocalDateTime timeStamp = LocalDateTime.now();
+    private LocalDateTime timestamp = LocalDateTime.now();
 
 }

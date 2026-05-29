@@ -1,4 +1,4 @@
-package com.eric.eventhandler.event_handler.model;
+package com.eric.eventhandler.event_handler.model.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 import com.eric.eventhandler.event_handler.enums.DeviceState;
+import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
 
 /**
  * Snapshot do último estado conhecido de cada device.
@@ -21,7 +22,9 @@ public class DeviceSnapshot {
     @Id
     private String mac;              // PK -> MAC
 
+    @Enumerated(EnumType.STRING)
     private DeviceState status;
+    
     private Double firmwareVersion;
     private String ssid;
     private LocalDateTime lastSeen;

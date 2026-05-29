@@ -5,7 +5,7 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import com.eric.governanceApi.governanceApi.model.ProvisioningToken;
+import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
 
 @Repository
 public interface ProvisioningTokenRepository extends JpaRepository<ProvisioningToken, Long> {

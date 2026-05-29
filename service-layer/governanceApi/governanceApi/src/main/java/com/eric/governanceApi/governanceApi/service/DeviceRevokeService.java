@@ -14,10 +14,10 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceStatus;
-import com.eric.governanceApi.governanceApi.model.Device;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
+import com.eric.governanceApi.governanceApi.model.entity.Device;
 
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;

@@ -1,4 +1,4 @@
-package com.eric.governanceApi.governanceApi.model;
+package com.eric.governanceApi.governanceApi.model.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

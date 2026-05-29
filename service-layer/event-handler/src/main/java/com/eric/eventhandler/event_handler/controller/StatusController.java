@@ -1,13 +1,11 @@
 package com.eric.eventhandler.event_handler.controller;
 
-import java.util.Map;
-
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.eric.eventhandler.event_handler.model.StatusDTO;
+import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
 import com.eric.eventhandler.event_handler.service.EventManagerService;
 
 @Slf4j
@@ -15,15 +13,18 @@ import com.eric.eventhandler.event_handler.service.EventManagerService;
 @RequestMapping("/events")
 public class StatusController {
 
-    EventManagerService eventService;
+    private final EventManagerService eventManagerService;
 
-    public StatusController() {
-
+    public StatusController(EventManagerService eventManagerService) {
+        this.eventManagerService = eventManagerService;
     }
 
 
-    @PostMapping
-    public ResponseEntity<Map<String, String>> handleStatus(@Valid @RequestBody StatusDTO statusDTO){
-        eventService.handleStatus(statusDTO);
+    @PostMapping("/ingest")
+    public ResponseEntity<String> handleStatus(@Valid @RequestBody StatusDTO statusDTO){
+        log.info("[STATUS CONTROLLER] Recebeu StatusDTO: {}", statusDTO);
+        eventManagerService.handleStatus(statusDTO);
+
+        return ResponseEntity.noContent().build();
     }
 }

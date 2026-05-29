@@ -26,8 +26,8 @@ public class AgentBroadcastController {
 
      POST /agent/broadcast
      {
-        "subtopic": "reboot",
-        "payload": "{\"command\":\"reboot\",\"delay_ms\":3000}",
+        "command": "reboot",
+        "payload": "{"delay_ms\":3000}",
         "targetMacs": ["AA"]
     }
      */
@@ -35,8 +35,8 @@ public class AgentBroadcastController {
     public ResponseEntity<Map<String, Object>> broadcast(
             @Valid @RequestBody AgentBroadcastRequest request) {
 
-        log.info("Broadcast recebido — subtopic: [{}] para {} devices",
-                 request.subtopic(), request.targetMacs().size());
+        log.info("Broadcast recebido — command: [{}] para {} devices",
+                 request.command(), request.targetMacs().size());
 
         Map<String, Object> result = broadcastService.broadcast(request);
         return ResponseEntity.ok(result);

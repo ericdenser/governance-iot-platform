@@ -1,4 +1,4 @@
-package com.eric.governanceApi.governanceApi.model;
+package com.eric.governanceApi.governanceApi.model.entity;
 
 import com.eric.governanceApi.governanceApi.enums.FirmwareStatus;
 import jakarta.persistence.*;
@@ -18,7 +18,7 @@ public class Firmware {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private int version;
+    private float version;
 
     @Column(nullable = false)
     private String filename;           

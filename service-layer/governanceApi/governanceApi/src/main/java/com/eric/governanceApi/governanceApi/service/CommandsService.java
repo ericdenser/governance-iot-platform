@@ -2,9 +2,8 @@ package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
-import com.eric.governanceApi.governanceApi.model.CommandRequest;
+import com.eric.governanceApi.governanceApi.model.request.CommandRequest;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +16,7 @@ public class CommandsService {
     private final DeviceRepository deviceRepository;
     private final AgentClient agentClient;
     private final FirmwareService firmwareService;
-    private final ObjectMapper mapper = new ObjectMapper();
+    //private final ObjectMapper mapper = new ObjectMapper();
 
     public CommandsService(DeviceRepository deviceRepository, AgentClient agentClient, FirmwareService firmwareService) {
         this.deviceRepository = deviceRepository;
@@ -51,6 +50,8 @@ public class CommandsService {
     //  Comandos simples — reboot, deepsleep, etc
     private Map<String, Object> handleSimpleCommand(CommandRequest request) {
 
+        log.info("Verificando situação dos devices destinatários.");
+
         List<String> activeMacs = new ArrayList<>();
         List<String> skipped    = new ArrayList<>();
 
@@ -62,13 +63,17 @@ public class CommandsService {
 
             if (isActive) {
                 activeMacs.add(mac);
+                log.info("Mac {} valido, adicionando a lista de destinatarios...", mac);
             } else {
                 skipped.add(mac);
+                log.info("Mac {} nao valido, skippando...", mac);
             }
         }
 
         // NENHUM DEVICE ATIVO
         if (activeMacs.isEmpty()) {
+
+            log.info ("Nenhum Mac ativo");
             return Map.of(
                 "command", request.command().name(),
                 "publishedTo", List.of(),
@@ -79,11 +84,10 @@ public class CommandsService {
 
 
         // Constroi payload
-        String payload = buildPayload(request.command(), request.params());
+        Map<String, Object> payload = buildPayload(request.command(), request.params());
 
         // Envia pro Agent
-        Map<String, Object> agentResult = agentClient.broadcast(
-            request.command().getSubtopic(), payload, activeMacs
+        Map<String, Object> agentResult = agentClient.broadcastCommands(request.command(), payload, activeMacs
         );
 
         // Resultado do Agent
@@ -96,9 +100,8 @@ public class CommandsService {
     }
 
     // Metodo para construir payload generico contendo comando e os parametros
-    private String buildPayload(DeviceCommands command, Map<String, Object> params) {
+    private Map<String, Object> buildPayload(DeviceCommands command, Map<String, Object> params) {
         Map<String, Object> payload = new HashMap<>();
-        payload.put("command", command.name());
 
         switch (command) {
             case REBOOT -> {
@@ -128,10 +131,7 @@ public class CommandsService {
             default -> {}
         }
 
-        try {
-            return mapper.writeValueAsString(payload);
-        } catch (Exception e) {
-            throw new RuntimeException("Falha ao serializar payload", e);
-        }
+        
+        return payload;
     }
 }

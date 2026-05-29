@@ -79,7 +79,7 @@ public class MqttAgent {
 
                     try {
                         StatusDTO dto = objectMapper.readValue(payload, StatusDTO.class);
-                        //statusForwardingService.postDataLogger(dto);
+                        statusForwardingService.fowardStatusToEventHandler(dto);
                     } catch (Exception e) {
                         log.warn("Erro ao processar mensagem: {}", e.getMessage());
                     }

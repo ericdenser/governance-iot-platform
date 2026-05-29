@@ -6,7 +6,7 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
-import com.eric.governanceApi.governanceApi.model.Device;
+import com.eric.governanceApi.governanceApi.model.entity.Device;
 
 public interface DeviceRepository extends JpaRepository<Device, Long>{
     Optional<Device> findByMacAddress(String macAddress);

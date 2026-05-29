@@ -1,7 +1,7 @@
 package com.eric.governanceApi.governanceApi.controller;
 
-import com.eric.governanceApi.governanceApi.model.ApiResponse;
-import com.eric.governanceApi.governanceApi.model.CommandRequest;
+import com.eric.governanceApi.governanceApi.model.request.CommandRequest;
+import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.service.CommandsService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;

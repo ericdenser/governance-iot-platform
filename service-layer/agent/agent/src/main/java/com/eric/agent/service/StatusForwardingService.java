@@ -19,12 +19,12 @@ public class StatusForwardingService {
     }
 
     // Envia status pro EventHandler
-    public void postStatus(StatusDTO dto) {
+    public void fowardStatusToEventHandler(StatusDTO dto) {
         // AJUSTAR COM LOG FUTURAMENTE!!!!!!!!!!!!!!!
         log.info("Joined postStatus controller");
         try {
             restClient.post()
-                .uri("http://localhost:8081/datalogger/savedata")
+                .uri("http://localhost:8085/events/ingest")
                 .body(dto)
                 .retrieve()
                 .toBodilessEntity();

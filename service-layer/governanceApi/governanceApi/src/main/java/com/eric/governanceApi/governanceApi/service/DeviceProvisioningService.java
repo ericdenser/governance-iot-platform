@@ -9,11 +9,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
-import com.eric.governanceApi.governanceApi.model.Device;
-import com.eric.governanceApi.governanceApi.model.DeviceCertificate;
-import com.eric.governanceApi.governanceApi.model.DeviceRegistrationRequest;
-import com.eric.governanceApi.governanceApi.model.ProvisioningToken;
-import com.eric.governanceApi.governanceApi.model.RegisterDeviceRequest;
+import com.eric.governanceApi.governanceApi.model.entity.Device;
+import com.eric.governanceApi.governanceApi.model.entity.DeviceCertificate;
+import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
+import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequest;
+import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
 import com.eric.governanceApi.governanceApi.repository.DeviceCertificateRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ProvisioningTokenRepository;
@@ -39,6 +39,11 @@ public class DeviceProvisioningService {
 
     @Transactional
     public ProvisioningToken registerDevice(RegisterDeviceRequest request) {
+        return registerDevice(request, 600);
+    }
+
+    @Transactional
+    public ProvisioningToken registerDevice(RegisterDeviceRequest request, int ttlSeconds) {
         String deviceName = request.deviceName();
 
         if (deviceName == null || deviceName.trim().isEmpty()) {
@@ -50,7 +55,7 @@ public class DeviceProvisioningService {
         newDevice.setStatus(DeviceStatus.PENDING);
         deviceRepository.save(newDevice);
 
-        ProvisioningToken provisioningToken = new ProvisioningToken(newDevice, 600); // 10 minutos de vida
+        ProvisioningToken provisioningToken = new ProvisioningToken(newDevice, ttlSeconds);
         tokenRepository.save(provisioningToken);
         return provisioningToken;
     }
@@ -102,10 +107,10 @@ public class DeviceProvisioningService {
             .toLocalDateTime());
 
         deviceCertificateRepository.save(cert);
-
+        
         // Atualiza Device
         device.setMacAddress(request.getMacAddress());
-        device.setStatus(DeviceStatus.ACTIVE);
+        device.setStatus(DeviceStatus.PROVISIONING);
         device.setLastSeen(LocalDateTime.now());
         deviceRepository.save(device);
 

@@ -34,3 +34,4 @@ mosquitto/config/regras_acesso.acl
 backup/
 testcontrollers/
 tips.txt
+service-layer/governanceApi/governanceApi/data/

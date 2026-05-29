@@ -2,8 +2,8 @@ package com.eric.eventhandler.event_handler.service;
 
 import org.springframework.stereotype.Service;
 
-import com.eric.eventhandler.event_handler.model.DeviceEvent;
-import com.eric.eventhandler.event_handler.model.StatusDTO;
+import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
+import com.eric.eventhandler.event_handler.model.entity.DeviceEvent;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,7 +30,7 @@ public class EventManagerService {
 
         // Transição não disparou nenhum evento
         if (event == null) {
-            log.info("Transição: {} → {} não disparou nenhum evento" + "previousStatus, newStatus)");
+            log.info("Transição para {} não disparou nenhum evento", statusDto.status());
             return;
         }
 

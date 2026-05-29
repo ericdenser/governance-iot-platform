@@ -1,7 +1,7 @@
 package com.eric.governanceApi.governanceApi.controller;
 
-import com.eric.governanceApi.governanceApi.model.ApiResponse;
-import com.eric.governanceApi.governanceApi.model.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.service.FirmwareService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ public class FirmwareController {
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<ApiResponse<Firmware>> upload(
             @RequestPart("file") MultipartFile file,
-            @RequestParam("version") int version,
+            @RequestParam("version") float version,
             @RequestParam(value = "releaseNotes", required = false) String releaseNotes,
             HttpServletRequest httpRequest) throws Exception {
 

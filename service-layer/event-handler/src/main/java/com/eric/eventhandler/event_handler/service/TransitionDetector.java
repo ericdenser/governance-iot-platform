@@ -1,16 +1,18 @@
 package com.eric.eventhandler.event_handler.service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import org.springframework.stereotype.Service;
 
-import com.eric.eventhandler.event_handler.model.DeviceEvent;
-import com.eric.eventhandler.event_handler.model.DeviceSnapshot;
-import com.eric.eventhandler.event_handler.model.StatusDTO;
+import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
+import com.eric.eventhandler.event_handler.model.entity.DeviceEvent;
+import com.eric.eventhandler.event_handler.model.entity.DeviceSnapshot;
 import com.eric.eventhandler.event_handler.enums.DeviceState;
 import com.eric.eventhandler.event_handler.enums.EventType;
 import com.eric.eventhandler.event_handler.repository.SnapshotRepository;
 import lombok.extern.slf4j.Slf4j;
 
+
+// Detecta se o ultimo estado do device gera algum evento
 @Service
 @Slf4j
 public class TransitionDetector {
@@ -24,39 +26,50 @@ public class TransitionDetector {
 
     public DeviceEvent process(StatusDTO dto) {
 
-        DeviceSnapshot deviceSnapshot = snapshotRepository.findById(dto.mac()).orElse(null);
-                                                            
+        DeviceSnapshot deviceSnapshot =
+                snapshotRepository.findById(dto.mac()).orElse(null);
+
         if (deviceSnapshot == null) {
-            log.info("Ultimo snapshot do macAddress {} é nulo", dto.mac());
+
+            log.info("Nenhum snapshot encontrado para MAC {}", dto.mac());
+
+            deviceSnapshot = new DeviceSnapshot();
+            deviceSnapshot.setMac(dto.mac());
         }
 
-        DeviceSnapshot updatedSnapshot = new DeviceSnapshot();
-        deviceSnapshot.setMac(dto.mac());
-        deviceSnapshot.updateFrom(dto);
-        snapshotRepository.save(updatedSnapshot);
+        DeviceState previousState = deviceSnapshot.getStatus();
 
-        return detectTransaction(dto, deviceSnapshot);
+        deviceSnapshot.updateFrom(dto);
+
+        snapshotRepository.save(deviceSnapshot);
+
+        return detectTransition(dto, previousState);
     }
 
 
-    private DeviceEvent detectTransaction(StatusDTO dto, DeviceSnapshot deviceSnapshot) {
+    private DeviceEvent detectTransition(StatusDTO dto, DeviceState previousState) {
 
         DeviceState currentState = dto.status();
-        DeviceState previousState = deviceSnapshot.getStatus();
+
         DeviceEvent event = null;
 
-        switch(dto.status()) {
+        switch (currentState) {
+
             case PROVISIONING_SUCCESS:
 
-                if (deviceSnapshot.getStatus() != DeviceState.PROVISIONING_SUCCESS){
-                    event = buildEvent(EventType.DEVICE_PROVISIONED, dto, previousState, currentState);
+                if (previousState != DeviceState.PROVISIONING_SUCCESS) {
+
+                    event = buildEvent(
+                            EventType.DEVICE_PROVISIONED,
+                            dto,
+                            previousState,
+                            currentState);
                 }
+
                 break;
-            
+
             default:
                 break;
-
-
         }
 
         return event;
@@ -70,12 +83,12 @@ public class TransitionDetector {
                 type, dto.mac(), previousStatus, newStatus);
 
     return DeviceEvent.builder()
-            .eventName(type)
+            .eventType(type)
             .deviceMac(dto.mac())
             .previousStatus(previousStatus)
             .newStatus(newStatus)
             .deviceInfo(dto)
-            .timestamp(LocalDateTime.now())
+            .timestamp(Instant.now())
             .build();
     }
 

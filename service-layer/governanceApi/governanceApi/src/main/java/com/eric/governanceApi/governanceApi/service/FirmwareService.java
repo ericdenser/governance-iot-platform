@@ -1,13 +1,13 @@
 package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.config.AgentClient;
+import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
-import com.eric.governanceApi.governanceApi.model.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -27,7 +27,7 @@ public class FirmwareService {
     private final FirmwareRepository firmwareRepository;
     private final DeviceRepository deviceRepository;
     private final AgentClient agentClient;
-    private final ObjectMapper mapper = new ObjectMapper();
+    //private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${ota.firmware-storage-path}")
     private String storagePath;
@@ -49,12 +49,12 @@ public class FirmwareService {
 
     //  UPLOAD: valida, salva no disco, registra no banco
     @Transactional
-    public Firmware upload(MultipartFile file, int version, String releaseNotes) throws Exception {
+    public Firmware upload(MultipartFile file, float version, String releaseNotes) throws Exception {
 
         validateBinary(file, version);
 
         String sha256    = computeSha256(file);
-        String filename  = String.format("firmware_v%d_%s.bin", version, sha256.substring(0, 12));
+        String filename  = String.format("firmware_v%.2f_%s.bin", version, sha256.substring(0, 12));
         Path dest        = Paths.get(storagePath, filename);
 
         try {
@@ -124,12 +124,12 @@ public class FirmwareService {
         }
 
         // Monta payload e envia ao Agent
-        String payload = mapper.writeValueAsString(Map.of(
-            "version", fw.getVersion(),
-            "url",     fw.getDownloadUrl()
-        ));
+        Map<String, Object> payload = Map.of(
+        "version", fw.getVersion(),
+        "url",     fw.getDownloadUrl()
+        );
 
-        Map<String, Object> agentResult = agentClient.broadcast("ota", payload, activeMacs);
+        Map<String, Object> agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeMacs);
 
         // Atualiza status do firmware
         fw.setStatus(FirmwareStatus.DEPLOYED);
@@ -174,7 +174,7 @@ public class FirmwareService {
 
 
     //  Validações do arqv binário (METODO AUXILIAR)
-    private void validateBinary(MultipartFile file, int version) throws IOException {
+    private void validateBinary(MultipartFile file, float version) throws IOException {
 
         if (file.isEmpty())
             throw new IllegalArgumentException("Arquivo vazio.");

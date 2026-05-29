@@ -1,6 +1,9 @@
 package com.eric.agent.service;
 
 import com.eric.agent.model.AgentBroadcastRequest;
+import com.eric.agent.model.AgentBroadcastResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +20,7 @@ public class AgentBroadcastService {
     }
 
     /*
-     Publica o payload no tópico commands/<MAC>/<subtopic> para cada MAC.
+     Publica o payload no tópico commands/<MAC>/ para cada MAC.
      Interpreta o tipo de comando OTA, reboot, etc.
     */
     public Map<String, Object> broadcast(AgentBroadcastRequest request) {
@@ -25,24 +28,29 @@ public class AgentBroadcastService {
         List<String> published = new ArrayList<>();
         List<String> failed    = new ArrayList<>();
 
-        for (String mac : request.targetMacs()) {
-            String topic = "commands/" + mac + "/" + request.subtopic();
+        for (String targetMac : request.targetMacs()) {
+            String topic = "commands/" + targetMac;
+            AgentBroadcastResponse response = new AgentBroadcastResponse(request.command(), request.payload(), targetMac);
             try {
+
+                ObjectMapper mapper = new ObjectMapper();
+                String json = mapper.writeValueAsString(response);
+
                 // QoS 1 = entrega garantida; retained = true para devices offline
-                boolean retained = "ota".equals(request.subtopic()); // se for OTA retém
-                mqttAgent.publish(topic, request.payload(), 1, retained);
-                published.add(mac);
+                boolean retained = "UPDATE".equals(request.command()); // se for OTA retém
+                mqttAgent.publish(topic, json, 1, retained);
+                published.add(targetMac);
             } catch (Exception e) {
                 log.error("Falha ao publicar em [{}]: {}", topic, e.getMessage());
-                failed.add(mac);
+                failed.add(targetMac);
             }
         }
 
         log.info("Broadcast [{}] finalizado — ok: {}, falhas: {}",
-                 request.subtopic(), published.size(), failed.size());
+                 request.command(), published.size(), failed.size());
 
         return Map.of(
-            "subtopic",    request.subtopic(),
+            "command",    request.command(),
             "publishedTo", published,
             "failed",      failed
         );
