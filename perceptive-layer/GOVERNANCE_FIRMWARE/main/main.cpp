@@ -22,14 +22,14 @@
 // =============================================================================
 //  Configurações
 // =============================================================================
-#define FIRMWARE_VERSION        3
-#define PASSWORD                "mackleaps"
 #define MAX_WIFI_RETRIES        10
-#define URL_PROVISIONING        "http://192.168.15.64:8082/api/provisioning/activate"
-#define URL_ERROR_REPORT        "http://192.168.15.64:8082/api/provisioning/error"
+#define URL_PROVISIONING        "http://172.16.39.40:8082/api/provisioning/activate"
+#define URL_ERROR_REPORT        "http://172.16.39.40:8082/api/provisioning/error"
 #define ADVERTISE_INTERVAL_MS   5000
 
 static const char* TAG = "MAIN";
+static const char* NVS_NAMESPACE = "main_store";
+static bool valid_firmware = false;
 
 // =============================================================================
 //  Macros de log contextuais — prefixam automaticamente o estado atual
@@ -44,6 +44,7 @@ static const char* TAG = "MAIN";
 static std::string  g_macAddress;
 static std::string  g_msgOut;
 static int64_t      g_lastAdvertiseMs = 0;
+static float firmware_version = 0;
 
 static PayloadManager json;
 
@@ -59,15 +60,22 @@ static void nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
     nvs_close(h);
 }
 
+static bool nvs_read_float(const char* ns, const char* key, float* result) {
+    nvs_handle_t h;
+    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
+    uint32_t aux;
+    esp_err_t err = nvs_get_u32(h, key, &aux);
+    if (err == ESP_OK) {
+        memcpy(result, &aux, sizeof(aux));
+    }
+    nvs_close(h);
+    return (err == ESP_OK);
+}
+
+
 // =============================================================================
 //  Handlers
 // =============================================================================
-
-// ---- BOOT -------------------------------------------------------------------
-static void handle_boot() {
-    SLOG_I("Device iniciando. Firmware v%d", FIRMWARE_VERSION);
-    AppState::transition(DeviceState::NVS_INIT, {TAG, "handle_boot"});
-}
 
 // ---- NVS_INIT ---------------------------------------------------------------
 static void handle_nvs_init() {
@@ -87,6 +95,20 @@ static void handle_nvs_init() {
     }
 
     SLOG_I("NVS inicializada com sucesso.");
+
+
+    SLOG_I("Verificando versao do Firmware.");
+    bool foundInNvs = nvs_read_float(NVS_NAMESPACE, "fw_version", &firmware_version);
+
+    if (!foundInNvs) {
+ 
+        SLOG_W("Versao nao encontrada na NVS.");
+        if (firmware_version == 0) {
+            SLOG_I("Firmware de provisioning. Versão: %.2f", firmware_version);
+        }
+    } else {
+        SLOG_I("Versao do firmware carregada da NVS: v%.2f", firmware_version);
+    }
 
     // Lê dados salvos para decidir o próximo estado
     char saved_ssid[64]  = {0};
@@ -141,11 +163,19 @@ static void handle_wifi_connecting() {
 
     SLOG_I("Tentando conectar à rede: [%s] (máx %d tentativas)", saved_ssid, MAX_WIFI_RETRIES);
 
-    WifiConfig cfg;
-    cfg.ssid        = saved_ssid;
-    cfg.password    = saved_pass;
-    cfg.max_retries = MAX_WIFI_RETRIES;
-    WifiManager::init(cfg);
+    static bool is_wifi_inited = false; // Flag para saber se já demos init
+
+    if (!is_wifi_inited) {
+        WifiConfig cfg;
+        cfg.ssid        = saved_ssid;
+        cfg.password    = saved_pass;
+        cfg.max_retries = MAX_WIFI_RETRIES;
+        WifiManager::init(cfg);
+        is_wifi_inited = true;
+    } else {
+        // Se já inicializou antes, pede para limpar os erros e tentar de novo
+        WifiManager::reconnect(); 
+    }
 
     if (!WifiManager::waitForConnection(WatchdogManager::reset)) {
         SLOG_E("Timeout ao conectar em [%s] após %d tentativas.", saved_ssid, MAX_WIFI_RETRIES);
@@ -172,8 +202,8 @@ static void handle_time_sync() {
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
-    int retry = 0;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < 15) {
+    int retry = 2;
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < 2) {
         SLOG_I("Aguardando resposta NTP... (%d/15)", retry + 1);
         vTaskDelay(pdMS_TO_TICKS(2000));
         WatchdogManager::reset();
@@ -252,20 +282,24 @@ static void handle_mqtt_connecting() {
     MqttManager::init_mqtt();
 
     MqttManager::setCallback([](const std::string& topic, const std::string& payload) {
-        ESP_LOGI(TAG, "Processador Central recebeu o comando %s do tópico: %s", topic.c_str(), payload.c_str());
-  
-        bool success = CommandProcessor::manage(topic, payload);
+        ESP_LOGI(TAG, "Processador Central recebeu o payload %s do tópico: %s", payload.c_str(), topic.c_str());
+
+        bool success = CommandProcessor::manage(payload);
         if (!success) {
             SLOG_E("Command Processor falhou.");
         }
     });
-   
-    std::string mac = WifiManager::getMacAddress();
-    std::string topicCmd = "commands/" + mac + "/#";
+
+    AppState::transition(DeviceState::MQTT_WAITING_CONNECT, {TAG, "handle_mqtt_connecting"});
 }
 
 // ---- PROVISIONING SUCCESS ------------------------------------------------------------
 static void handle_provisioning_success() {
+
+    if (!valid_firmware) {
+        OtaManager::set_valid_version();
+        valid_firmware = true;
+    }
 
     static bool isSubscribed = false;
     if (!isSubscribed) {
@@ -276,18 +310,16 @@ static void handle_provisioning_success() {
     
     int64_t now = esp_timer_get_time() / 10000; 
 
-    // Avisa periodicamente que esta pronto para receber o firmware
+    // Avisa periodicamente que esta pronto para operação
     if (now - g_lastAdvertiseMs >= ADVERTISE_INTERVAL_MS) {
         g_lastAdvertiseMs = now;
 
         std::string ssid = WifiManager::getSSID();
         std::string ip   = WifiManager::getIp();
         std::string currentState = AppState::toString(AppState::get());
-        int rssi         = WifiManager::getRssi();
-
 
         json.add("mac",              g_macAddress);
-        json.add("firmware_version", FIRMWARE_VERSION);
+        json.add("fw_version", firmware_version);
         json.add("ssid",             ssid);
         json.add("status",           currentState);
 
@@ -303,28 +335,6 @@ static void handle_provisioning_success() {
     }
 
     vTaskDelay(pdMS_TO_TICKS(500));
-}
-
-// ---- OTA_DOWNLOADING --------------------------------------------------------
-static void handle_ota() {
-    SLOG_I("Verificando atualização de firmware. Versão atual: v%d", FIRMWARE_VERSION);
-
-    nvs_handle_t nvsHandle;
-    nvs_open("ota_store", NVS_READWRITE, &nvsHandle);
-
-    // OtaManager::verify_and_update(
-    //     FIRMWARE_VERSION, urlCheck, nvsHandle, g_msgOut,
-    //     []() { WatchdogManager::reset(); }
-    // );
-
-    nvs_close(nvsHandle);
-
-    // Se chegou aqui sem restart, não havia update ou houve falha não-fatal
-    if (AppState::is(DeviceState::OTA_DOWNLOADING)) {
-        SLOG_I("OTA finalizado sem atualização aplicada. Resultado: %s", g_msgOut.c_str());
-        SLOG_I("Retornando ao loop operacional.");
-        AppState::transition(DeviceState::OPERATIONAL, {TAG, "handle_ota"});
-    }
 }
 
 // ---- ERROR ------------------------------------------------------------------
@@ -343,7 +353,7 @@ static void handle_error() {
         SLOG_I("WiFi disponível. Reportando erro para: %s", URL_ERROR_REPORT);
 
         json.add("mac",              g_macAddress);
-        json.add("firmware_version", FIRMWARE_VERSION);
+        json.add("fw_version", firmware_version);
         json.add("ip", WifiManager::getIp());
         json.add("ssid", WifiManager::getSSID());
         json.add("current_process", AppState::toString(AppState::get()));
@@ -365,6 +375,8 @@ static void handle_error() {
         json.clear();
     } else {
         SLOG_W("WiFi indisponível. Erro não pôde ser reportado ao servidor.");
+        SLOG_E("Erro não recuperável. Agendando reboot...");
+        AppState::transition(DeviceState::REBOOTING, {TAG, "handle_error"});
     }
 
     // Política de recuperação por tipo de erro
@@ -376,8 +388,7 @@ static void handle_error() {
         return;
     }
 
-    SLOG_E("Erro não recuperável. Agendando reboot...");
-    AppState::transition(DeviceState::REBOOTING, {TAG, "handle_error"});
+    AppState::transition(DeviceState::WAITING_RESPONSE, {TAG, "handle_error"});
 }
 
 // ---- REBOOTING --------------------------------------------------------------
@@ -385,6 +396,12 @@ static void handle_rebooting() {
     SLOG_W("Reiniciando device em 3 segundos...");
     vTaskDelay(pdMS_TO_TICKS(3000));
     esp_restart();
+}
+
+
+static void handle_waiting_instruction() {
+    SLOG_W("Waiting instruction...");
+    while(1){};
 }
 
 // =============================================================================
@@ -399,7 +416,6 @@ extern "C" void app_main(void) {
         WatchdogManager::reset();
 
         switch (AppState::get()) {
-            case DeviceState::BOOT:             handle_boot();             break;
             case DeviceState::NVS_INIT:         handle_nvs_init();         break;
             case DeviceState::WIFI_AP_MODE:     handle_wifi_ap_mode();     break;
             case DeviceState::WIFI_CONNECTING:  handle_wifi_connecting();  break;
@@ -408,10 +424,11 @@ extern "C" void app_main(void) {
             case DeviceState::PROVISIONING_SUCCESS:      handle_provisioning_success();      break;
             case DeviceState::MQTT_INIT:        handle_mqtt_connecting();  break;
             case DeviceState::MQTT_WAITING_CONNECT:  vTaskDelay(pdMS_TO_TICKS(5000)); break;
-            case DeviceState::OTA_FOUND:        handle_ota();              break;
             case DeviceState::ERROR:            handle_error();            break;
             case DeviceState::REBOOTING:        handle_rebooting();        break;
+            case DeviceState::OTA_FOUND:
             case DeviceState::OTA_DOWNLOADING:                             break;
+            case DeviceState::WAITING_RESPONSE: handle_waiting_instruction(); break;
             case DeviceState::OPERATIONAL:    
             case DeviceState::HTTP_INIT:
             case DeviceState::HTTP_REQUEST:

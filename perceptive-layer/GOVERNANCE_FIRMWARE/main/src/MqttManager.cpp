@@ -5,7 +5,7 @@
 #include "CryptoManager.h"
 #include "AppState.h"
 
-#define BROKER_URL     "mqtts://192.168.15.64:8883" 
+#define BROKER_URL     "mqtts://172.16.39.40:8883"
 
 extern "C" {
     extern const uint8_t rootCA_crt_start[] asm("_binary_rootCA_crt_start");
@@ -70,6 +70,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 }
 
 void MqttManager::init_mqtt(void) {
+
+    if (mqtt_client != NULL) {
+        ESP_LOGW(TAG, "MQTT client already initialized, ignoring.");
+        return;
+    }
 
     static std::string client_cert = CryptoManager::getCertificate();
     static std::string private_key = CryptoManager::getPrivateKey();

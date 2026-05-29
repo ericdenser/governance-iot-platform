@@ -7,8 +7,30 @@
 #include "freertos/task.h"
 #include "mdns.h"
 #include "esp_log.h"
+#include <stdlib.h>
+#include <string.h>
 
 static httpd_handle_t server = NULL;
+
+// Browsers send form data as application/x-www-form-urlencoded:
+// spaces → '+', special chars → '%XX'. httpd_query_key_value does NOT decode,
+// so we must decode manually before saving to NVS.
+static void url_decode(const char *src, char *dst, size_t dst_len) {
+    size_t i = 0, j = 0;
+    while (src[i] != '\0' && j < dst_len - 1) {
+        if (src[i] == '+') {
+            dst[j++] = ' ';
+            i++;
+        } else if (src[i] == '%' && src[i + 1] != '\0' && src[i + 2] != '\0') {
+            char hex[3] = {src[i + 1], src[i + 2], '\0'};
+            dst[j++] = (char)strtol(hex, NULL, 16);
+            i += 3;
+        } else {
+            dst[j++] = src[i++];
+        }
+    }
+    dst[j] = '\0';
+}
 
 const char* html_page = R"rawliteral(
 <!DOCTYPE html>
@@ -53,20 +75,28 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 }
 
 static esp_err_t configure_post_handler(httpd_req_t *req) {
-    char buf[256];
-    int ret = httpd_req_recv(req, buf, req->content_len);
+    char buf[512];
+    size_t recv_len = req->content_len < sizeof(buf) - 1 ? req->content_len : sizeof(buf) - 1;
+    int ret = httpd_req_recv(req, buf, recv_len);
     if (ret <= 0) {
         return ESP_FAIL;
     }
     buf[ret] = '\0';
 
-    char ssid[64] = {0};
-    char pass[64] = {0};
-    char token[64] = {0};
+    char ssid_raw[64] = {0};
+    char pass_raw[64] = {0};
+    char token_raw[64] = {0};
 
-    httpd_query_key_value(buf, "ssid", ssid, sizeof(ssid));
-    httpd_query_key_value(buf, "password", pass, sizeof(pass));
-    httpd_query_key_value(buf, "token", token, sizeof(token));
+    httpd_query_key_value(buf, "ssid",     ssid_raw,  sizeof(ssid_raw));
+    httpd_query_key_value(buf, "password", pass_raw,  sizeof(pass_raw));
+    httpd_query_key_value(buf, "token",    token_raw, sizeof(token_raw));
+
+    char ssid[64]  = {0};
+    char pass[64]  = {0};
+    char token[64] = {0};
+    url_decode(ssid_raw,  ssid,  sizeof(ssid));
+    url_decode(pass_raw,  pass,  sizeof(pass));
+    url_decode(token_raw, token, sizeof(token));
 
     save_credential_nvs("wifi_ssid", ssid);
     save_credential_nvs("wifi_pass", pass);

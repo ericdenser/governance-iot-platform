@@ -1,49 +1,62 @@
-menu "Example Configuration"
+menu "WiFi Manager Configuration"
 
-    orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
+    config WIFI_SSID
+        string "Main SSID"
+        default "Myssid"
 
-    choice BLINK_LED
-        prompt "Blink LED type"
-        default BLINK_LED_GPIO
+    config WIFI_PASSWORD
+        string "Main Password"
+        default "Mypassword"
+
+    config WIFI_MAX_RETRIES
+        int "Max Retries"
+        default 5
+
+    choice WIFI_FAILURE_STRATEGY
+        prompt "Recovery Strategy on Failure"
+        default WIFI_RECOVERY_RESET
         help
-            Select the LED type. A normal level controlled LED or an addressable LED strip.
-            The default selection is based on the Espressif DevKit boards.
-            You can change the default selection according to your board.
+            Define o comportamento quando o número máximo de tentativas é atingido.
 
-        config BLINK_LED_GPIO
-            bool "GPIO"
-        config BLINK_LED_STRIP
-            bool "LED strip"
+        config WIFI_RECOVERY_RESET
+            bool "System Reset"
+            help
+                Reinicia o ESP32 automaticamente (esp_restart).
+
+        config WIFI_RECOVERY_SWAP
+            bool "Swap SSID (Try Backup Network)"
+            help
+                Tenta conectar em uma rede secundária definida abaixo.
+                Se a rede secundária também falhar, o sistema reinicia.
+
+        config WIFI_RECOVERY_NONE
+            bool "Keep Idle (Manual Handling)"
+            help
+                Apenas para o driver e define o estado como FAILED.
+                A aplicação deve decidir o que fazer.
     endchoice
 
-    choice BLINK_LED_STRIP_BACKEND
-        depends on BLINK_LED_STRIP
-        prompt "LED strip backend peripheral"
-        default BLINK_LED_STRIP_BACKEND_RMT if SOC_RMT_SUPPORTED
-        default BLINK_LED_STRIP_BACKEND_SPI
-        help
-            Select the backend peripheral to drive the LED strip.
+    # CREDENCIAIS DE BACKUP (Só aparecem se SWAP for escolhido)
+    config WIFI_BACKUP_SSID
+        string "Backup SSID"
+        depends on WIFI_RECOVERY_SWAP
+        default "Backup_Network"
 
-        config BLINK_LED_STRIP_BACKEND_RMT
-            depends on SOC_RMT_SUPPORTED
-            bool "RMT"
-        config BLINK_LED_STRIP_BACKEND_SPI
-            bool "SPI"
-    endchoice
-
-    config BLINK_GPIO
-        int "Blink GPIO number"
-        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
-        default 8
-        help
-            GPIO number (IOxx) to blink on and off the LED.
-            Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
-
-    config BLINK_PERIOD
-        int "Blink period in ms"
-        range 10 3600000
-        default 1000
-        help
-            Define the blinking period in milliseconds.
+    config WIFI_BACKUP_PASSWORD
+        string "Backup Password"
+        depends on WIFI_RECOVERY_SWAP
+        default ""
 
 endmenu
+
+# menu "Firmware Configuration"
+
+#     config FIRMWARE_VERSION
+#         string "Firmware Version"
+#         default "0"
+#         help
+#             Versão numérica deste firmware. Gravada na NVS no primeiro boot
+#             e usada pelo OtaManager para comparação com versões disponíveis.
+#             Altere aqui antes de cada build para identificar a versão corretamente.
+
+# endmenu

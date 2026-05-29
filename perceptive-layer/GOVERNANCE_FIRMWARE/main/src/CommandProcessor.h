@@ -4,7 +4,7 @@
 #include <string>
 
 enum class CommandType {
-    OTA,
+    UPDATE,
     SLEEP,
     REBOOT,
     UNKNOWN
@@ -13,7 +13,7 @@ enum class CommandType {
 class CommandProcessor {
 public:
 
-    static bool manage(const std::string& topic, const std::string& payload);
+    static bool manage(const std::string& payload);
 
 private:
     static void execute();

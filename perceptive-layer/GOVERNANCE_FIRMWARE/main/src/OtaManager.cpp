@@ -6,116 +6,115 @@
 #include "cJSON.h"
 #include "esp_ota_ops.h"
 #include "esp_crt_bundle.h"
+#include "AppState.h"
 
 static const char *TAG = "OtaManager";
+static float current_version = 0;
 
 
-static bool jsonHelper(std::string &jsonPayload, int &newVersion, std::string &urlBinario, std::string &msgOut) {
-
-    cJSON *json = cJSON_Parse(jsonPayload.c_str());
-    if (!json) {
-        msgOut = "Erro: JSON Invalido.";
-        ESP_LOGW(TAG, "%s", msgOut.c_str());
-        return false;
+static bool nvs_read_float(const char* ns, const char* key, float* result) {
+    nvs_handle_t h;
+    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
+    uint32_t aux;
+    esp_err_t err = nvs_get_u32(h, key, &aux);
+    if (err == ESP_OK) {
+        memcpy(result, &aux, sizeof(aux));
     }
-
-    cJSON *versionItem = cJSON_GetObjectItem(json, "version");
-    cJSON *urlItem = cJSON_GetObjectItem(json, "url");
-
-    if (!cJSON_IsNumber(versionItem) || !cJSON_IsString(urlItem)) {
-        msgOut = "Erro: Formato JSON Inesperado.";
-        ESP_LOGW(TAG, "%s", msgOut.c_str());
-        cJSON_Delete(json);
-        return false;
-    }
-
-    newVersion = versionItem->valueint;
-    urlBinario = urlItem->valuestring;
-
-    cJSON_Delete(json); // libera memória
-    return true;
+    nvs_close(h);
+    return (err == ESP_OK);
 }
 
 
-bool OtaManager::verify_and_update(int currentVersion, std::string &urlCheck, nvs_handle_t nvsHandle, std::string &msgOut, std::function<void()> onProgressCallback) {
-    std::string jsonPayload;
-    // ESP_LOGI(TAG, "Checking on url:%s", urlCheck.c_str());
-    // bool sucess = HttpService::get(urlCheck, jsonPayload, msgOut);
+bool OtaManager::verify_and_update(float newVersion, std::string &url_bin, std::string &msgOut, std::function<void()> onProgressCallback) {
+    
+    nvs_read_float("main_store", "fw_version", &current_version);
 
-    // if (!sucess) {
-    //     ESP_LOGE(TAG, "%s", msgOut.c_str());
+    // Verifica se conseguiu buscar a versão na NVS
+    // if (current_version == 0) {
+    //     ESP_LOGE(TAG, "Unable to find firmware version in nvs.");
+    //     msgOut = "Unable to find firmware version in nvs";
     //     return false;
     // }
 
-    // if (jsonPayload.empty()) {
-    //     msgOut = "Erro: Falha ao baixar JSON ou JSON vazio.";
-    //     ESP_LOGE(TAG, "%s", msgOut.c_str());
-    //     return false;
-    // }
-
-    int newVersion;
-    std::string urlBinario; 
-
-    if (!jsonHelper(jsonPayload, newVersion, urlBinario, msgOut)) {
+    if (current_version == newVersion) {
+        ESP_LOGE(TAG, "Stopping OTA download due same firwmare version.");
+        msgOut = "Stopping OTA download due same firwmare version";
         return false;
     }
 
 
     // ============= VERIFICACÃO DE VERSÕES INVÁLIDAS ================
 
+
+
+    nvs_handle_t nvsHandle;
+    if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) != ESP_OK) {
+        msgOut = "Falha ao abrir NVS ota_store";
+        ESP_LOGE(TAG, "%s", msgOut.c_str());
+        return false;
+    }
+
+    uint32_t newVersionUint = (uint32_t)newVersion;
+
+
     // Verificar se houve rollback nativo e baixou uma versão corrompida
     const esp_partition_t *invalid_partition = esp_ota_get_last_invalid_partition();
 
     // Recupera qual foi a ultima versão que tentamos baixar
-    int32_t target_ver = -1;
-    nvs_get_i32(nvsHandle, "target_ver", &target_ver);
+    uint32_t target_ver = 0;
+    nvs_get_u32(nvsHandle, "target_ver", &target_ver);
 
     // Lógica de julgamento
-    if (invalid_partition != NULL && newVersion == target_ver) {
+    if (invalid_partition != NULL && newVersionUint == target_ver) {
         ESP_LOGE(TAG, "ALERTA: Detectado Rollback!");
         ESP_LOGE(TAG, "A particao %s foi marcada como INVALIDA.", invalid_partition->label);
-        ESP_LOGE(TAG, "A ultima versao %d causou o rollback. A mesma será banida.", newVersion);
+        ESP_LOGE(TAG, "A ultima versao %u causou o rollback. A mesma sera banida.", newVersionUint);
 
-        /* Como a ultima versão baixada (corrompida) é a mesma que ainda está 
+        /* Como a ultima versão baixada (corrompida) é a mesma que ainda está
         disponível para baixar, invalidamos ela pois já tentamos e falhou */
-        nvs_set_i32(nvsHandle, "invalid_ver", newVersion);
+        nvs_set_u32(nvsHandle, "invalid_ver", newVersionUint);
         nvs_commit(nvsHandle);
+        nvs_close(nvsHandle);
 
-        msgOut = "Versao " + std::to_string(newVersion) + " banida por instabilidade. Update cancelado";
+        msgOut = "Versao " + std::to_string(newVersionUint) + " banida por instabilidade. Update cancelado";
         return false;
     }
 
     // Verificar versão inválida no NVS
-    int32_t invalid_ver = -1;
-    esp_err_t err = nvs_get_i32(nvsHandle, "invalid_ver", &invalid_ver);
+    uint32_t invalid_ver = 0;
+    esp_err_t err = nvs_get_u32(nvsHandle, "invalid_ver", &invalid_ver);
     bool doesExist = (err == ESP_OK);
 
-    ESP_LOGI(TAG, "Versão Nova: %d | Versão atual: %d | Versão inválida: %d", newVersion, currentVersion, (int)invalid_ver);
+    ESP_LOGI(TAG, "Versao Nova: %u | Versao atual: %u | Versao invalida: %u", newVersionUint, (uint32_t)current_version, invalid_ver);
 
-    if (doesExist && newVersion == invalid_ver) {
-        msgOut = "Versao " + std::to_string(newVersion) + "marcada como inválida. Update abortado.";
+    if (doesExist && newVersionUint == invalid_ver) {
+        msgOut = "Versao " + std::to_string(newVersionUint) + " marcada como invalida. Update abortado.";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
+        nvs_close(nvsHandle);
         return false;
     }
 
     // ==========================================================
 
 
-    // Se chegou aqui, versão disponível é válida, apenas verifica se é nova
-    if (newVersion > currentVersion) {
-        msgOut = "Atualizacao encontrada! Baixando v" + std::to_string(newVersion);
+    // Se chegou aqui, versão disponível é válida
+    if (newVersionUint > 0) {
+        msgOut = "Atualizacao encontrada! Baixando v" + std::to_string(newVersionUint);
 
         // Registra qual versão esta sendo baixada para tratamento futuro
-        nvs_set_i32(nvsHandle, "target_ver", newVersion);
+        nvs_set_u32(nvsHandle, "target_ver", newVersionUint);
         nvs_commit(nvsHandle);
 
         ESP_LOGI(TAG, "%s", msgOut.c_str());
 
-        return download_OTA(urlBinario, nvsHandle, msgOut, onProgressCallback);
+        bool result = download_OTA(url_bin, nvsHandle, newVersionUint, msgOut, onProgressCallback);
+        nvs_close(nvsHandle);
+        return result;
 
     } else {
-        msgOut = "Firmware já está na versão mais recente.";
+        msgOut = "Firmware enviado nao possui versao (v0).";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
+        nvs_close(nvsHandle);
         return true;
     }
 }
@@ -145,14 +144,14 @@ void OtaManager::set_valid_version() {
 void OtaManager::set_invalid_version(nvs_handle_t nvsHandler, int currentVersion) {
     ESP_LOGE(TAG, "FALHA CRITICA DETECTADA NA VERSAO %d. INICIANDO ROLLBACK...", currentVersion);
 
-    nvs_set_i32(nvsHandler, "invalid_ver", currentVersion);
+    nvs_set_u32(nvsHandler, "invalid_ver", currentVersion);
     nvs_commit(nvsHandler);
     ESP_LOGW(TAG, "Versao %d banida no NVS. Nao sera baixada novamente.", currentVersion);
 
     esp_ota_mark_app_invalid_rollback_and_reboot();
 }
 
-bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, std::string &msgOut, std::function<void()> onProgressCallback) {
+bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, uint32_t newVersionUint, std::string &msgOut, std::function<void()> onProgressCallback) {
 
     // Config do cliente OTA
     esp_http_client_config_t http_config {};
@@ -214,7 +213,21 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, std::
         // Zera o contador de crash antes de reiniciar
         nvs_set_i32(nvsHandle, "crash_count", 0);
         nvs_commit(nvsHandle);
-        
+
+        // Persiste a nova versão na main_store para que o próximo boot a leia corretamente
+        nvs_handle_t mainHandle;
+        if (nvs_open("main_store", NVS_READWRITE, &mainHandle) == ESP_OK) {
+            float newVersionFloat = (float)newVersionUint;
+            uint32_t versionBits;
+            memcpy(&versionBits, &newVersionFloat, sizeof(versionBits));
+            nvs_set_u32(mainHandle, "fw_version", versionBits);
+            nvs_commit(mainHandle);
+            nvs_close(mainHandle);
+            ESP_LOGI(TAG, "Versao %u salva em main_store/firmware_version.", newVersionUint);
+        } else {
+            ESP_LOGW(TAG, "Nao foi possivel salvar firmware_version na main_store.");
+        }
+
         msgOut = "Upgrade successful. Rebooting...";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
         vTaskDelay(1000 / portTICK_PERIOD_MS);

@@ -4,8 +4,8 @@
 static const char* TAG = "AppState";
 
 //  Variáveis estáticas 
-DeviceState      AppState::_current  = DeviceState::BOOT;
-DeviceState      AppState::_previous = DeviceState::BOOT;
+DeviceState      AppState::_current  = DeviceState::NVS_INIT;
+DeviceState      AppState::_previous = DeviceState::NVS_INIT;
 AppError         AppState::_lastError;
 SemaphoreHandle_t AppState::_mutex   = NULL;
 
@@ -93,7 +93,6 @@ void AppState::clearError() {
 //  toString() — para logs legíveis ===================================
 const char* AppState::toString(DeviceState state) {
     switch (state) {
-        case DeviceState::BOOT:                 return "BOOT";
         case DeviceState::NVS_INIT:             return "NVS_INIT";
         case DeviceState::WIFI_AP_MODE:         return "WIFI_AP_MODE";
         case DeviceState::WIFI_CONNECTING:      return "WIFI_CONNECTING";
@@ -109,6 +108,7 @@ const char* AppState::toString(DeviceState state) {
         case DeviceState::ERROR:                return "ERROR";
         case DeviceState::HTTP_INIT:            return "HTTP_INIT";
         case DeviceState::HTTP_REQUEST:         return "HTTP_REQUEST";
+        case DeviceState::WAITING_RESPONSE:         return "WAITING_RESPONSE";
         default:                                return "UNKNOWN";
     }
 }

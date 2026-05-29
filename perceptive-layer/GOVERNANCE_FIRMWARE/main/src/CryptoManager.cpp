@@ -63,7 +63,7 @@ bool CryptoManager::handleProvisioningResponse(const std::string& responseBuffer
         AppState::setError(
             ErrorCode::PROVISIONING_RESPONSE_INVALID,
             msgOut,
-            {TAG, "saveToNVS"}
+            {TAG, "handleProvisioningResponse"}
         );
         return false;
     }
@@ -79,7 +79,7 @@ bool CryptoManager::handleProvisioningResponse(const std::string& responseBuffer
         AppState::setError(
             ErrorCode::PROVISIONING_RESPONSE_INVALID,
             msgOut,
-            {TAG, "saveToNVS"}
+            {TAG, "handleProvisioningResponse"}
         );
         cleanup();
         return false;
@@ -92,7 +92,7 @@ bool CryptoManager::handleProvisioningResponse(const std::string& responseBuffer
         AppState::setError(
             ErrorCode::PROVISIONING_RESPONSE_INVALID,
             msgOut,
-            {TAG, "saveToNVS"}
+            {TAG, "handleProvisioningResponse"}
         );
         cleanup();
         return false;

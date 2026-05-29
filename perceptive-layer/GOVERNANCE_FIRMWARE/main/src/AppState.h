@@ -8,7 +8,6 @@
 
 //  Estados do ciclo de vida do device
 enum class DeviceState {
-    BOOT,               // Primeiro tick — nada inicializado ainda
     NVS_INIT,           // Inicializando flash/NVS
     WIFI_AP_MODE,       // SoftAP ativo, aguardando usuário configurar via captive portal
     WIFI_CONNECTING,    // Tentando conectar à rede WiFi salva
@@ -23,7 +22,8 @@ enum class DeviceState {
     REBOOTING,          // Aguardando reboot controlado
     ERROR,               // Erro recuperável — log + notificação + reboot suave
     HTTP_INIT,
-    HTTP_REQUEST
+    HTTP_REQUEST,
+    WAITING_RESPONSE
 };
 
 enum class ErrorCode {
