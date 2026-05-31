@@ -5,12 +5,15 @@
 *.crt
 *.p12
 *.jks
-*.sh
 keys/
 **/certs/
 .env
-*.md
 *.txt
+
+# Ignorar .md genéricos mas preservar arquivos raiz 
+*.md
+!README.md
+!CONTRIBUTING.md
 
 **/build/
 **/managed_components/
@@ -35,3 +38,4 @@ backup/
 testcontrollers/
 tips.txt
 service-layer/governanceApi/governanceApi/data/
+.venv-nvs/
