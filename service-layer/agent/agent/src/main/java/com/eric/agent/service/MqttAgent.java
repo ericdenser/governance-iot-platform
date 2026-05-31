@@ -18,6 +18,7 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
 import java.io.InputStream;
 import java.security.KeyStore;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
@@ -52,24 +53,22 @@ public class MqttAgent {
     private String truststorePassword;
 
     private MqttClient client;
+    
+    // Controle para garantir que apenas uma Thread tente conectar por vez
+    private final AtomicBoolean isConnecting = new AtomicBoolean(false);
 
     @PostConstruct
-    public void connect() {
-        log.info("Iniciando conexão MQTT segura (mTLS)...");
+    public void init() {
+        log.info("Inicializando configuração do MQTT...");
         try {
             client = new MqttClient(brokerUrl, clientId, new MemoryPersistence());
-
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setAutomaticReconnect(true);
-            options.setCleanSession(true);
-            options.setConnectionTimeout(10);
-            options.setSocketFactory(getSocketFactory());
-            options.setHttpsHostnameVerificationEnabled(false);
 
             client.setCallback(new MqttCallback() {
                 @Override
                 public void connectionLost(Throwable cause) {
-                    log.error("Conexão com o Broker perdida: {}", cause.getMessage());
+                    log.error("Conexão com o Broker perdida: {}. Iniciando rotina de reconexão...", 
+                            cause != null ? cause.getMessage() : "Desconhecida");
+                    startConnectionRoutine();
                 }
 
                 @Override
@@ -89,12 +88,66 @@ public class MqttAgent {
                 public void deliveryComplete(IMqttDeliveryToken token) {}
             });
 
-            client.connect(options);
-            client.subscribe(topic);
+            // Inicia a primeira tentativa de conexão sem travar o boot do Spring
+            startConnectionRoutine();
 
-        } catch (Exception e) {
-            log.error("Erro fatal ao iniciar Agent MQTT: {}", e.getMessage(), e);
+        } catch (MqttException e) {
+            log.error("Erro fatal ao instanciar Agent MQTT: {}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * Inicia a thread de conexão apenas se não houver outra rodando.
+     */
+    private void startConnectionRoutine() {
+        if (isConnecting.compareAndSet(false, true)) {
+            new Thread(this::connectWithRetry, "MqttConnectionThread").start();
+        }
+    }
+
+    /**
+     * Loop infinito de tentativas com 1 minuto de intervalo.
+     */
+    private void connectWithRetry() {
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(true);
+        options.setConnectionTimeout(10);
+        // Controle manual de reconexão para forçar o delay exato de 1 minuto
+        options.setAutomaticReconnect(false); 
+
+        try {
+            options.setSocketFactory(getSocketFactory());
+            options.setHttpsHostnameVerificationEnabled(false);
+        } catch (Exception e) {
+            log.error("Falha ao carregar certificados SSL. Impossível conectar ao MQTT: {}", e.getMessage());
+            isConnecting.set(false);
+            return;
+        }
+
+        while (client != null && !client.isConnected()) {
+            try {
+                log.info("Tentando conectar ao Broker MQTT em {}...", brokerUrl);
+                client.connect(options);
+                
+                log.info("Conectado com sucesso! Realizando inscrição no tópico [{}]", topic);
+                client.subscribe(topic);
+                
+                isConnecting.set(false); // Libera o lock
+                return; // Sai do loop e encerra a thread
+                
+            } catch (Exception e) {
+                log.error("Falha ao conectar no MQTT: {}. Nova tentativa em 1 minuto...", e.getMessage());
+                try {
+                    Thread.sleep(120000); // 120 segundos exatos
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Thread de conexão MQTT interrompida.");
+                    isConnecting.set(false);
+                    return;
+                }
+            }
+        }
+        isConnecting.set(false);
     }
 
     //  Publish 
