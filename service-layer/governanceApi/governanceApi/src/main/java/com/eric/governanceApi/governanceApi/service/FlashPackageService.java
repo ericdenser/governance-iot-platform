@@ -166,7 +166,13 @@ public class FlashPackageService {
         List<String> cmd = new ArrayList<>();
         cmd.add(nvsPythonPath);
         if (!nvsScriptPath.isBlank()) {
+            // Modo script: python3 /path/nvs_partition_gen.py generate ...
             cmd.add(nvsScriptPath);
+        } else {
+            // Modo módulo: python3 -m nvs_partition_gen generate ...
+            // (requer: pip install esp-idf-nvs-partition-gen no venv)
+            cmd.add("-m");
+            cmd.add("nvs_partition_gen");
         }
         cmd.add("generate");
         cmd.add(csvPath.toString());

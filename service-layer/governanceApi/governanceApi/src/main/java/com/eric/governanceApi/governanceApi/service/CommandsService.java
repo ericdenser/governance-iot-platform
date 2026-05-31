@@ -87,8 +87,7 @@ public class CommandsService {
         Map<String, Object> payload = buildPayload(request.command(), request.params());
 
         // Envia pro Agent
-        Map<String, Object> agentResult = agentClient.broadcastCommands(request.command(), payload, activeMacs
-        );
+        Map<String, Object> agentResult = agentClient.broadcastCommands(request.command(), payload, activeMacs);
 
         // Resultado do Agent
         Map<String, Object> result = new HashMap<>();
@@ -121,9 +120,9 @@ public class CommandsService {
 
                 int durationS = ((Number) params.get("duration_s")).intValue();
 
-                // 10s ou 1 dia
-                if (durationS < 10 || durationS > 86400) {
-                    throw new IllegalArgumentException("duration_s deve estar entre 10 e 86400.");
+                // 1 minuto ou 3 dias
+                if (durationS < 10 || durationS > 259200) {
+                    throw new IllegalArgumentException("duration_s deve estar entre 60 e 259200.");
                 }
 
                 payload.put("duration_s", durationS);

@@ -47,7 +47,7 @@ public class FirmwareService {
     }
 
 
-    //  UPLOAD: valida, salva no disco, registra no banco
+    //  UPLOAD FIRMWARE: valida, salva no disco, registra no banco
     @Transactional
     public Firmware upload(MultipartFile file, float version, String releaseNotes) throws Exception {
 
