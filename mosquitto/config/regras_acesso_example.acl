@@ -1,0 +1,25 @@
+# ==========================================
+# 1. PERMISSÕES DO AGENTE (MDM MASTER)
+# ==========================================
+# O seu Spring Boot vai se conectar usando um certificado
+# onde o Common Name (CN) é "agents"
+user agents
+
+# O Agente pode LER tudo o que as placas enviam
+topic read telemetry/#
+topic read status/#
+topic read commands/#
+
+# O Agente pode ESCREVER (enviar comandos) para qualquer placa
+topic write commands/#
+
+
+# O '%u' é substituído dinamicamente pelo Username
+
+# A placa só pode enviar dados para a sua própria pasta
+pattern write telemetry/%u
+pattern write status/%u
+
+# A placa só pode escutar comandos enviados especificamente para ela
+pattern read commands/%u/#
+
