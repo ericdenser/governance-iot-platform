@@ -16,7 +16,9 @@ class OtaManager {
   //Marca o firmware atual como válido.
   static void set_valid_version();
 
-  static void set_invalid_version(nvs_handle_t nvsHandler, int currentVersion);
+  static void set_invalid_version(std::string& reason);
+
+  static bool verify_rollback(std::string& msgOut, uint32_t& outInvalidVer);
 
   private:
 

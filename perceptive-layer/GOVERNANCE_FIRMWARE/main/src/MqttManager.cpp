@@ -5,7 +5,7 @@
 #include "CryptoManager.h"
 #include "AppState.h"
 
-#define BROKER_URL     "mqtts://172.16.39.40:8883"
+#define BROKER_URL     "mqtts://192.168.0.192:8883"
 
 extern "C" {
     extern const uint8_t rootCA_crt_start[] asm("_binary_rootCA_crt_start");
@@ -26,7 +26,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED: 
             ESP_LOGI(TAG, "Conectado ao Broker MQTT com sucesso!");
 
-            AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "mqtt_event_handler"});
+            AppState::transition(DeviceState::VERIFY_ROLLBACK, {TAG, "mqtt_event_handler"});
             
             break;
 

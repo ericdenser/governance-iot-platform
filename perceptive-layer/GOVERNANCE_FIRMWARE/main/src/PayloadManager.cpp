@@ -9,6 +9,7 @@ PayloadManager::PayloadManager() {
 void PayloadManager::clear() {
     payload = "{";
     isFirst = true; 
+    isClosed = false;
 }
 
 void PayloadManager::addComma() {
@@ -55,14 +56,23 @@ void PayloadManager::add(const std::string& key, bool value) {
     payload += "\"" + key + "\":" + std::string(value ? "true" : "false");
 }
 
+void PayloadManager::addObject(const std::string& key, const std::string& jsonObject) {
+    addComma();
+    payload += "\"" + key + "\":" + jsonObject;
+}
+
 const char* PayloadManager::build() {
     // Garante que a chave do JSON seja fechada apenas uma vez
-    if (payload.back() != '}') {
+   if (!isClosed) {
         payload += "}";
+        isClosed = true;
     }
-    return payload.c_str(); // Retorna o ponteiro char* do payload
+    return payload.c_str();
 }
 
 std::string PayloadManager::getString() const {
-    return payload + (payload.back() != '}' ? "}" : "");
+    if (isClosed) {
+        return payload;
+    }
+    return payload + "}";
 }

@@ -8,6 +8,7 @@ class PayloadManager {
 private:
     std::string payload;
     bool isFirst;
+    bool isClosed = false;
 
     void addComma();
 
@@ -21,6 +22,7 @@ public:
     void add(const std::string& key, float value);
     void add(const std::string& key, double value);
     void add(const std::string& key, bool value);
+    void addObject(const std::string& key, const std::string& jsonObject);
 
     const char* build();
 

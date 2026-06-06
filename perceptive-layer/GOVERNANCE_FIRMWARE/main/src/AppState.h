@@ -4,6 +4,7 @@
 #include <string>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include <map>
 
 
 //  Estados do ciclo de vida do device
@@ -17,8 +18,11 @@ enum class DeviceState {
     MQTT_WAITING_CONNECT,    
     MQTT_INIT,          // Inicializando cliente MQTT com mTLS
     OPERATIONAL,        // Loop principal — telemetria, status, OTA checks
-    OTA_FOUND,          // Timer do ota 
+    OTA_FOUND,
+    OTA_SUCCESSFUL,          // Timer do ota 
     OTA_DOWNLOADING,    // Download + flash de firmware em progresso
+    VERIFY_ROLLBACK,
+    FIRMWARE_ROLLBACK,
     REBOOTING,          // Aguardando reboot controlado
     ERROR,               // Erro recuperável — log + notificação + reboot suave
     HTTP_INIT,
@@ -38,6 +42,7 @@ enum class ErrorCode {
     PROVISIONING_RESPONSE_INVALID,
     MQTT_INIT_FAIL,
     MQTT_DISCONNECTED,
+    CRASH_ROLLBACK,
     OTA_FAIL,
     HTTP_INIT_FAIL,
     HTTP_REQUEST_FAIL,
@@ -67,6 +72,7 @@ struct AppError {
     ErrorCode code    = ErrorCode::NONE;
     std::string msg;    // Descrição legível
     Source source;     // Info do módulo que gerou o erro (ex: "CryptoManager", func "handleProvisioning")
+    std::map<std::string, std::string> details;
 };
 
 
@@ -92,7 +98,7 @@ public:
     static bool is(DeviceState state);
 
     // Registra um erro e transiciona automaticamente para ERROR
-    static void setError(ErrorCode code, const std::string& msg, const Source& source);
+    static void setError(ErrorCode code, const std::string& msg, const Source& source, const std::map<std::string, std::string>& details = {});
     static AppError getError();
     static void clearError();
 

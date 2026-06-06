@@ -73,15 +73,6 @@ static void ota_task_routine(void* pvParameters) {
         []{ WatchdogManager::reset(); }
     );
 
-    if (!success) {
-        ESP_LOGE(TAG, "Falha na Task de OTA: %s", msgOut.c_str());
-        AppState::setError(
-            ErrorCode::OTA_FAIL, 
-            msgOut, 
-            {TAG, "ota_task_routine"}
-        );
-    }
-
     WatchdogManager::removeFromCurrentTask();
 
     // Libera memoria alocada para os parametros

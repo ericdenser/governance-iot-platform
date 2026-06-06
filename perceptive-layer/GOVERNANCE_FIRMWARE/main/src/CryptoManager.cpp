@@ -35,19 +35,24 @@ static std::string escapeJSONString(const std::string& input) {
 // MÉTODOS PÚBLICOS
 
 bool CryptoManager::isProvisioned() {
-    std::string cert = loadFromNVS("client_cert");
-    return !cert.empty();
+    nvs_handle_t handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) return false;
+    size_t required_size = 0;
+    esp_err_t err = nvs_get_str(handle, "client_cert", NULL, &required_size);
+    nvs_close(handle);
+    return (err == ESP_OK && required_size > 0);
 }
 
 
-std::string CryptoManager::handleProvisioning(const std::string& identifierCN, const std::string provisioningToken) {
+std::string CryptoManager::handleProvisioning(const std::string& deviceId, const std::string& macAddress, const std::string& provisioningToken) {
     // Gera as chaves e o CSR
-    std::string csr = CryptoManager::generateCSR(identifierCN);
+    std::string csr = CryptoManager::generateCSR(deviceId);
             
     if (!csr.empty()) {
         return 
             "{\"provisioningToken\":\"" + provisioningToken +
-            "\",\"macAddress\":\"" + identifierCN +
+            "\",\"deviceId\":\"" + deviceId +
+            "\",\"macAddress\":\"" + macAddress +
             "\",\"publicKey\":\"" + escapeJSONString(csr) + "\"}";
     }
 
@@ -230,7 +235,7 @@ bool CryptoManager::saveCertificate(const std::string& certPem) {
     return saveToNVS("client_cert", certPem);
 }
 
-std::string CryptoManager::generateCSR(const std::string& macAddress) {
+std::string CryptoManager::generateCSR(const std::string& device_id) {
     ESP_LOGI(TAG, "Iniciando geração de Chaves e CSR via mbedTLS...");
 
     mbedtls_pk_context key;
@@ -295,8 +300,8 @@ std::string CryptoManager::generateCSR(const std::string& macAddress) {
     ESP_LOGI(TAG, "Montando o CSR...");
     mbedtls_x509write_csr_set_md_alg(&req, MBEDTLS_MD_SHA256);
     
-    // O Common Name (CN) DEVE ser o MAC Address (POR AGORA)
-    snprintf(subject_name, sizeof(subject_name), "CN=%s,O=Mackenzie IoT Devices", macAddress.c_str());
+    // O Common Name (CN)
+    snprintf(subject_name, sizeof(subject_name), "CN=%s,O=Mackenzie IoT Devices", device_id.c_str());
     
     if (mbedtls_x509write_csr_set_subject_name(&req, subject_name) != 0) {
         ESP_LOGE(TAG, "Erro ao definir o Subject Name do CSR");

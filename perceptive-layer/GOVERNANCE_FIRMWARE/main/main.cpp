@@ -23,8 +23,9 @@
 //  Configurações
 // =============================================================================
 #define MAX_WIFI_RETRIES        10
-#define URL_PROVISIONING        "http://172.16.39.40:8082/api/provisioning/activate"
-#define URL_ERROR_REPORT        "http://172.16.39.40:8082/api/provisioning/error"
+#define MAX_CRASH_COUNT 3 // Maximum allowed crashes before forcing a rollback
+#define URL_PROVISIONING        "http://192.168.0.192:8082/api/provisioning/activate"
+#define URL_ERROR_REPORT        "http://192.168.0.192:8082/api/provisioning/error"
 #define ADVERTISE_INTERVAL_MS   5000
 
 static const char* TAG = "MAIN";
@@ -42,11 +43,16 @@ static bool valid_firmware = false;
 //  variavies
 // =============================================================================
 static std::string  g_macAddress;
+static std::string  g_deviceId;
 static std::string  g_msgOut;
 static int64_t      g_lastAdvertiseMs = 0;
+static bool        g_rollback_detected = false;
+static std::string g_rollback_msg;
 static float firmware_version = 0;
+static int crashCount = 0;
 
 static PayloadManager json;
+static PayloadManager params;
 
 // =============================================================================
 //  Helpers NVS
@@ -96,7 +102,6 @@ static void handle_nvs_init() {
 
     SLOG_I("NVS inicializada com sucesso.");
 
-
     SLOG_I("Verificando versao do Firmware.");
     bool foundInNvs = nvs_read_float(NVS_NAMESPACE, "fw_version", &firmware_version);
 
@@ -110,20 +115,35 @@ static void handle_nvs_init() {
         SLOG_I("Versao do firmware carregada da NVS: v%.2f", firmware_version);
     }
 
+
     // Lê dados salvos para decidir o próximo estado
     char saved_ssid[64]  = {0};
     char saved_token[64] = {0};
+    char saved_device_id[64] = {0};
+
     nvs_read_str("crypto_store", "wifi_ssid",  saved_ssid,  sizeof(saved_ssid));
     nvs_read_str("crypto_store", "prov_token", saved_token, sizeof(saved_token));
+    nvs_read_str("crypto_store", "device_id", saved_device_id, sizeof(saved_device_id));
+
+    g_deviceId = std::string(saved_device_id);
 
     bool hasWifi       = (saved_ssid[0] != '\0');
     bool hasToken      = (saved_token[0] != '\0');
     bool isProvisioned = CryptoManager::isProvisioned();
+    bool hasDeviceId = (saved_device_id[0] != '\0');
 
-    SLOG_I("Diagnóstico NVS — WiFi salvo: %s | Token salvo: %s | Certificado: %s",
+    SLOG_I("Diagnóstico NVS — WiFi salvo: %s | Token salvo: %s | Certificado: %s | DeviceId %s",
            hasWifi       ? "SIM" : "NÃO",
            hasToken      ? "SIM" : "NÃO",
-           isProvisioned ? "SIM" : "NÃO");
+           isProvisioned ? "SIM" : "NÃO",
+           hasDeviceId   ? "SIM" :  "NÃO");
+
+    
+    if (!hasDeviceId) {
+        SLOG_E("device_id nao encontrado na NVS. Pacote de flash invalido.");
+        AppState::setError(ErrorCode::NVS_LOAD_FAIL, "device_id ausente na NVS", {TAG, "handle_provisioning"});
+        return;
+    }
 
     if (!hasWifi || (!hasToken && !isProvisioned)) {
         SLOG_W("Configuração incompleta. Subindo SoftAP para setup inicial.");
@@ -218,6 +238,8 @@ static void handle_time_sync() {
         localtime_r(&now, &timeinfo);
         SLOG_I("Relógio sincronizado: %s", asctime(&timeinfo));
     }
+
+    // Verificação de próximo estado
     bool isProvisioned = CryptoManager::isProvisioned();
     SLOG_I("Certificado mTLS presente: %s. Próximo estado: %s",
            isProvisioned ? "SIM" : "NÃO",
@@ -231,17 +253,15 @@ static void handle_time_sync() {
 
 // ---- PROVISIONING -----------------------------------------------------------
 static void handle_provisioning() {
-    AppState::transition(DeviceState::PROVISIONING, {TAG, "handle_provisioning"});
 
     char saved_token[64] = {0};
     nvs_read_str("crypto_store", "prov_token", saved_token, sizeof(saved_token));
 
-    SLOG_I("Iniciando provisionamento. Token: [%.8s...] MAC: [%s]",
-           saved_token, g_macAddress.c_str());
-
+    SLOG_I("Iniciando provisionamento. Token: [%.8s...] DeviceID: [%s] MAC: [%s]",
+       saved_token, g_deviceId.c_str(), g_macAddress.c_str());
     // Gera par de chaves ECC + CSR
     SLOG_I("Gerando par de chaves ECC e CSR via mbedTLS...");
-    std::string espCert = CryptoManager::handleProvisioning(g_macAddress, saved_token);
+    std::string espCert = CryptoManager::handleProvisioning(g_deviceId, g_macAddress, saved_token);
 
 
     // ============= ERRO NA GERACAO DO CERT OU KEY ===============
@@ -296,18 +316,6 @@ static void handle_mqtt_connecting() {
 // ---- PROVISIONING SUCCESS ------------------------------------------------------------
 static void handle_provisioning_success() {
 
-    if (!valid_firmware) {
-        OtaManager::set_valid_version();
-        valid_firmware = true;
-    }
-
-    static bool isSubscribed = false;
-    if (!isSubscribed) {
-        std::string topicCmd = "commands/" + g_macAddress + "/#";
-        MqttManager::subscribe(topicCmd, 1);
-        isSubscribed = true;
-    }
-    
     int64_t now = esp_timer_get_time() / 10000; 
 
     // Avisa periodicamente que esta pronto para operação
@@ -318,6 +326,7 @@ static void handle_provisioning_success() {
         std::string ip   = WifiManager::getIp();
         std::string currentState = AppState::toString(AppState::get());
 
+        json.add("device_id",              g_deviceId);
         json.add("mac",              g_macAddress);
         json.add("fw_version", firmware_version);
         json.add("ssid",             ssid);
@@ -326,7 +335,7 @@ static void handle_provisioning_success() {
         const char* payload = json.build();
 
         char topic[64];
-        snprintf(topic, sizeof(topic), "status/%s", g_macAddress.c_str());
+        snprintf(topic, sizeof(topic), "status/%s", g_deviceId.c_str());
 
         SLOG_I("Publicando advertise. Tópico: [%s] | Payload: %s", topic, payload);
         MqttManager::publish(payload, topic);
@@ -352,6 +361,7 @@ static void handle_error() {
     if (WifiManager::isConnected()) {
         SLOG_I("WiFi disponível. Reportando erro para: %s", URL_ERROR_REPORT);
 
+        json.add("device_id",         g_deviceId);
         json.add("mac",              g_macAddress);
         json.add("fw_version", firmware_version);
         json.add("ip", WifiManager::getIp());
@@ -398,6 +408,133 @@ static void handle_rebooting() {
     esp_restart();
 }
 
+static void handle_rollback() {
+    std::string topicCmd = "commands/" + g_deviceId + "/#";
+    MqttManager::subscribe(topicCmd, 1);
+
+    if (!valid_firmware) {
+        OtaManager::set_valid_version();
+        valid_firmware = true;
+    }
+
+    char topic[128];
+    snprintf(topic, sizeof(topic), "status/%s", g_deviceId.c_str());
+    std::string ssid = WifiManager::getSSID();
+
+    // OTA anterior validado com sucesso — notifica MDM e segue para operação
+    if (AppState::get() == DeviceState::OTA_SUCCESSFUL) {
+        SLOG_I("OTA_SUCCESSFUL detectado, postando status: [OTA_SUCCESSFUL].");
+        json.add("device_id",  g_deviceId);
+        json.add("mac",        g_macAddress);
+        json.add("fw_version", firmware_version);
+        json.add("ssid",       ssid);
+        json.add("status",     "OTA_SUCCESSFUL");
+        MqttManager::publish(json.build(), topic);
+        json.clear();
+        AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_rollback"});
+        return;
+    } else {
+        SLOG_I("Nenhum OTA detectado para notificação.");
+    }
+
+     // Checa motivo do ultimo reset
+    nvs_handle_t nvsHandler;
+    if (nvs_open("main_store", NVS_READWRITE, &nvsHandler) == ESP_OK) {
+
+        esp_reset_reason_t reason = esp_reset_reason();
+        SLOG_I("VERIFICANDO MOTIVO DO ULTIMO RESET:");
+        if (reason == ESP_RST_WDT || reason == ESP_RST_TASK_WDT || reason == ESP_RST_PANIC) {
+            int8_t saved = 0;
+            nvs_get_i8(nvsHandler, "crash_count", &saved);
+            crashCount = saved + 1;
+            nvs_set_i8(nvsHandler, "crash_count", crashCount);
+            SLOG_W("Crash por falha detectado, incrementando.");
+            nvs_commit(nvsHandler);
+        } else {
+            SLOG_W("Nenhum crash detectado, zerando crash_count.");
+            nvs_set_i8(nvsHandler, "crash_count", 0);
+            nvs_commit(nvsHandler);
+        }
+
+        if(crashCount >= MAX_CRASH_COUNT) {
+            SLOG_E("LIMITE DE CRASH ATINGIDO, SEGUINDO COM FLUXO DE INVALIDAÇÃO DE FIRMWARE");
+            nvs_set_i8(nvsHandler, "crash_count", 0);
+            nvs_commit(nvsHandler);
+            std::string reason = "crashCount";
+            OtaManager::set_invalid_version(reason);
+        }
+        nvs_close(nvsHandler);
+    } else {
+        ESP_LOGW(TAG, "Nao foi possível abrir nvs");
+    }
+
+
+    uint32_t invalidVer = 0;
+    char reason[24] = {0};
+    // SÓ VERIFICA ROLLBACK SE TENTAMOS FAZER UM OTA
+    // A chave "target_ver" só é criada pela sua função OtaManager::verify_and_update
+    uint32_t lastTarget = 0;
+    nvs_handle_t otaHandler;
+    if (nvs_open("ota_store", NVS_READONLY, &otaHandler) == ESP_OK) {
+        nvs_get_u32(otaHandler, "target_ver", &lastTarget);
+        nvs_close(otaHandler);
+    }
+    if (lastTarget != 0 && OtaManager::verify_rollback(g_rollback_msg, invalidVer)) {
+
+        SLOG_W("Rollback detectado. Versao invalida: %u. Notificando MDM...", invalidVer);
+
+        nvs_read_float("main_store", "fw_version", &firmware_version);
+        nvs_read_str("ota_store", "rollbackReason", reason, sizeof(reason));
+
+        params.add("invalid_ver", int(invalidVer));
+        params.add("reason", reason);
+
+        json.add("device_id",   g_deviceId);
+        json.add("mac",         g_macAddress);
+        json.add("fw_version",  firmware_version);
+        json.add("ssid",        ssid);
+        json.add("status",      AppState::toString(AppState::get()));
+        json.addObject("params", params.getString());
+        MqttManager::publish(json.build(), topic);
+
+        json.clear();
+        params.clear();
+    } else if (lastTarget != 0) {
+        // OTA foi iniciado mas o download foi interrompido (ex: WDT crash).
+        // esp_ota_get_last_invalid_partition() retorna NULL porque a partição
+        // nunca foi marcada como inválida — o bootloader simplesmente reverteu.
+        // Reportamos o evento para o MDM poder destravar o device de OTA_PENDING.
+        SLOG_W("OTA v%u abortado (download incompleto). Notificando MDM...", lastTarget);
+
+        nvs_read_float("main_store", "fw_version", &firmware_version);
+
+        params.add("invalid_ver", int(lastTarget));
+        params.add("reason", "mid_download_crash");
+
+        json.add("device_id",  g_deviceId);
+        json.add("mac",        g_macAddress);
+        json.add("fw_version", firmware_version);
+        json.add("ssid",       ssid);
+        json.add("status",     "OTA_FAILED");
+        json.addObject("params", params.getString());
+        MqttManager::publish(json.build(), topic);
+
+        json.clear();
+        params.clear();
+
+        // Limpa target_ver para não reportar novamente no próximo boot
+        nvs_handle_t otaWriter;
+        if (nvs_open("ota_store", NVS_READWRITE, &otaWriter) == ESP_OK) {
+            nvs_erase_key(otaWriter, "target_ver");
+            nvs_commit(otaWriter);
+            nvs_close(otaWriter);
+        }
+    } else {
+        SLOG_I("Nenhum rollback pendente de notificação.");
+    }
+
+    AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_rollback"});
+}
 
 static void handle_waiting_instruction() {
     SLOG_W("Waiting instruction...");
@@ -426,13 +563,15 @@ extern "C" void app_main(void) {
             case DeviceState::MQTT_WAITING_CONNECT:  vTaskDelay(pdMS_TO_TICKS(5000)); break;
             case DeviceState::ERROR:            handle_error();            break;
             case DeviceState::REBOOTING:        handle_rebooting();        break;
-            case DeviceState::OTA_FOUND:
+            case DeviceState::VERIFY_ROLLBACK:  handle_rollback();         break;
+            case DeviceState::OTA_SUCCESSFUL:  
+            case DeviceState::OTA_FOUND:                                   break;
             case DeviceState::OTA_DOWNLOADING:                             break;
             case DeviceState::WAITING_RESPONSE: handle_waiting_instruction(); break;
             case DeviceState::OPERATIONAL:    
             case DeviceState::HTTP_INIT:
-            case DeviceState::HTTP_REQUEST:
-                        break;
+            case DeviceState::HTTP_REQUEST:                                 break;
+            case DeviceState::FIRMWARE_ROLLBACK: break;
         }
     }
 }

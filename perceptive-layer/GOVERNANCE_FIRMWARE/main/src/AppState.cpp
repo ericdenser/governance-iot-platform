@@ -35,15 +35,20 @@ void AppState::transition(DeviceState next, const Source& source) {
 
 
 //  setError() — registra contexto e transiciona para ERROR automaticamente
-void AppState::setError(ErrorCode code, const std::string& msg, const Source& source) {
+void AppState::setError(ErrorCode code, const std::string& msg, const Source& source, const std::map<std::string, std::string>& details) {
     if (_mutex == NULL) return;
 
     xSemaphoreTake(_mutex, portMAX_DELAY);
     _lastError.code   = code;
     _lastError.msg    = msg;
     _lastError.source = source;
+    _lastError.details = details;
+
     _previous = _current;
     _current  = DeviceState::ERROR;
+
+
+
     xSemaphoreGive(_mutex);
 
     ESP_LOGE(TAG, "[%s::%s] ERRO (%s): %s",
@@ -103,6 +108,9 @@ const char* AppState::toString(DeviceState state) {
         case DeviceState::MQTT_INIT:            return "MQTT_INIT";
         case DeviceState::OPERATIONAL:          return "OPERATIONAL";
         case DeviceState::OTA_FOUND:            return "OTA_FOUND";
+        case DeviceState::VERIFY_ROLLBACK:      return "VERIFY_ROLLBACK";
+        case DeviceState::FIRMWARE_ROLLBACK:    return "FIRMWARE_ROLLBACK"; 
+        case DeviceState::OTA_SUCCESSFUL:      return   "OTA_SUCCESFUL";
         case DeviceState::OTA_DOWNLOADING:      return "OTA_DOWNLOADING";
         case DeviceState::REBOOTING:            return "REBOOTING";
         case DeviceState::ERROR:                return "ERROR";
@@ -119,6 +127,7 @@ const char* AppState::toString(ErrorCode code) {
         case ErrorCode::NVS_INIT_FAIL:                 return "NVS_INIT_FAIL";
         case ErrorCode::NVS_WRITE_FAIL:                return "NVS_WRITE_FAIL";
         case ErrorCode::NVS_COMMIT_FAIL:               return "NVS_COMMIT_FAIL";
+        case ErrorCode::NVS_LOAD_FAIL:                 return "NVS_LOAD_FAIL";
         case ErrorCode::WIFI_TIMEOUT:                  return "WIFI_TIMEOUT";
         case ErrorCode::TIME_SYNC_FAIL:                return "TIME_SYNC_FAIL";
         case ErrorCode::PROVISIONING_REQUEST_FAIL:     return "PROVISIONING_REQUEST_FAIL";

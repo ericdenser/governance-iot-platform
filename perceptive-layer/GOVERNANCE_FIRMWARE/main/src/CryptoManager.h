@@ -12,7 +12,7 @@ public:
     static bool handleRegistering();
 
     // Vai limpar o JSON com a resposta da API contendo o certificado
-    static std::string handleProvisioning(const std::string& responseBuffer, const std::string provisioningToken);
+    static std::string handleProvisioning(const std::string& deviceId, const std::string& macAddress, const std::string& provisioningToken);
 
     static std::string handleRegisteringResponse(const std::string& responseBuffer, std::string& msgOut);
 
@@ -34,7 +34,7 @@ private:
     static std::string loadFromNVS(const char* key);
 
     // Gera o part de chaves, salva a privada na NVS e retorna o CSR
-    static std::string generateCSR(const std::string& macAddress);
+    static std::string generateCSR(const std::string& deviceId);
 
 };
 
