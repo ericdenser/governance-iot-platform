@@ -1,12 +1,19 @@
 package com.eric.governanceApi.governanceApi.model.dto;
 
-// DTO enviado pelo event-handler da info do device que disparou o evento 
+import java.util.Map;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+// DTO enviado pelo event-handler da info do device que disparou o evento
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record DeviceInfoDTO(
 
     String mac,
-    String firmware_version,
+    @JsonProperty("fw_version") float firmware_version,
     String ssid,
-    String status
+    String status,
+    Map<String, Object> params
 ) {
     
 

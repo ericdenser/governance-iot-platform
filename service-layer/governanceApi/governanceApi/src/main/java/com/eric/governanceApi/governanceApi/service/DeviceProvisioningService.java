@@ -2,8 +2,6 @@ package com.eric.governanceApi.governanceApi.service;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Optional;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +14,7 @@ import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequ
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
 import com.eric.governanceApi.governanceApi.repository.DeviceCertificateRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
+import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.ProvisioningTokenRepository;
 import com.eric.governanceApi.governanceApi.service.CryptoService.SignedCertificateData;
 
@@ -29,12 +28,14 @@ public class DeviceProvisioningService {
     private final ProvisioningTokenRepository tokenRepository;
     private final DeviceCertificateRepository deviceCertificateRepository;
     private final CryptoService cryptoService;
+    private final FirmwareRepository firmwareRepository;
 
-    public DeviceProvisioningService(DeviceRepository deviceRepository, ProvisioningTokenRepository tokenRepository, DeviceCertificateRepository deviceCertificateRepository, CryptoService cryptoService) {
+    public DeviceProvisioningService(DeviceRepository deviceRepository, ProvisioningTokenRepository tokenRepository, DeviceCertificateRepository deviceCertificateRepository, CryptoService cryptoService, FirmwareRepository firmwareRepository) {
         this.deviceRepository = deviceRepository;
         this.tokenRepository = tokenRepository;
         this.deviceCertificateRepository = deviceCertificateRepository;
         this.cryptoService = cryptoService; 
+        this.firmwareRepository = firmwareRepository;
     }
 
     @Transactional
@@ -72,25 +73,22 @@ public class DeviceProvisioningService {
         // Se o status não é Pendente
         Device device = token.getDevice();
         if (device.getStatus() != DeviceStatus.PENDING) {
-            System.out.println("Device nao esta pending");
+            log.info("Device nao esta pending");
             throw new SecurityException("Device not in PENDING status.");
         }
 
-        // Se já existe um dispositivo com este macAddress
-        Optional<Device> existingDevice = deviceRepository.findByMacAddress(request.getMacAddress());
-        if (existingDevice.isPresent()) {
-            System.out.println("MAC ADDRESS ja registrado");
-            throw new SecurityException("MAC Address already registered.");
+        // Valida que o device_id do request é o do device dono do token
+        if (!device.getDeviceId().equals(request.getDeviceId())) {
+            throw new SecurityException("Device ID does not match the provisioning token");
         }
 
         // Queima o token
         token.setUsed(true);
-        tokenRepository.save(token);
 
         SignedCertificateData certData;
         try {
              // Passa o CSR e o MAC para o CryptoService
-             certData = cryptoService.signDeviceCSR(request.getPublicKey(), request.getMacAddress());
+             certData = cryptoService.signDeviceCSR(request.getPublicKey(), request.getDeviceId());
         } catch (Exception e) {
              throw new RuntimeException("Erro ao assinar certificado do dispositivo: " + e.getMessage(), e);
         }
@@ -109,10 +107,11 @@ public class DeviceProvisioningService {
         deviceCertificateRepository.save(cert);
         
         // Atualiza Device
+        device.setDeviceId(request.getDeviceId());
         device.setMacAddress(request.getMacAddress());
         device.setStatus(DeviceStatus.PROVISIONING);
         device.setLastSeen(LocalDateTime.now());
-        deviceRepository.save(device);
+        device.setFirmware(firmwareRepository.findByProvisioningFirmwareTrue().get());
 
         // Retorna o PEM do certificado para o ESP32 guardar na memória (NVS)
         return certData.pemString;

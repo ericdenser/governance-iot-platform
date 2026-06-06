@@ -2,7 +2,9 @@ package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.FirmwareStatus;
+import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
@@ -49,14 +51,20 @@ public class FirmwareService {
 
     //  UPLOAD FIRMWARE: valida, salva no disco, registra no banco
     @Transactional
-    public Firmware upload(MultipartFile file, float version, String releaseNotes) throws Exception {
+    public Firmware upload(MultipartFile file, float version, String releaseNotes, boolean isProvisioning) throws Exception {
+
+        // Não podemos subir 2 firmwares de provisionamento
+        if (isProvisioning && firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
+
+            throw new ConflictException("Provisioning firmware already exists");
+        }
 
         validateBinary(file, version);
 
         String sha256    = computeSha256(file);
-        String filename  = String.format("firmware_v%.2f_%s.bin", version, sha256.substring(0, 12));
+        String filename  = String.format(java.util.Locale.US, "firmware_v%.2f_%s.bin", version, sha256.substring(0, 12));
         Path dest        = Paths.get(storagePath, filename);
-
+        
         try {
             Files.createDirectories(dest.getParent());
             Files.copy(file.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
@@ -75,6 +83,7 @@ public class FirmwareService {
         fw.setSizeBytes(file.getSize());
         fw.setDownloadUrl(publicBaseUrl + "/" + filename);
         fw.setReleaseNotes(releaseNotes);
+        fw.setProvisioningFirmware(isProvisioning);
         fw.setStatus(FirmwareStatus.STAGED);
 
         firmwareRepository.save(fw);
@@ -87,7 +96,7 @@ public class FirmwareService {
 
     //  DEPLOY: seleciona firmware existente + lista de devices
     @Transactional
-    public Map<String, Object> deploy(Long firmwareId, List<String> targetMacs) throws Exception {
+    public Map<String, Object> deploy(Long firmwareId, List<String> targetDevices) throws Exception {
 
         Firmware fw = firmwareRepository.findById(firmwareId)
             .orElseThrow(() -> new ResourceNotFoundException("Firmware ID " + firmwareId + " não encontrado."));
@@ -98,22 +107,22 @@ public class FirmwareService {
         }
 
         // Filtra devices ativos
-        List<String> activeMacs = new ArrayList<>();
+        List<String> activeDevs = new ArrayList<>();
         List<String> skipped    = new ArrayList<>();
 
-        for (String mac : targetMacs) {
-            boolean isActive = deviceRepository.findByMacAddress(mac)
+        for (String devId : targetDevices) {
+            boolean isActive = deviceRepository.findByDeviceId(devId)
                     .map(d -> d.getStatus().name().equals("ACTIVE"))
                     .orElse(false);
-
             if (isActive) {
-                activeMacs.add(mac);
+                activeDevs.add(devId);
+
             } else {
-                skipped.add(mac);
+                skipped.add(devId);
             }
         }
 
-        if (activeMacs.isEmpty()) {
+        if (activeDevs.isEmpty()) {
             return Map.of(
                 "firmwareId", fw.getId(),
                 "version", fw.getVersion(),
@@ -129,12 +138,22 @@ public class FirmwareService {
         "url",     fw.getDownloadUrl()
         );
 
-        Map<String, Object> agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeMacs);
+        Map<String, Object> agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeDevs);
 
-        // Atualiza status do firmware
+        // Atualiza status do firmware (deploy_count é atualizado pelo DeviceUpdatedHandler
+        // quando o device confirma que está rodando o firmware)
         fw.setStatus(FirmwareStatus.DEPLOYED);
-        fw.setDeployCount(fw.getDeployCount() + 1);
         firmwareRepository.save(fw);
+
+        // Atualiza status dos devices
+        for (String deviceId : targetDevices) {
+            deviceRepository.findByDeviceId(deviceId).ifPresent(
+                device -> {
+                    device.setStatus(DeviceStatus.OTA_PENDING);
+                deviceRepository.save(device);
+                });
+        }
+        
 
         Map<String, Object> result = new HashMap<>();
         result.put("firmwareId", fw.getId());
@@ -170,6 +189,34 @@ public class FirmwareService {
         result.addAll(firmwareRepository.findByStatusOrderByVersionDesc(FirmwareStatus.STAGED));
         result.addAll(firmwareRepository.findByStatusOrderByVersionDesc(FirmwareStatus.DEPLOYED));
         return result;
+    }
+
+    @Transactional
+    public Firmware setProvisioningFirmware(Long newFirmwareId) {
+        firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(
+            current -> {
+                current.setProvisioningFirmware(false);
+                firmwareRepository.save(current);
+            }
+        );
+
+        Firmware fw = firmwareRepository.findById(newFirmwareId)
+                    .orElseThrow(() -> 
+                        new ResourceNotFoundException("Firmware ID" + newFirmwareId + "não encontrado."));
+
+        if (fw.getStatus() == FirmwareStatus.DEPRECATED) {
+            throw new IllegalArgumentException(
+                "Firmware v" + fw.getVersion() + "está DEPRECATED e não pode ser provisioning.");
+        }
+
+        if (fw.getDeployCount() > 0) {
+            throw new IllegalArgumentException(
+                 "Firmware v" + fw.getVersion() + "está deployed em dispositivos, não pode ser provisioning.");
+
+        }
+
+        fw.setProvisioningFirmware(true);
+        return firmwareRepository.save(fw);
     }
 
 

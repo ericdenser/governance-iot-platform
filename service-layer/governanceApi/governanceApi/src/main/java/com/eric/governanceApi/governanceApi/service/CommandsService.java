@@ -43,7 +43,7 @@ public class CommandsService {
         Long firmwareId = ((Number) request.params().get("firmwareId")).longValue();
 
         // Delega deploy ao FirmwareService dedicado exclusivamente para OTA
-        return firmwareService.deploy(firmwareId, request.targetMacs());
+        return firmwareService.deploy(firmwareId, request.targetDevices());
 
     }
 
@@ -52,28 +52,28 @@ public class CommandsService {
 
         log.info("Verificando situação dos devices destinatários.");
 
-        List<String> activeMacs = new ArrayList<>();
+        List<String> activeDevs = new ArrayList<>();
         List<String> skipped    = new ArrayList<>();
 
         // PROCURA TODOS QUE ESTAO ATIVOS
-        for (String mac : request.targetMacs()) {
-            boolean isActive = deviceRepository.findByMacAddress(mac)
+        for (String devId : request.targetDevices()) {
+            boolean isActive = deviceRepository.findByDeviceId(devId)
                     .map(d -> d.getStatus().name().equals("ACTIVE"))
                     .orElse(false);
 
             if (isActive) {
-                activeMacs.add(mac);
-                log.info("Mac {} valido, adicionando a lista de destinatarios...", mac);
+                activeDevs.add(devId);
+                log.info("Device de ID {} valido, adicionando a lista de destinatarios...", devId);
             } else {
-                skipped.add(mac);
-                log.info("Mac {} nao valido, skippando...", mac);
+                skipped.add(devId);
+                log.info("Device de Id {} nao valido, skippando...", devId);
             }
         }
 
         // NENHUM DEVICE ATIVO
-        if (activeMacs.isEmpty()) {
+        if (activeDevs.isEmpty()) {
 
-            log.info ("Nenhum Mac ativo");
+            log.info ("Nenhum Device ativo");
             return Map.of(
                 "command", request.command().name(),
                 "publishedTo", List.of(),
@@ -87,7 +87,7 @@ public class CommandsService {
         Map<String, Object> payload = buildPayload(request.command(), request.params());
 
         // Envia pro Agent
-        Map<String, Object> agentResult = agentClient.broadcastCommands(request.command(), payload, activeMacs);
+        Map<String, Object> agentResult = agentClient.broadcastCommands(request.command(), payload, activeDevs);
 
         // Resultado do Agent
         Map<String, Object> result = new HashMap<>();

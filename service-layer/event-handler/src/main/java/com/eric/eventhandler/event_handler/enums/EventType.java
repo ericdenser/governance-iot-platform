@@ -13,6 +13,7 @@ public enum EventType {
     // Firmware
     DEVICE_UPDATED,
     DEVICE_UPDATE_FAILED,
+    DEVICE_FIRMWARE_ROLLBACK,
 
     // Saúde
     DEVICE_ERROR_REPORTED,

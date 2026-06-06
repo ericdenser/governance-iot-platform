@@ -1,0 +1,17 @@
+#!/bin/bash
+
+echo "Carregando variaveis do .env..."
+
+# 1. Ativa a exportação automática de variáveis
+set -a
+
+# 2. Lê o arquivo .env que está 3 pastas acima
+source ../../.env
+
+# 3. Desativa a exportação automática
+set +a
+
+echo "Variaveis carregadas! Iniciando o Event Handler..."
+
+# 4. Roda o Spring Boot (Tem que estar AQUI DENTRO!)
+mvn spring-boot:run

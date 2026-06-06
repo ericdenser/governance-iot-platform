@@ -9,7 +9,7 @@ import com.eric.eventhandler.event_handler.model.entity.EventLog;
 
 public interface EventLogRepository extends JpaRepository<EventLog, Long> {
     
-    List<EventLog> findByDeviceMacOrderByTimestampDesc(String mac);
+    List<EventLog> findByDeviceIdOrderByTimestampDesc(String device_id);
     
     List<EventLog> findByEventTypeOrderByTimestampDesc(EventType eventType);
  

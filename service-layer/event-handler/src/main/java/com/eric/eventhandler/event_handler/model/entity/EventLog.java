@@ -34,14 +34,17 @@ public class EventLog {
     private EventType eventType;
 
     @Column(nullable = false)
-    private String deviceMac;
+    private String deviceId;
 
     @Column(length = 2000)
     private String payload;
 
+    @Enumerated(EnumType.STRING)
     private DeviceState previousStatus;
+
+    @Enumerated(EnumType.STRING)
     private DeviceState newStatus;
 
     private LocalDateTime timestamp = LocalDateTime.now();
-
 }
+

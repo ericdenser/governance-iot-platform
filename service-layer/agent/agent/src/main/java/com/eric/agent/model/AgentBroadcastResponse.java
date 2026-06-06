@@ -21,7 +21,7 @@ public record AgentBroadcastResponse(
     @NotBlank(message = "payload is required")
     Map<String, Object> payload,
 
-    @NotEmpty(message = "targetMac must contain at least one MAC address")
-    String targetMac
+    @NotEmpty(message = "targetDev must contain at least one Device Id")
+    String targetDev
 
 ) {}

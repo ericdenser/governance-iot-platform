@@ -39,7 +39,7 @@ public class CommandController {
             HttpServletRequest httpRequest) throws Exception {
 
         log.info("Comando [{}] recebido para {} devices",
-                 request.command(), request.targetMacs().size());
+                 request.command(), request.targetDevices().size());
 
         Map<String, Object> result = commandsService.execute(request);
         return ResponseEntity.ok(ApiResponse.success(result, httpRequest.getRequestURI()));

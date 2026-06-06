@@ -24,7 +24,7 @@ public record AgentBroadcastRequest(
     @NotNull(message = "payload is required")
     Map<String, Object> payload,
 
-    @NotEmpty(message = "targetMacs must contain at least one MAC address")
-    List<String> targetMacs
+    @NotEmpty(message = "targetDevices must contain at least one Device ID")
+    List<String> targetDevices
 
 ) {}

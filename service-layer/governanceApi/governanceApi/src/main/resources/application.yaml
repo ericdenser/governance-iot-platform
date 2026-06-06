@@ -18,11 +18,14 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: create 
+      ddl-auto: create
     show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
 
 infra:
   api-key: ${INFRA_API_KEY}
@@ -44,7 +47,7 @@ provisioning:
   nvs-python-path: ${NVS_PYTHON_PATH:python3}
   nvs-script-path: ${NVS_SCRIPT_PATH}
   nvs-partition-size: "0x5000"
-  firmware-bin-path: ${PROVISIONING_FIRMWARE_BIN_PATH}
   bootloader-bin-path: ${PROVISIONING_BOOTLOADER_BIN_PATH}
   partition-table-bin-path: ${PROVISIONING_PARTITION_TABLE_BIN_PATH}
   token-ttl-seconds: 86400
+

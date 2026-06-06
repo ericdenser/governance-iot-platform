@@ -6,10 +6,11 @@ import lombok.Data;
 @Data
 public class DeviceErrorRequest {
     
-    private String mac;
-    
-    @JsonProperty("firmware_version")
-    private Integer firmwareVersion;
+    @JsonProperty("device_id")
+    private String deviceId;
+
+    @JsonProperty("fw_version")
+    private Float firmwareVersion;
     
     private String ssid;
     

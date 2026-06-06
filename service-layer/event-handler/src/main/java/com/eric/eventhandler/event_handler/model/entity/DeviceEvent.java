@@ -19,7 +19,7 @@ public class DeviceEvent {
     @Enumerated(EnumType.STRING)
     private EventType eventType;
 
-    private String deviceMac;
+    private String deviceId;
 
     @Enumerated(EnumType.STRING)
     private DeviceState previousStatus;
@@ -28,7 +28,6 @@ public class DeviceEvent {
     private DeviceState newStatus;
 
     private StatusDTO deviceInfo;
-
 
     private Instant timestamp;
 }

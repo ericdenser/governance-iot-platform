@@ -71,7 +71,7 @@ public class CryptoService {
     }
 
     private void loadCA() throws Exception {
-        System.out.println("🔐 A carregar Root CA offline do disco...");
+        log.info("🔐 A carregar Root CA offline do disco...");
         KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
         try (FileInputStream fis = new FileInputStream(rootCaFile.getFile())) {
             ks.load(fis, CA_PASSWORD.toCharArray());
@@ -81,12 +81,12 @@ public class CryptoService {
         PrivateKey caPrivateKey = (PrivateKey) ks.getKey(alias, CA_PASSWORD.toCharArray());
         PublicKey caPublicKey = caCert.getPublicKey();
         caKeyPair = new KeyPair(caPublicKey, caPrivateKey);
-        System.out.println("Root CA carregada com sucesso! Issuer: " + caCert.getSubjectX500Principal().getName());
+        log.info("Root CA carregada com sucesso! Issuer: " + caCert.getSubjectX500Principal().getName());
     }
 
     // Assina o CSR e devolve o PEM e o objeto X509Certificate.
-    public SignedCertificateData signDeviceCSR(String pemCsr, String macAddress) throws Exception {
-        log.info("A processar e assinar CSR para o MAC: " + macAddress);
+    public SignedCertificateData signDeviceCSR(String pemCsr, String deviceId) throws Exception {
+        log.info("A processar e assinar CSR para o device de ID: " + deviceId);
         
         PemReader pemReader = new PemReader(new StringReader(pemCsr));
         PemObject pemObject = pemReader.readPemObject();
@@ -101,7 +101,7 @@ public class CryptoService {
         PublicKey devicePublicKey = new JcaPEMKeyConverter().setProvider("BC").getPublicKey(csr.getSubjectPublicKeyInfo());
 
         X500Name issuer = X500Name.getInstance(caCert.getSubjectX500Principal().getEncoded());
-        X500Name subject = new X500Name("CN=" + macAddress + ", O=Mackenzie IoT Devices"); 
+        X500Name subject = new X500Name("CN=" + deviceId + ", O=Mackenzie IoT Devices"); 
         
         long now = System.currentTimeMillis();
         log.info("NOW: " + now);

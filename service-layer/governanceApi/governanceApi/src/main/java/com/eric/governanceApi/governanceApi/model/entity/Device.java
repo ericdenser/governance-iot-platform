@@ -1,6 +1,8 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
+
 import lombok.Data;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceStatus;
@@ -10,10 +12,14 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.NoArgsConstructor;
 
@@ -26,6 +32,13 @@ public class Device {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "device_id", unique = true, nullable = false, updatable = false)
+    private String deviceId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "firmware")
+    private Firmware firmware;
 
     @Column(name = "mac_address", unique = true)
     private String macAddress;
@@ -48,5 +61,13 @@ public class Device {
 
     @OneToOne(mappedBy = "device", cascade = CascadeType.ALL)
     private DeviceCertificate certificate;
+
+    
+    @PrePersist
+    private void generateDeviceId() {
+        if (this.deviceId == null) {
+            this.deviceId = UUID.randomUUID().toString();
+        }
+    }
 
 }

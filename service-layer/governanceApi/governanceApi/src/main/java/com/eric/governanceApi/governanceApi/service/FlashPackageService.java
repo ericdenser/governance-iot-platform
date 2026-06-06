@@ -1,6 +1,7 @@
 package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.enums.FirmwareStatus;
+import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
 import com.eric.governanceApi.governanceApi.model.request.GenerateFlashPackageRequest;
@@ -32,9 +33,6 @@ public class FlashPackageService {
     @Value("${provisioning.nvs-partition-size:0x5000}")
     private String nvsPartitionSize;
 
-    @Value("${provisioning.firmware-bin-path:}")
-    private String defaultFirmwareBinPath;
-
     @Value("${provisioning.bootloader-bin-path:}")
     private String bootloaderBinPath;
 
@@ -61,17 +59,24 @@ public class FlashPackageService {
                 new RegisterDeviceRequest(request.deviceName()), tokenTtlSeconds
         );
 
+        String deviceId = token.getDevice().getDeviceId();
+
         log.info("Gerando pacote de flash para device '{}', token={}", request.deviceName(), token.getToken());
 
         Path tempDir = Files.createTempDirectory("flash_pkg_");
         try {
+
             Path csvPath    = tempDir.resolve("nvs_data.csv");
             Path nvsBinPath = tempDir.resolve("nvs_device.bin");
 
-            writeCsv(csvPath, request, token.getToken());
+            Firmware firmware = resolveProvisioningFirmware();
+
+            float firmwareVersion = firmware.getVersion();
+
+            writeCsv(csvPath, request, token.getToken(), deviceId, firmwareVersion);
             generateNvsBin(csvPath, nvsBinPath);
 
-            Path firmwarePath  = resolveFirmwarePath(request.firmwareId());
+            Path firmwarePath = resolveFirmwarePath(firmware);
             Path bootloaderPath = resolveRequiredBin(bootloaderBinPath, "bootloader");
             Path partTablePath  = resolveRequiredBin(partitionTableBinPath, "partition-table");
             String firmwareLabel = firmwarePath.getFileName().toString();
@@ -89,28 +94,21 @@ public class FlashPackageService {
 
     // -------------------------------------------------------------------------
 
-    private Path resolveFirmwarePath(Long firmwareId) throws IOException {
-        if (firmwareId == null) {
-            if (defaultFirmwareBinPath.isBlank()) {
-                throw new IllegalStateException(
-                        "Nenhum firmwareId informado e provisioning.firmware-bin-path nao configurado.");
-            }
-            Path path = Path.of(defaultFirmwareBinPath);
-            if (!Files.exists(path)) {
-                throw new FileNotFoundException("Firmware base nao encontrado em: " + defaultFirmwareBinPath);
-            }
-            return path;
-        }
+    private Firmware resolveProvisioningFirmware() {
+        return firmwareRepository.findByProvisioningFirmwareTrue()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Nenhum firmware de provisioning registrado. Faça upload de um firmware com isProvisioning=true."));
+    }
 
-        Firmware fw = firmwareRepository.findById(firmwareId)
-                .orElseThrow(() -> new FileNotFoundException("Firmware ID " + firmwareId + " nao encontrado."));
-
+    private Path resolveFirmwarePath(Firmware fw) throws IOException {
+       
         if (fw.getStatus() == FirmwareStatus.DEPRECATED) {
             throw new IllegalArgumentException(
                     "Firmware v" + fw.getVersion() + " esta DEPRECATED e nao pode ser usado.");
         }
 
         Path path = Path.of(firmwareStoragePath, fw.getFilename());
+        
         if (!Files.exists(path)) {
             throw new FileNotFoundException(
                     "Arquivo do firmware v" + fw.getVersion() + " nao encontrado em disco: " + path);
@@ -129,20 +127,28 @@ public class FlashPackageService {
         return path;
     }
 
-    private void writeCsv(Path csvPath, GenerateFlashPackageRequest request, String token) throws IOException {
+    private void writeCsv(Path csvPath, GenerateFlashPackageRequest request, String token, String deviceId, float firmwareVersion) throws IOException {
+        // fw_version é armazenado como bits de float (IEEE 754) via memcpy no firmware.
+        // O NVS partition gen espera o valor decimal do uint32 correspondente.
+        long fwVersionBits = Integer.toUnsignedLong(Float.floatToRawIntBits(firmwareVersion));
         String csv = """
                 key,type,encoding,value
                 crypto_store,namespace,,
                 wifi_ssid,data,string,%s
                 wifi_pass,data,string,%s
                 prov_token,data,string,%s
-                """.formatted(request.wifiSsid(), request.wifiPass(), token);
+                device_id,data,string,%s
+                main_store,namespace,,
+                fw_version,data,u32,%d
+                """.formatted(request.wifiSsid(), request.wifiPass(), token, deviceId, fwVersionBits);
+
+        log.info(csv);
         Files.writeString(csvPath, csv);
     }
 
     private void generateNvsBin(Path csvPath, Path outPath) throws IOException {
         List<String> cmd = buildNvsCommand(csvPath, outPath);
-        log.debug("Executando: {}", cmd);
+        log.info("Executando: {}", cmd);
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);

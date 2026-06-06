@@ -78,7 +78,7 @@ public class DeviceProvisioningController {
     @PostMapping("/error")
     public ResponseEntity<ApiResponse<String>> reportError(@RequestBody DeviceErrorRequest request, HttpServletRequest httpRequest) {
         // Imprime um alerta visual forte no console do servidor
-        log.warn("🚨 ALERTA DO DISPOSITIVO [{}]", request.getMac());
+        log.warn("🚨 ALERTA DO DISPOSITIVO [{}]", request.getDeviceId());
         log.warn("IP: {} | SSID: {} | Firmware: v{}", request.getIp(), request.getSsid(), request.getFirmwareVersion());
         log.warn("Falha crítica no processo: {}", request.getCurrentProcess());
         log.warn("error_code: {}", request.getErrorCode());

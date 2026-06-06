@@ -11,7 +11,7 @@ import com.eric.eventhandler.event_handler.model.entity.EventLog;
 import com.eric.eventhandler.event_handler.repository.EventLogRepository;
 
 import lombok.extern.slf4j.Slf4j;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 // Responsável por registrar e dispachar o evento para os subscribers
 @Service
@@ -31,7 +31,7 @@ public class EventDispatcher {
         this.registry = registry;
         this.eventLogRepository = eventLogRepository;
         this.client = client;
-        this.mapper = new ObjectMapper();
+        this.mapper = mapper;
     }
 
     public void dispatch(DeviceEvent event) {
@@ -46,10 +46,11 @@ public class EventDispatcher {
             EventLog newLog = new EventLog();
 
             newLog.setEventType(event.getEventType());
-            newLog.setDeviceMac(event.getDeviceMac());
+            newLog.setDeviceId(event.getDeviceId());
             newLog.setPayload(mapper.writeValueAsString(event));
             newLog.setPreviousStatus(event.getPreviousStatus());
             newLog.setNewStatus(event.getNewStatus());
+
             eventLogRepository.save(newLog);
 
             log.info("Log do evento: {} persistido com sucesso.", event.getEventType());
@@ -78,6 +79,7 @@ public class EventDispatcher {
 
         int maxRetries = 5;
         log.info("Delivering event: {} to url -> {}", event.getEventType(), url);
+        log.info("RAW PAYLOAD BEING SENT: {}", event);
 
         for (int attempts = 1; attempts <= maxRetries; attempts++) {
             try {

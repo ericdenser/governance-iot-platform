@@ -19,7 +19,7 @@ import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -55,8 +55,7 @@ public class DeviceRevokeService {
         }
 
         device.setStatus(DeviceStatus.REVOKED);
-        deviceRepository.save(device);
-        
+
         try {
             List<String> revokedCertificates = deviceRepository.findAllRevokedCertificates();
 

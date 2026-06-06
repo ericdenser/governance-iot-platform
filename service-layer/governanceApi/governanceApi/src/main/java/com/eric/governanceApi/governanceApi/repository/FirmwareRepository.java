@@ -12,6 +12,9 @@ public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
 
     Optional<Firmware> findByVersion(float version);
 
+    // busca qual o firmware que é o provisioning
+    Optional<Firmware> findByProvisioningFirmwareTrue();
+
     List<Firmware> findByStatusOrderByVersionDesc(FirmwareStatus status);
 
     List<Firmware> findAllByOrderByVersionDesc();

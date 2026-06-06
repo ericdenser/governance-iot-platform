@@ -6,7 +6,7 @@ import java.time.Instant;
 public record DeviceEventWebhookDTO(
 
     String eventType,
-    String deviceMac,
+    String deviceId,
     String previousStatus,
     String newStatus,
     DeviceInfoDTO deviceInfo,

@@ -46,4 +46,6 @@ public class Firmware {
     private LocalDateTime uploadedAt = LocalDateTime.now();
 
     private int deployCount = 0;       // incrementa a cada broadcast
+
+    private boolean provisioningFirmware = false;
 }

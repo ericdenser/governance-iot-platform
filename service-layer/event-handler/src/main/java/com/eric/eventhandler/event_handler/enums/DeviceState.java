@@ -15,10 +15,13 @@ public enum DeviceState {
     OPERATIONAL,
     OTA_FOUND,
     OTA_DOWNLOADING,
+    OTA_SUCCESSFUL,
+    OTA_FAILED,
     REBOOTING,
     ERROR,
     HTTP_INIT,
     HTTP_REQUEST,
+    FIRMWARE_ROLLBACK,
 
 
     @JsonEnumDefaultValue

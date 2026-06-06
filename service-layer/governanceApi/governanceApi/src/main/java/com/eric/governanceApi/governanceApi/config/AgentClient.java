@@ -37,14 +37,14 @@ public class AgentClient {
      * Envia um broadcast ao Agent para publicar em commands/<MAC>/<subtopic>.
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> broadcastCommands(DeviceCommands command, Map<String, Object> payload, List<String> targetMacs) {
+    public Map<String, Object> broadcastCommands(DeviceCommands command, Map<String, Object> payload, List<String> targetDevices) {
         Map<String, Object> request = Map.of(
             "command",    command,
             "payload",    payload,
-            "targetMacs", targetMacs
+            "targetDevices", targetDevices
         );
 
-        log.info("Enviando payload {} para os macs {}", payload, targetMacs);
+        log.info("Enviando payload {} para os devices {}", payload, targetDevices);
 
         try {
             String body = restClient.post()

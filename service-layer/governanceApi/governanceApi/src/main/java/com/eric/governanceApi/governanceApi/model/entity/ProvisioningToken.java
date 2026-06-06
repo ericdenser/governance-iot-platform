@@ -40,6 +40,7 @@ public class ProvisioningToken {
     @JoinColumn(name = "device_id")
     private Device device;
 
+
     public void validate() {
         if (this.used) {
             throw new SecurityException("Token already used.");

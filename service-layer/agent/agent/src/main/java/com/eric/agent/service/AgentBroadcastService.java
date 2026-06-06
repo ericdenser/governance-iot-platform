@@ -28,21 +28,21 @@ public class AgentBroadcastService {
         List<String> published = new ArrayList<>();
         List<String> failed    = new ArrayList<>();
 
-        for (String targetMac : request.targetMacs()) {
-            String topic = "commands/" + targetMac;
-            AgentBroadcastResponse response = new AgentBroadcastResponse(request.command(), request.payload(), targetMac);
+        for (String targetDev : request.targetDevices()) {
+            String topic = "commands/" + targetDev;
+            AgentBroadcastResponse response = new AgentBroadcastResponse(request.command(), request.payload(), targetDev);
             try {
 
                 ObjectMapper mapper = new ObjectMapper();
                 String json = mapper.writeValueAsString(response);
 
                 // QoS 1 = entrega garantida; retained = true para devices offline
-                boolean retained = "UPDATE".equals(request.command()); // se for OTA retém
-                mqttAgent.publish(topic, json, 1, retained);
-                published.add(targetMac);
+                //boolean retained = "UPDATE".equals(request.command()); // se for OTA retém
+                mqttAgent.publish(topic, json, 1, false);
+                published.add(targetDev);
             } catch (Exception e) {
                 log.error("Falha ao publicar em [{}]: {}", topic, e.getMessage());
-                failed.add(targetMac);
+                failed.add(targetDev);
             }
         }
 

@@ -4,5 +4,6 @@ public enum DeviceStatus {
     PENDING,
     PROVISIONING,
     ACTIVE, 
-    REVOKED
+    REVOKED,
+    OTA_PENDING
 }

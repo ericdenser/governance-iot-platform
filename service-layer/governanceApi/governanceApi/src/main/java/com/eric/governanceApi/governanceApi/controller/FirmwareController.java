@@ -28,13 +28,14 @@ public class FirmwareController {
     public ResponseEntity<ApiResponse<Firmware>> upload(
             @RequestPart("file") MultipartFile file,
             @RequestParam("version") float version,
+            @RequestParam("isProvisioning") boolean isProvisioning,
             @RequestParam(value = "releaseNotes", required = false) String releaseNotes,
             HttpServletRequest httpRequest) throws Exception {
 
         log.info("Upload firmware v{} — {} ({} bytes)",
                  version, file.getOriginalFilename(), file.getSize());
 
-        Firmware fw = firmwareService.upload(file, version, releaseNotes);
+        Firmware fw = firmwareService.upload(file, version, releaseNotes, isProvisioning);
         return ResponseEntity.ok(ApiResponse.success(fw, httpRequest.getRequestURI()));
     }
 
@@ -57,4 +58,13 @@ public class FirmwareController {
         Firmware fw = firmwareService.deprecate(id);
         return ResponseEntity.ok(ApiResponse.success(fw, httpRequest.getRequestURI()));
     }
+
+    @PutMapping("/{id}/provisioning")
+    public ResponseEntity<ApiResponse<Firmware>> setProvisioning(
+            @PathVariable Long id, HttpServletRequest httpRequest) {
+
+        Firmware fw = firmwareService.setProvisioningFirmware(id);
+        return ResponseEntity.ok(ApiResponse.success(fw, httpRequest.getRequestURI()));
+    }
+
 }

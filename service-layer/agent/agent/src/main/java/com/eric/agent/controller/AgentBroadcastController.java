@@ -36,7 +36,7 @@ public class AgentBroadcastController {
             @Valid @RequestBody AgentBroadcastRequest request) {
 
         log.info("Broadcast recebido — command: [{}] para {} devices",
-                 request.command(), request.targetMacs().size());
+                 request.command(), request.targetDevices().size());
 
         Map<String, Object> result = broadcastService.broadcast(request);
         return ResponseEntity.ok(result);

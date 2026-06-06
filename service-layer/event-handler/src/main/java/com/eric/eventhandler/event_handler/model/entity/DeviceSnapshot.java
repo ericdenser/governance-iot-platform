@@ -20,7 +20,10 @@ import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
 public class DeviceSnapshot {
 
     @Id
-    private String mac;              // PK -> MAC
+    private String deviceId;
+
+
+    private String mac;    
 
     @Enumerated(EnumType.STRING)
     private DeviceState status;
@@ -30,6 +33,7 @@ public class DeviceSnapshot {
     private LocalDateTime lastSeen;
 
     public void updateFrom(StatusDTO dto) {
+        this.mac = dto.mac();
         this.status = dto.status();
         this.firmwareVersion = dto.firmware_version();
         this.ssid = dto.ssid();
