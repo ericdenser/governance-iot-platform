@@ -1,0 +1,25 @@
+FROM rust:1.85-bookworm AS builder
+
+WORKDIR /app
+COPY "./Cargo.toml" "./Cargo.toml"
+COPY "./build.rs" "./build.rs"
+COPY "./src" "./src"
+COPY "./proto" "./proto"
+
+RUN apt-get update && apt-get install -y protobuf-compiler libprotobuf-dev && rm -rf /var/lib/apt/lists/*
+RUN rustup component add rustfmt
+
+RUN cargo build --release --bin mbroker
+
+FROM debian:bookworm-slim AS runtime
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y libsqlite3-0 && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p logs/step logs/strong_level
+
+COPY --from=builder /app/target/release/mbroker /app/mbroker
+COPY "./config" "./config"
+
+EXPOSE 50051
+ENTRYPOINT ["/app/mbroker"]

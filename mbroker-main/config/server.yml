@@ -1,0 +1,5 @@
+server:
+  port: 50051
+  tls: false
+  cert_file: "./certs/domain.com.pem"
+  key_file: "./certs/domain.com.pkcs8.key"

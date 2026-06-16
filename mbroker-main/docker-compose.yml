@@ -1,0 +1,17 @@
+services:
+  mbroker:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+    image: mbroker:latest
+    container_name: mbroker
+    ports:
+      - "50051:50051"
+    volumes:
+      - mbroker_data:/app
+    restart: unless-stopped
+    cpus: "0.50"
+    mem_limit: 256m
+
+volumes:
+  mbroker_data:

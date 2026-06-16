@@ -1,0 +1,31 @@
+// version of protocol buffer used
+syntax = "proto3";
+// package name for buffer will be used later
+package event;
+// service which can be executed
+service Event {
+  // takes a stream and returns a stream
+  rpc Bidirectional(stream TopicRequest) returns (stream EventResponse);
+}
+
+// argument
+message TopicRequest {
+  // data type and position of data
+  string topic_name = 1;
+}
+// return value
+message EventResponse {
+  // data type and position of data
+  string type = 1;
+  string sub_type = 2;
+  string context = 3;
+  string creator = 4;
+  string attributes = 5;
+  Location location = 6;
+  uint64 timestamp = 7;
+}
+
+message Location {
+  double lat = 1;
+  double lon = 2;
+}
