@@ -2,6 +2,8 @@ package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.request.CommandRequest;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +35,7 @@ public class CommandsService {
         };
     }
 
-    // Se foi OTA
+    // Delega ao service dedicado exclusivamente ao OTA
     private Map<String, Object> handleUpdate(CommandRequest request) throws Exception {
 
         if (request.params() == null || !request.params().containsKey("firmwareId")) {
@@ -57,17 +59,45 @@ public class CommandsService {
 
         // PROCURA TODOS QUE ESTAO ATIVOS
         for (String devId : request.targetDevices()) {
-            boolean isActive = deviceRepository.findByDeviceId(devId)
-                    .map(d -> d.getStatus().name().equals("ACTIVE"))
-                    .orElse(false);
+            
 
-            if (isActive) {
-                activeDevs.add(devId);
-                log.info("Device de ID {} valido, adicionando a lista de destinatarios...", devId);
-            } else {
-                skipped.add(devId);
-                log.info("Device de Id {} nao valido, skippando...", devId);
-            }
+            deviceRepository.findByDeviceId(devId).ifPresentOrElse(
+                
+                
+                device -> {
+                    
+
+                    if (device.getStatus() == DeviceStatus.COMMAND_PENDING) {
+                        skipped.add(devId);
+                        log.warn("Device {} ignorado. Já existe um comando pendente em execução.", devId);
+                        return; // Interrompe este fluxo e vai para o próximo device do loop
+                    }
+
+                    if (device.getStatus() != DeviceStatus.ACTIVE) {
+                        skipped.add(devId);
+                        log.info("Device de ID {} não está ACTIVE, skippando...", devId);
+
+                    }
+
+                    CommandRecord record = new CommandRecord();
+                    record.setCommandType(request.command());
+
+                    if (request.params() != null && !request.params().isEmpty()) {
+                        record.setPayload(request.params().toString());
+                    }
+                    
+                    device.addCommandRecord(record);
+                    device.setStatus(DeviceStatus.COMMAND_PENDING);
+                    activeDevs.add(devId);
+
+                    log.info("Device de ID {} válido, status alterado para COMMAND_PENDING", devId);
+
+                    deviceRepository.save(device);
+                }, () -> {
+                    skipped.add(devId);
+                    log.info("Device de ID {} não encontrado, skippando...", devId);
+                });
+            
         }
 
         // NENHUM DEVICE ATIVO

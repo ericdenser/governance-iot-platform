@@ -2,11 +2,12 @@ package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
-import com.eric.governanceApi.governanceApi.enums.DeviceStatus;
-import com.eric.governanceApi.governanceApi.enums.FirmwareStatus;
+import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
+import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
@@ -106,20 +107,56 @@ public class FirmwareService {
                 "Firmware v" + fw.getVersion() + " está DEPRECATED e não pode ser deployado.");
         }
 
+        // Monta payload que vai pro Agent
+        Map<String, Object> payload = Map.of(
+        "version", fw.getVersion(),
+        "url",     fw.getDownloadUrl()
+        );
+
         // Filtra devices ativos
         List<String> activeDevs = new ArrayList<>();
         List<String> skipped    = new ArrayList<>();
 
         for (String devId : targetDevices) {
-            boolean isActive = deviceRepository.findByDeviceId(devId)
-                    .map(d -> d.getStatus().name().equals("ACTIVE"))
-                    .orElse(false);
-            if (isActive) {
-                activeDevs.add(devId);
+             deviceRepository.findByDeviceId(devId).ifPresentOrElse(
+                
+                device -> {
 
-            } else {
-                skipped.add(devId);
-            }
+                   if (device.getStatus() == DeviceStatus.COMMAND_PENDING) {
+                        skipped.add(devId);
+                        log.warn("Device {} ignorado. Já existe um comando pendente em execução.", devId);
+                        return; // Interrompe este fluxo e vai para o próximo device do loop
+                    }
+
+                    if (device.getStatus() != DeviceStatus.ACTIVE) {
+                        skipped.add(devId);
+                        log.info("Device de ID {} não está ACTIVE, skippando...", devId);
+                        return;
+                    }
+
+                    if (device.getFirmware().getVersion() == fw.getVersion()) {
+                        skipped.add(devId);
+                        log.warn("Device {} ignorado. Já está na versão {}", devId, fw.getVersion());
+                        return; 
+                    }
+
+                    CommandRecord record = new CommandRecord();
+                    record.setCommandType(DeviceCommands.UPDATE);
+                    record.setPayload(payload.toString());
+                                        
+                    
+                    device.addCommandRecord(record);
+                    device.setStatus(DeviceStatus.COMMAND_PENDING);
+                    activeDevs.add(devId);
+
+                    log.info("Device de ID {} válido, status alterado para COMMAND_PENDING", devId);
+
+                    deviceRepository.save(device);
+                }, () -> {
+                    skipped.add(devId);
+                    log.info("Device de ID {} não encontrado, skippando...", devId);
+                });
+            
         }
 
         if (activeDevs.isEmpty()) {
@@ -132,28 +169,12 @@ public class FirmwareService {
             );
         }
 
-        // Monta payload e envia ao Agent
-        Map<String, Object> payload = Map.of(
-        "version", fw.getVersion(),
-        "url",     fw.getDownloadUrl()
-        );
-
         Map<String, Object> agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeDevs);
 
         // Atualiza status do firmware (deploy_count é atualizado pelo DeviceUpdatedHandler
         // quando o device confirma que está rodando o firmware)
         fw.setStatus(FirmwareStatus.DEPLOYED);
         firmwareRepository.save(fw);
-
-        // Atualiza status dos devices
-        for (String deviceId : targetDevices) {
-            deviceRepository.findByDeviceId(deviceId).ifPresent(
-                device -> {
-                    device.setStatus(DeviceStatus.OTA_PENDING);
-                deviceRepository.save(device);
-                });
-        }
-        
 
         Map<String, Object> result = new HashMap<>();
         result.put("firmwareId", fw.getId());

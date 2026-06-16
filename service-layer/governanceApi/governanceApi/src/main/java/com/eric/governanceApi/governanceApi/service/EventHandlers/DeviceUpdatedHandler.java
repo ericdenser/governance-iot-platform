@@ -5,9 +5,11 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
-import com.eric.governanceApi.governanceApi.enums.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.EventType;
+import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
+import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
+import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
@@ -58,7 +60,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         device.setLastSeen(LocalDateTime.now());
 
         // ESTADO INVÁLIDO
-        if (device.getStatus() != DeviceStatus.OTA_PENDING) {
+        if (device.getStatus() != DeviceStatus.COMMAND_PENDING) {
             log.warn("Device de ID {} não estava com status de OTA_PENDING, STATUS:", device.getDeviceId(), device.getStatus());
             eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + "não estava com status de OTA_PENDING.");
             eventRegistryRepository.save(eventRegistry);
@@ -89,11 +91,25 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         current_firmware.setDeployCount(current_firmware.getDeployCount() + 1);
         device.setFirmware(current_firmware);
         device.setStatus(DeviceStatus.ACTIVE);
-
+        
         log.info("Device de ID {} atualizou para a versão [v{}] com sucesso!.", event.deviceId(), current_firmware_version);
         eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + "atualizou para a versão [v" + current_firmware_version + "] com sucesso!!");
         eventRegistry.setCompleted(true);
+
         eventRegistryRepository.save(eventRegistry);
+
+        // Atualiza no registro de comandos
+        Optional<CommandRecord> pendingCommand = device.getCommandRecords().stream()
+                                                .filter(c -> c.getStatus() == CommandStatus.PENDING).findFirst();
+        
+        if (!pendingCommand.isPresent()) {
+            log.warn("Device de ID {} confirmou execução, mas não há comandos PENDING no banco", device.getDeviceId());
+            return;
+        }
+
+        CommandRecord record = pendingCommand.get();
+        record.setCompletedAt(LocalDateTime.now());
+        record.setStatus(CommandStatus.COMPLETED_SUCCESS);
 
     }   
 

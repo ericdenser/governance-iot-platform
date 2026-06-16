@@ -1,4 +1,4 @@
-package com.eric.governanceApi.governanceApi.enums;
+package com.eric.governanceApi.governanceApi.enums.status;
 
 public enum FirmwareStatus {
     STAGED,      // Subiu pro servidor, nunca foi deployado ainda

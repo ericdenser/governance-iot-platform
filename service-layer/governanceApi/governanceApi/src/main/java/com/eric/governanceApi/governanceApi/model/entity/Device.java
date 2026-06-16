@@ -1,12 +1,13 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
+import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+
 import lombok.Data;
-
-import com.eric.governanceApi.governanceApi.enums.DeviceStatus;
-
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -18,6 +19,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
@@ -56,6 +58,10 @@ public class Device {
     @Column(name = "last_seen")
     private LocalDateTime lastSeen;
 
+    @Column(name = "command_record")
+    @OneToMany(mappedBy = "targetDevice", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CommandRecord> commandRecords = new ArrayList<>();
+
     @OneToOne(mappedBy = "device", cascade = CascadeType.ALL)
     private ProvisioningToken provisioningToken;
 
@@ -68,6 +74,16 @@ public class Device {
         if (this.deviceId == null) {
             this.deviceId = UUID.randomUUID().toString();
         }
+    }
+
+    public void addCommandRecord(CommandRecord command) {
+        this.commandRecords.add(command);
+        command.setTargetDevice(this);
+    }
+
+    public void removeCommandRecord(CommandRecord command) {
+        this.commandRecords.remove(command);
+        command.setTargetDevice(null);
     }
 
 }

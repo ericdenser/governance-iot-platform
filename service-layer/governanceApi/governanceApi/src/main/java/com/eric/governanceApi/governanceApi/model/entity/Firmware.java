@@ -1,11 +1,12 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
-import com.eric.governanceApi.governanceApi.enums.FirmwareStatus;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+
+import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 
 @Entity
 @Table(name = "firmwares")

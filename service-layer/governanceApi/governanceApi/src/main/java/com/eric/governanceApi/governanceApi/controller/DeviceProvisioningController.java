@@ -1,7 +1,6 @@
 package com.eric.governanceApi.governanceApi.controller;
 
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
-import com.eric.governanceApi.governanceApi.model.request.DeviceErrorRequest;
 import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequest;
 import com.eric.governanceApi.governanceApi.model.request.GenerateFlashPackageRequest;
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
@@ -75,23 +74,5 @@ public class DeviceProvisioningController {
                 .body(zip);
     }
 
-    @PostMapping("/error")
-    public ResponseEntity<ApiResponse<String>> reportError(@RequestBody DeviceErrorRequest request, HttpServletRequest httpRequest) {
-        // Imprime um alerta visual forte no console do servidor
-        log.warn("🚨 ALERTA DO DISPOSITIVO [{}]", request.getDeviceId());
-        log.warn("IP: {} | SSID: {} | Firmware: v{}", request.getIp(), request.getSsid(), request.getFirmwareVersion());
-        log.warn("Falha crítica no processo: {}", request.getCurrentProcess());
-        log.warn("error_code: {}", request.getErrorCode());
-        log.warn("error_msg: {}", request.getErrorMsg());
-        log.warn("error_source: {}", request.getErrorSource());
-
-        // TODO: Chamar o Service para persistir no banco de dados
-        // deviceService.logErrorToDatabase(request);
-
-        // Retorna pro esp (trabalhar melhor)
-        return ResponseEntity.ok(
-            ApiResponse.success("Erro recebido e registrado com sucesso no MDM.", httpRequest.getRequestURI())
-        );
-    }
 
 }

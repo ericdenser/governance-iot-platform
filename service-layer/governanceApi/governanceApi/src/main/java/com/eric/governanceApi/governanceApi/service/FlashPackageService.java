@@ -1,6 +1,6 @@
 package com.eric.governanceApi.governanceApi.service;
 
-import com.eric.governanceApi.governanceApi.enums.FirmwareStatus;
+import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
