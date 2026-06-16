@@ -8,51 +8,40 @@
 #include "AppState.h"
 
 static const char *TAG = "OtaManager";
-static float current_version = 0;
+static std::string current_version;
 
-
-static bool nvs_read_float(const char* ns, const char* key, float* result) {
+static bool nvs_read_str(const char* ns, const char* key, char* buf, size_t len) {
     nvs_handle_t h;
     if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
-    uint32_t aux;
-    esp_err_t err = nvs_get_u32(h, key, &aux);
-    if (err == ESP_OK) {
-        memcpy(result, &aux, sizeof(aux));
-    }
+    esp_err_t err = nvs_get_str(h, key, buf, &len);
     nvs_close(h);
     return (err == ESP_OK);
 }
 
 
-bool OtaManager::verify_and_update(float newVersion, std::string &url_bin, std::string &msgOut, std::function<void()> onProgressCallback) {
-    
-    nvs_read_float("main_store", "fw_version", &current_version);
+bool OtaManager::verify_and_update(const std::string& newVersion, std::string &url_bin, std::string &msgOut, std::function<void()> onProgressCallback) {
 
-    // Verifica se conseguiu buscar a versão na NVS
-    // if (current_version == 0) {
-    //     ESP_LOGE(TAG, "Unable to find firmware version in nvs.");
-    //     msgOut = "Unable to find firmware version in nvs";
-    //     return false;
-    // }
+    char fw_buf[32] = {0};
+    nvs_read_str("main_store", "fw_version", fw_buf, sizeof(fw_buf));
+    current_version = fw_buf;
 
     if (current_version == newVersion) {
-        ESP_LOGE(TAG, "Stopping OTA download due same firwmare version.");
-        msgOut = "Stopping OTA download due same firwmare version";
+        ESP_LOGE(TAG, "Stopping OTA download due same firmware version.");
+        msgOut = "Stopping OTA download due same firmware version";
         AppState::setError(
-           ErrorCode::OTA_FAIL, 
-            msgOut, 
+            ErrorCode::OTA_FAIL,
+            msgOut,
             {TAG, "verify_and_update"},
             {
-                {"attempted_version", std::to_string(newVersion)},
-                {"current_version", std::to_string(current_version)},
-                {"firmware_url", url_bin}
+                {"attempted_version", newVersion},
+                {"current_version",   current_version},
+                {"firmware_url",      url_bin}
             }
         );
         return false;
     }
 
-
-    // ============= VERIFICACÃO DE VERSÕES INVÁLIDAS ================
+    // ============= VERIFICAÇÃO DE VERSÕES INVÁLIDAS ================
 
     nvs_handle_t nvsHandle;
     if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) != ESP_OK) {
@@ -61,17 +50,17 @@ bool OtaManager::verify_and_update(float newVersion, std::string &url_bin, std::
         return false;
     }
 
-    uint32_t newVersionUint = (uint32_t)newVersion;
+    char invalid_ver_buf[32] = {0};
+    size_t iv_len = sizeof(invalid_ver_buf);
+    bool invalid_ver_exists = (nvs_get_str(nvsHandle, "invalid_ver", invalid_ver_buf, &iv_len) == ESP_OK)
+                               && (invalid_ver_buf[0] != '\0');
+    std::string invalid_ver = invalid_ver_buf;
 
-    // Verificar versão inválida no NVS
-    uint32_t invalid_ver = 0;
-    esp_err_t err = nvs_get_u32(nvsHandle, "invalid_ver", &invalid_ver);
-    bool doesExist = (err == ESP_OK);
+    ESP_LOGI(TAG, "Versao Nova: %s | Versao atual: %s | Versao invalida: %s",
+             newVersion.c_str(), current_version.c_str(), invalid_ver.c_str());
 
-    ESP_LOGI(TAG, "Versao Nova: %u | Versao atual: %u | Versao invalida: %u", newVersionUint, (uint32_t)current_version, invalid_ver);
-
-    if (doesExist && newVersionUint == invalid_ver) {
-        msgOut = "Versao " + std::to_string(newVersionUint) + " marcada como invalida. Update abortado.";
+    if (invalid_ver_exists && newVersion == invalid_ver) {
+        msgOut = "Versao " + newVersion + " marcada como invalida. Update abortado.";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
         nvs_close(nvsHandle);
         return false;
@@ -79,28 +68,21 @@ bool OtaManager::verify_and_update(float newVersion, std::string &url_bin, std::
 
     // ==========================================================
 
+    if (!newVersion.empty()) {
+        msgOut = "Atualizacao encontrada! Baixando v" + newVersion;
 
-    // Se chegou aqui, versão disponível é válida
-    if (newVersionUint > 0) {
-        msgOut = "Atualizacao encontrada! Baixando v" + std::to_string(newVersionUint);
-
-        // Salva versao atual para restaurar em caso de rollback
-        uint32_t currentVersionUint = (uint32_t)current_version;
-        nvs_set_u32(nvsHandle, "prev_ver", currentVersionUint);
-        nvs_commit(nvsHandle);
-
-        // Registra qual versão esta sendo baixada para tratamento futuro
-        nvs_set_u32(nvsHandle, "target_ver", newVersionUint);
+        nvs_set_str(nvsHandle, "prev_ver",   current_version.c_str());
+        nvs_set_str(nvsHandle, "target_ver", newVersion.c_str());
         nvs_commit(nvsHandle);
 
         ESP_LOGI(TAG, "%s", msgOut.c_str());
 
-        bool result = download_OTA(url_bin, nvsHandle, newVersionUint, msgOut, onProgressCallback);
+        bool result = download_OTA(url_bin, nvsHandle, newVersion, msgOut, onProgressCallback);
         nvs_close(nvsHandle);
         return result;
 
     } else {
-        msgOut = "Firmware enviado nao possui versao (v0).";
+        msgOut = "Firmware enviado nao possui versao.";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
         nvs_close(nvsHandle);
         return true;
@@ -118,11 +100,10 @@ void OtaManager::set_valid_version() {
             if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
                 ESP_LOGI(TAG, "Firmware marcado como VALIDO. Rollback cancelado.");
 
-                // OTA bem sucedido — limpa target_ver para nao disparar verify_rollback no proximo boot
                 nvs_handle_t nvsHandle;
                 if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) == ESP_OK) {
                     nvs_erase_key(nvsHandle, "target_ver");
-                    nvs_set_i8(nvsHandle, "ota_notified", 0); // 0 = pendente de notificação
+                    nvs_set_i8(nvsHandle, "ota_notified", 0);
                     nvs_commit(nvsHandle);
                     nvs_close(nvsHandle);
                 }
@@ -139,31 +120,26 @@ void OtaManager::set_invalid_version(std::string& reason) {
     nvs_handle_t nvsHandle;
     if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) == ESP_OK) {
 
-        nvs_read_float("main_store", "fw_version", &current_version);
+        char fw_buf[32] = {0};
+        nvs_read_str("main_store", "fw_version", fw_buf, sizeof(fw_buf));
+        current_version = fw_buf;
 
         ESP_LOGE(TAG, "ROLLBACK ATIVADO, REASON: [%s].", reason.c_str());
 
-        uint32_t currentVersionInt = (uint32_t)current_version;
-
-        // registra qual a versão invalida
-        nvs_set_u32(nvsHandle, "invalid_ver", currentVersionInt);
-
-        // registra o motivo do rollback
+        nvs_set_str(nvsHandle, "invalid_ver",    current_version.c_str());
         nvs_set_str(nvsHandle, "rollbackReason", reason.c_str());
-        
-        // target_ver sinaliza para verify_rollback() no reboot do firmware anterior que há rollback a reportar
-        nvs_set_u32(nvsHandle, "target_ver", currentVersionInt);
+        nvs_set_str(nvsHandle, "target_ver",     current_version.c_str());
 
         nvs_commit(nvsHandle);
         nvs_close(nvsHandle);
 
-        ESP_LOGW(TAG, "Versao [v%.2f] banida no NVS. Iniciando rollback...", current_version);
+        ESP_LOGW(TAG, "Versao [%s] banida no NVS. Iniciando rollback...", current_version.c_str());
         esp_ota_mark_app_invalid_rollback_and_reboot();
     }
 }
 
-bool OtaManager::verify_rollback(std::string& msgOut, uint32_t& outInvalidVer) {
-    outInvalidVer = 0;
+bool OtaManager::verify_rollback(std::string& msgOut, std::string& outInvalidVer) {
+    outInvalidVer.clear();
 
     const esp_partition_t *invalid_partition = esp_ota_get_last_invalid_partition();
     if (invalid_partition == NULL) {
@@ -177,43 +153,42 @@ bool OtaManager::verify_rollback(std::string& msgOut, uint32_t& outInvalidVer) {
         return true;
     }
 
-    uint32_t target_ver = 0;
-    nvs_get_u32(nvsHandle, "target_ver", &target_ver);
+    char target_ver_buf[32] = {0};
+    size_t tv_len = sizeof(target_ver_buf);
+    nvs_get_str(nvsHandle, "target_ver", target_ver_buf, &tv_len);
+    std::string target_ver = target_ver_buf;
 
-    if (target_ver == 0) {
-        // Se invalid_ver já está gravado, o rollback já foi processado neste boot cycle
-        uint32_t invalid_ver = 0;
-        if (nvs_get_u32(nvsHandle, "invalid_ver", &invalid_ver) == ESP_OK && invalid_ver > 0) {
+    if (target_ver.empty()) {
+        char invalid_ver_buf[32] = {0};
+        size_t iv_len = sizeof(invalid_ver_buf);
+        if (nvs_get_str(nvsHandle, "invalid_ver", invalid_ver_buf, &iv_len) == ESP_OK
+            && invalid_ver_buf[0] != '\0') {
             nvs_close(nvsHandle);
             ESP_LOGI(TAG, "Rollback ja foi processado neste boot");
-            return false; // já tratado, não republica
+            return false;
         }
 
-        // Rollback sem versão registrada
         nvs_close(nvsHandle);
         msgOut = "Rollback na particao '" + std::string(invalid_partition->label) + "' — versao alvo desconhecida";
         ESP_LOGW(TAG, "%s", msgOut.c_str());
         return true;
     }
+
     AppState::transition(DeviceState::FIRMWARE_ROLLBACK, {TAG, "verify_rollback"});
+    ESP_LOGE(TAG, "ROLLBACK: particao='%s' versao_falhou=%s", invalid_partition->label, target_ver.c_str());
 
-    ESP_LOGE(TAG, "ROLLBACK: particao='%s' versao_falhou=%u", invalid_partition->label, target_ver);
+    nvs_set_str(nvsHandle, "invalid_ver", target_ver.c_str());
+    nvs_erase_key(nvsHandle, "target_ver");
 
-    nvs_set_u32(nvsHandle, "invalid_ver", target_ver);  // bane a versao
-    nvs_erase_key(nvsHandle, "target_ver");             // limpa para nao redetectar no proximo boot
-
-    // Restaura fw_version na main_store para a versão anterior ao OTA falho
-    uint32_t prev_ver = 0;
-    if (nvs_get_u32(nvsHandle, "prev_ver", &prev_ver) == ESP_OK) {
+    char prev_ver_buf[32] = {0};
+    size_t pv_len = sizeof(prev_ver_buf);
+    if (nvs_get_str(nvsHandle, "prev_ver", prev_ver_buf, &pv_len) == ESP_OK && prev_ver_buf[0] != '\0') {
         nvs_handle_t mainHandle;
         if (nvs_open("main_store", NVS_READWRITE, &mainHandle) == ESP_OK) {
-            float prevFloat = (float)prev_ver;
-            uint32_t bits;
-            memcpy(&bits, &prevFloat, sizeof(bits));
-            nvs_set_u32(mainHandle, "fw_version", bits);
+            nvs_set_str(mainHandle, "fw_version", prev_ver_buf);
             nvs_commit(mainHandle);
             nvs_close(mainHandle);
-            ESP_LOGI(TAG, "fw_version restaurada para v%u apos rollback.", prev_ver);
+            ESP_LOGI(TAG, "fw_version restaurada para v%s apos rollback.", prev_ver_buf);
         }
     }
 
@@ -221,62 +196,49 @@ bool OtaManager::verify_rollback(std::string& msgOut, uint32_t& outInvalidVer) {
     nvs_close(nvsHandle);
 
     outInvalidVer = target_ver;
-    msgOut = "Versao " + std::to_string(target_ver) +
+    msgOut = "Versao " + target_ver +
              " causou rollback na particao '" + invalid_partition->label + "'. Banida.";
     return true;
 }
 
-bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, uint32_t newVersionUint, std::string &msgOut, std::function<void()> onProgressCallback) {
+bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const std::string& newVersion, std::string &msgOut, std::function<void()> onProgressCallback) {
 
-    // Config do cliente OTA
     esp_http_client_config_t http_config {};
     http_config.url = urlBin.c_str();
     http_config.timeout_ms = 10000;
 
     if (urlBin.find("https") == 0) {
-        // Se for HTTPS: usa SSL e anexa certificados
         http_config.crt_bundle_attach = esp_crt_bundle_attach;
         http_config.transport_type = HTTP_TRANSPORT_OVER_SSL;
     } else {
-        // Se for HTTP: força transporte TCP simples e remove certificados
         http_config.crt_bundle_attach = NULL;
-        http_config.transport_type = HTTP_TRANSPORT_OVER_TCP; 
+        http_config.transport_type = HTTP_TRANSPORT_OVER_TCP;
     }
 
     esp_https_ota_config_t ota_config = {};
     ota_config.http_config = &http_config;
 
-    // Inicia o OTA
     esp_https_ota_handle_t https_ota_handle = NULL;
     esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
 
-
     if (err != ESP_OK) {
         msgOut = "Falha OTA Begin: " + std::string(esp_err_to_name(err));
-        ESP_LOGI(TAG, "%s", msgOut.c_str()); 
+        ESP_LOGI(TAG, "%s", msgOut.c_str());
         return false;
     }
 
-    // Loop de Download
     AppState::transition(DeviceState::OTA_DOWNLOADING, {TAG, "download_OTA"});
     while (1) {
-        // Baixa um pedaço
         err = esp_https_ota_perform(https_ota_handle);
-
-        // Se for diferente, ou acabou ou deu erro
         if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
-            break; // Sai do loop
+            break;
         }
-
-        // CALLBACK DO WATCHDOG
         if (onProgressCallback) {
             onProgressCallback();
         }
-
-        // Cede CPU ao IDLE para evitar WDT timeout no IDLE0
         vTaskDelay(pdMS_TO_TICKS(10));
     }
-    // Verifica se terminou com sucesso
+
     if (esp_https_ota_is_complete_data_received(https_ota_handle) != true) {
         msgOut = "Error: Download incomplete";
         ESP_LOGE(TAG, "%s", msgOut.c_str());
@@ -284,27 +246,21 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, uint3
         return false;
     }
 
-    // Finaliza
     esp_err_t ota_finish_err = esp_https_ota_finish(https_ota_handle);
 
     if (ota_finish_err == ESP_OK) {
 
-        // Zera o contador de crash antes de reiniciar
         nvs_set_i32(nvsHandle, "crash_count", 0);
         nvs_commit(nvsHandle);
 
-        // Persiste a nova versão na main_store para que o próximo boot a leia corretamente
         nvs_handle_t mainHandle;
         if (nvs_open("main_store", NVS_READWRITE, &mainHandle) == ESP_OK) {
-            float newVersionFloat = (float)newVersionUint;
-            uint32_t versionBits;
-            memcpy(&versionBits, &newVersionFloat, sizeof(versionBits));
-            nvs_set_u32(mainHandle, "fw_version", versionBits);
+            nvs_set_str(mainHandle, "fw_version", newVersion.c_str());
             nvs_commit(mainHandle);
             nvs_close(mainHandle);
-            ESP_LOGI(TAG, "Versao %u salva em main_store/firmware_version.", newVersionUint);
+            ESP_LOGI(TAG, "Versao %s salva em main_store/fw_version.", newVersion.c_str());
         } else {
-            ESP_LOGW(TAG, "Nao foi possivel salvar firmware_version na main_store.");
+            ESP_LOGW(TAG, "Nao foi possivel salvar fw_version na main_store.");
         }
 
         msgOut = "Upgrade successful. Rebooting...";
@@ -321,7 +277,7 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, uint3
             return false;
         }
 
-        msgOut = "OTA upgrade failed" + std::string(esp_err_to_name(ota_finish_err));
+        msgOut = "OTA upgrade failed: " + std::string(esp_err_to_name(ota_finish_err));
         ESP_LOGE(TAG, "%s", msgOut.c_str());
         return false;
     }

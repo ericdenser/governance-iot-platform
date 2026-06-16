@@ -26,8 +26,8 @@
 // =============================================================================
 #define MAX_WIFI_RETRIES        10
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
-#define URL_PROVISIONING        "http://192.168.15.76:8082/api/provisioning/activate"
-#define URL_ERROR_REPORT        "http://192.168.15.76:8082/api/provisioning/error"
+#define URL_PROVISIONING        "http://172.16.39.40:8082/api/provisioning/activate"
+#define URL_ERROR_REPORT        "http://172.16.39.40:8082/api/provisioning/error"
 #define ADVERTISE_INTERVAL_MS   1000
 
 //ppgeec 172.16.39.40
@@ -52,7 +52,7 @@ static std::string        g_deviceId;
 static std::string        g_msgOut;
 static int64_t            g_lastAdvertiseMs = 0;
 static esp_reset_reason_t g_reset_reason; // last reset reason
-static float              firmware_version = 0.0f;
+static std::string        firmware_version;
 static int                crashCount = 0;
 static bool hasBrokerConnection;
 
@@ -66,18 +66,6 @@ static void nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
     size_t sz = len;
     nvs_get_str(h, key, buf, &sz);
     nvs_close(h);
-}
-
-static bool nvs_read_float(const char* ns, const char* key, float* result) {
-    nvs_handle_t h;
-    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
-    uint32_t aux;
-    esp_err_t err = nvs_get_u32(h, key, &aux);
-    if (err == ESP_OK) {
-        memcpy(result, &aux, sizeof(aux));
-    }
-    nvs_close(h);
-    return (err == ESP_OK);
 }
 
 
@@ -95,7 +83,7 @@ static bool encode_string(pb_ostream_t* stream, const pb_field_t* field, void* c
 static void publish_proto_error(const char* topic,
                                 const char* device_id,
                                 const char* mac,
-                                float       fw_ver,
+                                const char* fw_ver,
                                 const char* ssid,
                                 uint32_t    error_code,
                                 const char* error_msg,
@@ -107,7 +95,7 @@ static void publish_proto_error(const char* topic,
 
     msg.device_id.funcs.encode    = encode_string; msg.device_id.arg    = (void*)device_id;
     msg.mac.funcs.encode          = encode_string; msg.mac.arg          = (void*)mac;
-    msg.fw_version                = fw_ver;
+    msg.fw_version.funcs.encode   = encode_string; msg.fw_version.arg   = (void*)fw_ver;
     msg.ssid.funcs.encode         = encode_string; msg.ssid.arg         = (void*)ssid;
     msg.error_code                = error_code;
     msg.error_msg.funcs.encode    = encode_string; msg.error_msg.arg    = (void*)error_msg;
@@ -125,19 +113,19 @@ static void publish_proto_error(const char* topic,
     MqttManager::publish(proto_buf, os.bytes_written, topic, 1);
 }
 
-static void publish_proto_status(const char* topic, 
-                                const char* mac, 
-                                float fw_ver, 
-                                const char* ssid, 
-                                uint32_t state, 
+static void publish_proto_status(const char* topic,
+                                const char* mac,
+                                const char* fw_ver,
+                                const char* ssid,
+                                uint32_t state,
                                 const char* detail = nullptr) {
 
     uint8_t proto_buf[256] = {};
     DeviceStatus msg = DeviceStatus_init_zero;
 
-    msg.mac.funcs.encode       = encode_string; msg.mac.arg       = (void*)mac;
-    msg.fw_version             = fw_ver;
-    msg.ssid.funcs.encode      = encode_string; msg.ssid.arg      = (void*)ssid;
+    msg.mac.funcs.encode          = encode_string; msg.mac.arg          = (void*)mac;
+    msg.fw_version.funcs.encode   = encode_string; msg.fw_version.arg   = (void*)fw_ver;
+    msg.ssid.funcs.encode         = encode_string; msg.ssid.arg         = (void*)ssid;
     msg.state                  = state;
     if (detail) {
         msg.detail.funcs.encode = encode_string; msg.detail.arg  = (void*)detail;
@@ -188,7 +176,9 @@ static void handle_nvs_init() {
     char saved_token[64] = {0};
     char saved_device_id[64] = {0}; 
 
-    nvs_read_float(NVS_NAMESPACE, "fw_version", &firmware_version);
+    char fw_buf[32] = {0};
+    nvs_read_str(NVS_NAMESPACE,    "fw_version", fw_buf,          sizeof(fw_buf));
+    firmware_version = fw_buf;
     nvs_read_str("crypto_store", "wifi_ssid",  saved_ssid,  sizeof(saved_ssid));
     nvs_read_str("crypto_store", "prov_token", saved_token, sizeof(saved_token));
     nvs_read_str("crypto_store", "device_id", saved_device_id, sizeof(saved_device_id));
@@ -200,12 +190,12 @@ static void handle_nvs_init() {
     bool isProvisioned = CryptoManager::isProvisioned();
     bool hasDeviceId = (saved_device_id[0] != '\0');
 
-    SLOG_I("Diagnóstico NVS — WiFi salvo: %s | Token salvo: %s | Certificado: %s | DeviceId %s | Version %.2f",
+    SLOG_I("Diagnóstico NVS — WiFi salvo: %s | Token salvo: %s | Certificado: %s | DeviceId %s | Version %s",
            hasWifi       ? "SIM" : "NÃO",
            hasToken      ? "SIM" : "NÃO",
            isProvisioned ? "SIM" : "NÃO",
            hasDeviceId   ? "SIM" :  "NÃO",
-           firmware_version);
+           firmware_version.c_str());
 
     
     if (!hasDeviceId) {
@@ -227,13 +217,13 @@ static void handle_nvs_init() {
 
     } 
 
-    if (firmware_version == 0) {
+    if (firmware_version.empty()) {
         SLOG_W("Versao nao encontrada na NVS.");
         AppState::setError(ErrorCode::FIRMWARE_VERSION_MISSING, "Firmware Version not found in NVS", {TAG, "handle_nvs_init"});
         return;
-    } 
+    }
 
-    SLOG_I(">>>>>>>>>>>>> FIRMWARE VERSION [v%.2f] <<<<<<<<<<<<<<<", firmware_version);
+    SLOG_I(">>>>>>>>>>>>> FIRMWARE VERSION [v%s] <<<<<<<<<<<<<<<", firmware_version.c_str());
     SLOG_I("Configuração NVS pronta. Conectando ao WiFi salvo: [%s]", saved_ssid);
     AppState::transition(DeviceState::WIFI_CONNECTING, {TAG, "handle_nvs_init"});
 }
@@ -361,12 +351,12 @@ static void handle_boot_audit() {
 
         nvs_get_i8(otaHandler, "ota_notified", &otaNotified);
 
-        // OTA anterior validado com sucesso — notifica MDM e segue para operação
+        // OTA executado com sucesso — notifica MDM e segue para operação
         if (!otaNotified) {
             AppState::transition(DeviceState::OTA_SUCCESSFUL, {TAG, "handle_boot_audit"});
             SLOG_I("OTA_SUCCESSFUL detectado, postando status: [OTA_SUCCESSFUL].");
             publish_proto_status(topic, g_macAddress.c_str(),
-                                 firmware_version, ssid.c_str(),
+                                 firmware_version.c_str(), ssid.c_str(),
                                  (uint32_t)AppState::get());
 
             nvs_set_i8(otaHandler, "ota_notified", 1);
@@ -394,12 +384,14 @@ static void handle_boot_audit() {
         if (g_reset_reason == ESP_RST_WDT || 
             g_reset_reason == ESP_RST_TASK_WDT || 
             g_reset_reason == ESP_RST_PANIC) {
+            SLOG_W("Crash por falha detectado, incrementando.");
+
             int8_t saved = 0;
             nvs_get_i8(mainHandler, "crash_count", &saved);
             crashCount = saved + 1;
             nvs_set_i8(mainHandler, "crash_count", crashCount);
             nvs_commit(mainHandler);
-            SLOG_W("Crash por falha detectado, incrementando.");
+            SLOG_W("Crash count: [%d].", crashCount);
         } else {
             SLOG_W("Nenhum crash detectado, zerando crash_count.");
             nvs_set_i8(mainHandler, "crash_count", 0);
@@ -420,50 +412,50 @@ static void handle_boot_audit() {
     
     // VERIFICAR ROLLBACK --------------------------
     // A chave "target_ver" só é criada pela sua função OtaManager::verify_and_update
-    uint32_t lastTarget = 0;
-    uint32_t invalidVer = 0;
+    std::string lastTarget;
+    std::string invalidVer;
     std::string rollback_msg;
     char reason[24] = {0};
 
-    nvs_handle_t rollbackHandler;
-    if (nvs_open("ota_store", NVS_READONLY, &rollbackHandler) == ESP_OK) {
-        nvs_get_u32(rollbackHandler, "target_ver", &lastTarget);
-        nvs_close(rollbackHandler);
-    }
-    if (lastTarget != 0 && OtaManager::verify_rollback(rollback_msg, invalidVer)) {
+    char lastTargetBuf[32] = {0};
+    nvs_read_str("ota_store", "target_ver", lastTargetBuf, sizeof(lastTargetBuf));
+    lastTarget = lastTargetBuf;
 
-        SLOG_W("Rollback detectado. Versao invalida: %u. Notificando MDM...", invalidVer);
+    if (!lastTarget.empty() && OtaManager::verify_rollback(rollback_msg, invalidVer)) {
 
-        nvs_read_float("main_store", "fw_version", &firmware_version);
+        SLOG_W("Rollback detectado. Versao invalida: %s. Notificando MDM...", invalidVer.c_str());
+
+        char fw_buf[32] = {0};
+        nvs_read_str("main_store", "fw_version", fw_buf, sizeof(fw_buf));
+        firmware_version = fw_buf;
         nvs_read_str("ota_store", "rollbackReason", reason, sizeof(reason));
 
-        char detail[128];
-        snprintf(detail, sizeof(detail), "{\"invalid_ver\":%lu,\"reason\":\"%s\"}", invalidVer, reason);
+        char detail[192];
+        snprintf(detail, sizeof(detail), "{\"invalid_ver\":\"%s\",\"reason\":\"%s\"}", invalidVer.c_str(), reason);
 
         AppState::transition(DeviceState::FIRMWARE_ROLLBACK, {TAG, "verify_rollback"});
 
         publish_proto_status(topic, g_macAddress.c_str(),
-                             firmware_version, ssid.c_str(),
+                             firmware_version.c_str(), ssid.c_str(),
                              (uint32_t)AppState::get(), detail);
-    } else if (lastTarget != 0) {
+    } else if (!lastTarget.empty()) {
         // OTA foi iniciado mas o download foi interrompido (ex: WDT crash).
         // esp_ota_get_last_invalid_partition() retorna NULL porque a partição
         // nunca foi marcada como inválida.
         // Reportamos o evento para o MDM.
-        SLOG_W("OTA v%u abortado (download incompleto). Notificando MDM...", lastTarget);
+        SLOG_W("OTA v%s abortado (download incompleto). Notificando MDM...", lastTarget.c_str());
 
-        nvs_read_float("main_store", "fw_version", &firmware_version);
-        
-        char detail[64];
-        snprintf(detail, sizeof(detail), "OTA_FAILED:v%lu:mid_download_crash", lastTarget);
+        char fw_buf2[32] = {0};
+        nvs_read_str("main_store", "fw_version", fw_buf2, sizeof(fw_buf2));
+        firmware_version = fw_buf2;
 
         AppState::setError(
-           ErrorCode::OTA_FAIL, 
-            "Error while updating to new firmware.", 
+           ErrorCode::OTA_FAIL,
+            "Error while updating to new firmware.",
             {TAG, "verify_and_update"},
             {
-                {"attempted_version", std::to_string(lastTarget)},
-                {"current_version", std::to_string(firmware_version)}
+                {"attempted_version", lastTarget},
+                {"current_version",   firmware_version}
             }
         );
 
@@ -499,7 +491,7 @@ static void handle_boot_audit() {
             AppState::transition(DeviceState::COMMAND_COMPLETE, {TAG, "handle_boot_audit"});
             
             publish_proto_status(topic, g_macAddress.c_str(),
-                                 firmware_version, ssid.c_str(),
+                                 firmware_version.c_str(), ssid.c_str(),
                                  (uint32_t)AppState::get(), detail);
 
             nvs_set_i8(commandHandler, "commandNotified", 1);
@@ -543,7 +535,7 @@ static void handle_operational() {
 
         SLOG_I("Publicando advertise. Tópico: [%s]", topic);
 
-        publish_proto_status(topic, g_macAddress.c_str(), firmware_version, ssid.c_str(), (uint8_t)AppState::get());
+        publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(), ssid.c_str(), (uint8_t)AppState::get());
     }
 
     vTaskDelay(pdMS_TO_TICKS(500));
@@ -608,7 +600,7 @@ static void handle_error() {
         publish_proto_error(topicErr,
                             g_deviceId.c_str(),
                             g_macAddress.c_str(),
-                            firmware_version,
+                            firmware_version.c_str(),
                             ssid.c_str(),
                             (uint32_t)e.code,
                             e.msg.c_str(),
@@ -621,7 +613,8 @@ static void handle_error() {
     if (AppState::hasActiveErrors()) {
         // Há erros sem resolução confirmada: aguarda instrução do MDM
         SLOG_W("Erros ativos sem resolução. Aguardando instrução do MDM...");
-        AppState::transition(DeviceState::WAITING_RESPONSE, {TAG, "handle_error"});
+        //AppState::transition(DeviceState::WAITING_RESPONSE, {TAG, "handle_error"});
+        AppState::transition(DeviceState::OPERATIONAL, {TAG, "handle_error"});
     } else {
         // Todos os erros foram resolvidos
         SLOG_I("Todos os erros resolvidos. Retomando operação.");

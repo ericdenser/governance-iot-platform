@@ -49,7 +49,7 @@ static int64_t      g_lastAdvertiseMs = 0;
 static bool        g_rollback_detected = false;
 static std::string g_rollback_msg;
 static esp_reset_reason_t reason; // last reset reason
-static float firmware_version = 0;
+static std::string firmware_version;
 static int crashCount = 0;
 
 static PayloadManager json;
@@ -66,19 +66,6 @@ static void nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
     nvs_get_str(h, key, buf, &sz);
     nvs_close(h);
 }
-
-static bool nvs_read_float(const char* ns, const char* key, float* result) {
-    nvs_handle_t h;
-    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
-    uint32_t aux;
-    esp_err_t err = nvs_get_u32(h, key, &aux);
-    if (err == ESP_OK) {
-        memcpy(result, &aux, sizeof(aux));
-    }
-    nvs_close(h);
-    return (err == ESP_OK);
-}
-
 
 // =============================================================================
 //  Handlers
@@ -104,16 +91,14 @@ static void handle_nvs_init() {
     SLOG_I("NVS inicializada com sucesso.");
 
     SLOG_I("Verificando versao do Firmware.");
-    bool foundInNvs = nvs_read_float(NVS_NAMESPACE, "fw_version", &firmware_version);
+    char fw_buf[32] = {0};
+    nvs_read_str(NVS_NAMESPACE, "fw_version", fw_buf, sizeof(fw_buf));
+    firmware_version = fw_buf;
 
-    if (!foundInNvs) {
- 
-        SLOG_W("Versao nao encontrada na NVS.");
-        if (firmware_version == 0) {
-            SLOG_I("Firmware de provisioning. Versão: %.2f", firmware_version);
-        }
+    if (firmware_version.empty()) {
+        SLOG_W("Versao nao encontrada na NVS. Firmware de provisioning.");
     } else {
-        SLOG_I("Versao do firmware carregada da NVS: v%.2f", firmware_version);
+        SLOG_I("Versao do firmware carregada da NVS: v%s", firmware_version.c_str());
     }
 
 
@@ -498,22 +483,20 @@ static void handle_boot_audit() {
     
     // VERIFICAR ROLLBACK --------------------------
     // A chave "target_ver" só é criada pela função OtaManager::verify_and_update
-    uint32_t lastTarget = 0;
-    nvs_handle_t rollbackHandler;
-    uint32_t invalidVer = 0;
+    char target_ver_buf[32] = {0};
+    nvs_read_str("ota_store", "target_ver", target_ver_buf, sizeof(target_ver_buf));
+    std::string lastTarget = target_ver_buf;
+
+    std::string invalidVer;
     char reason[24] = {0};
-    if (nvs_open("ota_store", NVS_READONLY, &rollbackHandler) == ESP_OK) {
-        nvs_get_u32(rollbackHandler, "target_ver", &lastTarget);
-        nvs_close(rollbackHandler);
-    }
-    if (lastTarget != 0 && OtaManager::verify_rollback(g_rollback_msg, invalidVer)) {
 
-        SLOG_W("Rollback detectado. Versao invalida: %u. Notificando MDM...", invalidVer);
+    if (!lastTarget.empty() && OtaManager::verify_rollback(g_rollback_msg, invalidVer)) {
 
-        nvs_read_float("main_store", "fw_version", &firmware_version);
+        SLOG_W("Rollback detectado. Versao invalida: %s. Notificando MDM...", invalidVer.c_str());
+
         nvs_read_str("ota_store", "rollbackReason", reason, sizeof(reason));
 
-        params.add("invalid_ver", int(invalidVer));
+        params.add("invalid_ver", invalidVer);
         params.add("reason", reason);
 
         json.add("device_id",   g_deviceId);
@@ -526,16 +509,13 @@ static void handle_boot_audit() {
 
         json.clear();
         params.clear();
-    } else if (lastTarget != 0) {
+    } else if (!lastTarget.empty()) {
         // OTA foi iniciado mas o download foi interrompido (ex: WDT crash).
         // esp_ota_get_last_invalid_partition() retorna NULL porque a partição
         // nunca foi marcada como inválida.
-        // Reportamos o evento para o MDM.
-        SLOG_W("OTA v%u abortado (download incompleto). Notificando MDM...", lastTarget);
+        SLOG_W("OTA v%s abortado (download incompleto). Notificando MDM...", lastTarget.c_str());
 
-        nvs_read_float("main_store", "fw_version", &firmware_version);
-
-        params.add("invalid_ver", int(lastTarget));
+        params.add("invalid_ver", lastTarget);
         params.add("reason", "mid_download_crash");
 
         json.add("device_id",  g_deviceId);

@@ -13,30 +13,14 @@
 #include "freertos/FreeRTOS.h" 
 #include "esp_sleep.h"
 #include "freertos/task.h"
+#include <esp_ota_ops.h>
 
 static const char* TAG = "CommandProcessor";
 
 struct OtaTaskParams {
-    float newVersion;
+    std::string newVersion;
     std::string url_bin;
 };
-
-// =============================================================================
-//  HELPER FUNCTIONS
-// =============================================================================
-static void nvs_read_float(const char* ns, const char* key, const float* result) {
-    nvs_handle_t h;
-
-    uint32_t aux;
-
-    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return;
-
-    esp_err_t err = nvs_get_u32(h, key, &aux);
-    if (err == ESP_OK) {
-        memcpy((void*)result, &aux, sizeof(aux));
-    }
-    nvs_close(h);
-}
 
 // get string -> enum
 static CommandType getCommandType(std::string cmd) {
@@ -45,9 +29,10 @@ static CommandType getCommandType(std::string cmd) {
         [](unsigned char c){ return std::tolower(c); });
 
     static const std::unordered_map<std::string, CommandType> commandMap = {
-        {"update",    CommandType::UPDATE},
-        {"deep_sleep",  CommandType::DEEP_SLEEP},
-        {"reboot", CommandType::REBOOT}
+        {"update",             CommandType::UPDATE},
+        {"deep_sleep",         CommandType::DEEP_SLEEP},
+        {"reboot",             CommandType::REBOOT},
+        {"firmware_rollback",  CommandType::FIRMWARE_ROLLBACK}
     };
 
     auto it = commandMap.find(cmd);
@@ -153,7 +138,7 @@ bool CommandProcessor::manage(const std::string& payload) {
             cJSON* newVersion = cJSON_GetObjectItem(payloadJson, "version");
             cJSON* url = cJSON_GetObjectItem(payloadJson, "url");
 
-           if (newVersion == NULL) {
+            if (newVersion == NULL) {
                 ESP_LOGE(TAG, "Key 'version' not found in payload.");
                 AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Missing 'version'", {TAG, "manage"});
                 break;
@@ -164,10 +149,9 @@ bool CommandProcessor::manage(const std::string& payload) {
                 break;
             }
 
-            // Now check the types
-            if (!cJSON_IsNumber(newVersion)) {
-                ESP_LOGE(TAG, "'version' is not a number.");
-                AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Version is not a number", {TAG, "manage"});
+            if (!cJSON_IsString(newVersion)) {
+                ESP_LOGE(TAG, "'version' is not a string.");
+                AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Version is not a string", {TAG, "manage"});
                 break;
             }
             if (!cJSON_IsString(url)) {
@@ -182,11 +166,11 @@ bool CommandProcessor::manage(const std::string& payload) {
                 break;
             }
 
-            ESP_LOGI(TAG, "OTA COMMAND RECEIVED FOR UPGRADING TO v%.2f", newVersion->valuedouble);
+            ESP_LOGI(TAG, "OTA COMMAND RECEIVED FOR UPGRADING TO v%s", newVersion->valuestring);
             AppState::transition(DeviceState::OTA_FOUND, {TAG, "manage"});
 
             OtaTaskParams* params = new OtaTaskParams();
-            params->newVersion = newVersion->valuedouble;
+            params->newVersion = newVersion->valuestring;
             params->url_bin = url->valuestring;
 
             BaseType_t xReturned = xTaskCreate(
@@ -283,6 +267,84 @@ bool CommandProcessor::manage(const std::string& payload) {
                 AppState::setError(ErrorCode::NVS_INIT_FAIL, esp_err_to_name(err), {TAG, "manage"});
             }
 
+            break;
+        }
+
+        
+        case CommandType::FIRMWARE_ROLLBACK: {
+            const esp_partition_t* prev = esp_ota_get_next_update_partition(NULL);
+            if (prev == NULL) {
+                ESP_LOGE(TAG, "Sem partição anterior disponível para rollback forçado.");
+                AppState::setError(ErrorCode::FIRMWARE_ROLLBACK_FAILED,
+                                   "Sem partição anterior disponível", {TAG, "manage"});
+                break;
+            }
+
+            char prev_ver_buf[32] = {0};
+            char fw_ver_buf[32]   = {0};
+            nvs_handle_t otaHandle;
+            if (nvs_open("ota_store", NVS_READONLY, &otaHandle) == ESP_OK) {
+                size_t pv_len = sizeof(prev_ver_buf);
+                nvs_get_str(otaHandle, "prev_ver", prev_ver_buf, &pv_len);
+                nvs_close(otaHandle);
+            }
+            nvs_handle_t mainReadHandle;
+            if (nvs_open("main_store", NVS_READONLY, &mainReadHandle) == ESP_OK) {
+                size_t fv_len = sizeof(fw_ver_buf);
+                nvs_get_str(mainReadHandle, "fw_version", fw_ver_buf, &fv_len);
+                nvs_close(mainReadHandle);
+            }
+
+            std::string prev_ver   = prev_ver_buf;
+            std::string fw_version = fw_ver_buf;
+
+            if (prev_ver.empty()) {
+                ESP_LOGE(TAG, "Nenhuma versão anterior registrada no NVS — rollback abortado.");
+                AppState::setError(ErrorCode::FIRMWARE_ROLLBACK_FAILED,
+                                   "Nenhuma versão anterior registrada", {TAG, "manage"});
+                break;
+            }
+
+            if (prev_ver == fw_version) {
+                ESP_LOGW(TAG, "Já na versão anterior (v%s) — rollback ignorado.", fw_version.c_str());
+                break;
+            }
+
+            // Restaura fw_version e apaga prev_ver antes do reboot
+            nvs_handle_t mainHandle;
+            if (nvs_open("main_store", NVS_READWRITE, &mainHandle) == ESP_OK) {
+                nvs_set_str(mainHandle, "fw_version", prev_ver.c_str());
+                nvs_commit(mainHandle);
+                nvs_close(mainHandle);
+            }
+
+            nvs_handle_t otaWriteHandle;
+            if (nvs_open("ota_store", NVS_READWRITE, &otaWriteHandle) == ESP_OK) {
+                nvs_erase_key(otaWriteHandle, "prev_ver");
+                nvs_commit(otaWriteHandle);
+                nvs_close(otaWriteHandle);
+            }
+
+            nvs_handle_t cmdHandle;
+            if (nvs_open("command_store", NVS_READWRITE, &cmdHandle) == ESP_OK) {
+                nvs_set_str(cmdHandle, "lastCommand", finalCommand.c_str());
+                nvs_set_i8(cmdHandle, "commandNotified", 0);
+                nvs_commit(cmdHandle);
+                nvs_close(cmdHandle);
+            }
+
+            esp_err_t err = esp_ota_set_boot_partition(prev);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "Falha ao setar partição para rollback: %s", esp_err_to_name(err));
+                AppState::setError(ErrorCode::OTA_FAIL,
+                                   std::string("Falha ao setar partição: ") + esp_err_to_name(err),
+                                   {TAG, "manage"});
+                break;
+            }
+
+            ESP_LOGI(TAG, "Rollback forçado para v%s. Reiniciando...", prev_ver.c_str());
+            vTaskDelay(pdMS_TO_TICKS(500));
+            esp_restart();
             break;
         }
 

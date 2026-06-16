@@ -20,14 +20,15 @@
 
 #include "pb_encode.h"
 #include "device_status.pb.h"
+#include "device_error.pb.h"
 
 // =============================================================================
 //  Configurações
 // =============================================================================
 #define MAX_WIFI_RETRIES        10
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
-#define URL_PROVISIONING        "http://192.168.15.76:8082/api/provisioning/activate"
-#define URL_ERROR_REPORT        "http://192.168.15.76:8082/api/provisioning/error"
+#define URL_PROVISIONING        "http://172.16.39.40:8082/api/provisioning/activate"
+#define URL_ERROR_REPORT        "http://172.16.39.40:8082/api/provisioning/error"
 #define ADVERTISE_INTERVAL_MS   1000
 
 static const char* TAG           = "MAIN";
@@ -49,7 +50,7 @@ static std::string        g_deviceId;
 static std::string        g_msgOut;
 static int64_t            g_lastAdvertiseMs = 0;
 static esp_reset_reason_t g_reset_reason; // last reset reason
-static float              firmware_version = 0.0f;
+static std::string        firmware_version;
 static int                crashCount = 0;
 static bool hasBrokerConnection;
 
@@ -67,18 +68,6 @@ static void nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
     nvs_close(h);
 }
 
-static bool nvs_read_float(const char* ns, const char* key, float* result) {
-    nvs_handle_t h;
-    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
-    uint32_t aux;
-    esp_err_t err = nvs_get_u32(h, key, &aux);
-    if (err == ESP_OK) {
-        memcpy(result, &aux, sizeof(aux));
-    }
-    nvs_close(h);
-    return (err == ESP_OK);
-}
-
 // =============================================================================
 //  nanopb — callback de encoding para strings e helper de publish
 // =============================================================================
@@ -89,13 +78,48 @@ static bool encode_string(pb_ostream_t* stream, const pb_field_t* field, void* c
            pb_encode_string(stream, (const uint8_t*)str, strlen(str));
 }
 
-static void publish_proto_status(const char* topic, const char* mac, float fw_ver, const char* ssid, uint32_t state, const char* detail = nullptr) {
+
+static void publish_proto_error(const char* topic,
+                                const char* device_id,
+                                const char* mac,
+                                const char* fw_ver,
+                                const char* ssid,
+                                uint32_t    error_code,
+                                const char* error_msg,
+                                const char* error_source,
+                                bool        resolved,
+                                const char* extra = nullptr) {
+    uint8_t proto_buf[512] = {};
+    DeviceError msg = DeviceError_init_zero;
+
+    msg.device_id.funcs.encode    = encode_string; msg.device_id.arg    = (void*)device_id;
+    msg.mac.funcs.encode          = encode_string; msg.mac.arg          = (void*)mac;
+    msg.fw_version.funcs.encode   = encode_string; msg.fw_version.arg   = (void*)fw_ver;
+    msg.ssid.funcs.encode         = encode_string; msg.ssid.arg         = (void*)ssid;
+    msg.error_code                = error_code;
+    msg.error_msg.funcs.encode    = encode_string; msg.error_msg.arg    = (void*)error_msg;
+    msg.error_source.funcs.encode = encode_string; msg.error_source.arg = (void*)error_source;
+    msg.resolved                  = resolved;
+    if (extra) {
+        msg.extra.funcs.encode = encode_string; msg.extra.arg = (void*)extra;
+    }
+
+    pb_ostream_t os = pb_ostream_from_buffer(proto_buf, sizeof(proto_buf));
+    if (!pb_encode(&os, DeviceError_fields, &msg)) {
+        ESP_LOGE(TAG, "pb_encode DeviceError falhou: %s", PB_GET_ERROR(&os));
+        return;
+    }
+    MqttManager::publish(proto_buf, os.bytes_written, topic, 1);
+}
+
+
+static void publish_proto_status(const char* topic, const char* mac, const char* fw_ver, const char* ssid, uint32_t state, const char* detail = nullptr) {
 
     uint8_t proto_buf[256] = {};
     DeviceStatus msg = DeviceStatus_init_zero;
 
     msg.mac.funcs.encode       = encode_string; msg.mac.arg       = (void*)mac;
-    msg.fw_version             = fw_ver;
+    msg.fw_version.funcs.encode = encode_string; msg.fw_version.arg = (void*)fw_ver;
     msg.ssid.funcs.encode      = encode_string; msg.ssid.arg      = (void*)ssid;
     msg.state                  = state;
     if (detail) {
@@ -135,16 +159,14 @@ static void handle_nvs_init() {
     SLOG_I("NVS inicializada com sucesso.");
 
     SLOG_I("Verificando versao do Firmware.");
-    bool foundInNvs = nvs_read_float(NVS_NAMESPACE, "fw_version", &firmware_version);
+    char fw_buf[32] = {0};
+    nvs_read_str(NVS_NAMESPACE, "fw_version", fw_buf, sizeof(fw_buf));
+    firmware_version = fw_buf;
 
-    if (!foundInNvs) {
- 
-        SLOG_W("Versao nao encontrada na NVS.");
-        if (firmware_version == 0) {
-            SLOG_I("Firmware de provisioning. Versão: %.2f", firmware_version);
-        }
+    if (firmware_version.empty()) {
+        SLOG_W("Versao nao encontrada na NVS. Firmware de provisioning.");
     } else {
-        SLOG_I("Versao do firmware carregada da NVS: v%.2f", firmware_version);
+        SLOG_I("Versao do firmware carregada da NVS: v%s", firmware_version.c_str());
     }
 
 
@@ -368,8 +390,7 @@ static void handle_provisioning_success() {
 
         SLOG_I("Publicando advertise. Tópico: [%s]", topic);
         
-        publish_proto_status(topic, g_macAddress.c_str(), firmware_version, ssid.c_str(), (uint8_t)AppState::get());
-;
+        publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(), ssid.c_str(), (uint8_t)AppState::get());
     }
 
     vTaskDelay(pdMS_TO_TICKS(500));
@@ -377,57 +398,83 @@ static void handle_provisioning_success() {
 
 // ---- ERROR ------------------------------------------------------------------
 static void handle_error() {
-    AppError err = AppState::getError();
+    SLOG_E("Entrando no handler de erro. Eventos na fila: %s",
+           AppState::hasQueuedErrors() ? "SIM" : "NÃO");
 
-    SLOG_E("Entrando no handler de erro.");
-    SLOG_E("Origem: [%s -> %s] | Código: [%s] | Mensagem: %s",
-           err.source.className.c_str(),
-           err.source.method.c_str(),
-           AppState::toString(err.code),
-           err.msg.c_str());
-    
-    // Reporta o erro via HTTP se tiver conectividade
-    if (WifiManager::isConnected()) {
-        SLOG_I("WiFi disponível. Reportando erro para: %s", URL_ERROR_REPORT);
-
-        json.add("device_id",         g_deviceId);
-        json.add("mac",              g_macAddress);
-        json.add("fw_version", firmware_version);
-        json.add("ip", WifiManager::getIp());
-        json.add("ssid", WifiManager::getSSID());
-        json.add("current_process", AppState::toString(AppState::get()));
-        json.add("error_code",       AppState::toString(err.code));
-        json.add("error_msg",        err.msg);
-        json.add("error_source", err.source.className + "::" + err.source.method);
-
-        const char* payload = json.build();
-        SLOG_I("Payload de erro: %s", payload);
-
-        std::string responseBuffer;
-        bool reportOk = HttpService::post(URL_ERROR_REPORT, payload, responseBuffer, g_msgOut, "application/json");
-
-        if (reportOk) {
-            SLOG_I("Erro reportado com sucesso ao servidor. Resposta: %s", responseBuffer.c_str());
-        } else {
-            SLOG_W("Falha ao reportar erro ao servidor: %s", g_msgOut.c_str());
-        }
-        json.clear();
-    } else {
-        SLOG_W("WiFi indisponível. Erro não pôde ser reportado ao servidor.");
-        SLOG_E("Erro não recuperável. Agendando reboot...");
-        AppState::transition(DeviceState::REBOOTING, {TAG, "handle_error"});
+    if (!AppState::hasQueuedErrors()) {
+        // Fila vazia mas estado ERROR , retorna pra operação
+        AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_error"});
+        return;
     }
 
-    // Política de recuperação por tipo de erro
-    if (err.code == ErrorCode::WIFI_TIMEOUT) {
-        SLOG_W("Erro de WiFi — tentando reconectar em 10s (sem reboot)...");
+    // Sem IP = sem WiFi = sem MQTT: aguarda e tenta reconectar pelo fluxo normal.
+    // O resolveError(WIFI_TIMEOUT) será chamado quando o WiFi reconectar em handle_wifi_connecting.
+    if (WifiManager::getIp().empty()) {
+        SLOG_W("Sem conectividade. Aguardando 10s antes de tentar reconectar WiFi...");
         vTaskDelay(pdMS_TO_TICKS(10000));
-        AppState::clearError();
         AppState::transition(DeviceState::WIFI_CONNECTING, {TAG, "handle_error"});
         return;
     }
 
-    AppState::transition(DeviceState::WAITING_RESPONSE, {TAG, "handle_error"});
+    // WiFi ok mas MQTT desconectado — dispara reconexão e aguarda.
+    // Se reconectar, MQTT_EVENT_CONNECTED transita de volta para esta função com fila pronta para drenar.
+    if (!MqttManager::isConnected()) {
+        SLOG_W("MQTT desconectado. Aguardando reconexão...");
+        MqttManager::tryReconnect();
+        vTaskDelay(pdMS_TO_TICKS(15000));
+        return;
+    }
+
+    // WiFi e MQTT disponíveis — drena toda a fila publicando cada evento em ordem FIFO
+    char topicErr[128];
+    snprintf(topicErr, sizeof(topicErr), "error/%s", g_deviceId.c_str());
+    std::string ssid = WifiManager::getSSID();
+
+    while (AppState::hasQueuedErrors()) {
+        AppError e = AppState::popError();
+
+        std::string src_str = e.source.className + "::" + e.source.method;
+        std::string details_str;
+        if (!e.details.empty()) {
+            details_str = "{";
+            for (auto it = e.details.begin(); it != e.details.end(); ++it) {
+                details_str += "\"" + it->first + "\": \"" + it->second + "\"";
+                if (std::next(it) != e.details.end()) details_str += ", ";
+            }
+            details_str += "}";
+        }
+
+        if (e.resolved) {
+            SLOG_I("Publicando resolução de [%s]", AppState::toString(e.code));
+        } else {
+            SLOG_E("Publicando erro [%s]: %s | origem: %s | details: %s",
+                   AppState::toString(e.code), e.msg.c_str(),
+                   src_str.c_str(), details_str.c_str());
+        }
+
+        publish_proto_error(topicErr,
+                            g_deviceId.c_str(),
+                            g_macAddress.c_str(),
+                            firmware_version.c_str(),
+                            ssid.c_str(),
+                            (uint32_t)e.code,
+                            e.msg.c_str(),
+                            src_str.c_str(),
+                            e.resolved,
+                            e.details.empty() ? nullptr : details_str.c_str());
+    }
+
+    // Fila drenada — decide próximo estado com base nos erros ainda ativos
+    if (AppState::hasActiveErrors()) {
+        // Há erros sem resolução confirmada: aguarda instrução do MDM
+        SLOG_W("Erros ativos sem resolução. Aguardando instrução do MDM...");
+        //AppState::transition(DeviceState::WAITING_RESPONSE, {TAG, "handle_error"});
+        AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_error"});
+    } else {
+        // Todos os erros foram resolvidos
+        SLOG_I("Todos os erros resolvidos. Retomando operação.");
+        AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_error"});
+    }
 }
 
 // ---- REBOOTING --------------------------------------------------------------
@@ -460,7 +507,7 @@ static void handle_boot_audit() {
 
             AppState::transition(DeviceState::OTA_SUCCESSFUL, {TAG, "handle_boot_audit"});
             publish_proto_status(topic, g_macAddress.c_str(),
-                                 firmware_version, ssid.c_str(),
+                                 firmware_version.c_str(), ssid.c_str(),
                                  (uint32_t)AppState::get());
             nvs_set_i8(otaHandler, "ota_notified", 1);
             nvs_commit(otaHandler);
@@ -512,45 +559,32 @@ static void handle_boot_audit() {
     }
     
     // VERIFICAR ROLLBACK --------------------------
-    // A chave "target_ver" só é criada pela sua função OtaManager::verify_and_update
-    uint32_t lastTarget = 0;
-    uint32_t invalidVer = 0;
+    // A chave "target_ver" só é criada pela função OtaManager::verify_and_update
+    char target_ver_buf[32] = {0};
+    nvs_read_str("ota_store", "target_ver", target_ver_buf, sizeof(target_ver_buf));
+    std::string lastTarget = target_ver_buf;
+
+    std::string invalidVer;
     std::string rollback_msg;
     char reason[24] = {0};
 
-    nvs_handle_t rollbackHandler;
-    if (nvs_open("ota_store", NVS_READONLY, &rollbackHandler) == ESP_OK) {
-        nvs_get_u32(rollbackHandler, "target_ver", &lastTarget);
-        nvs_close(rollbackHandler);
-    }
-    if (lastTarget != 0 && OtaManager::verify_rollback(rollback_msg, invalidVer)) {
+    if (!lastTarget.empty() && OtaManager::verify_rollback(rollback_msg, invalidVer)) {
 
-        SLOG_W("Rollback detectado. Versao invalida: %u. Notificando MDM...", invalidVer);
+        SLOG_W("Rollback detectado. Versao invalida: %s. Notificando MDM...", invalidVer.c_str());
 
-        nvs_read_float("main_store", "fw_version", &firmware_version);
         nvs_read_str("ota_store", "rollbackReason", reason, sizeof(reason));
 
         char detail[64];
-        snprintf(detail, sizeof(detail), "ROLLBACK:v%lu:%s", invalidVer, reason);
+        snprintf(detail, sizeof(detail), "ROLLBACK:v%s:%s", invalidVer.c_str(), reason);
 
         publish_proto_status(topic, g_macAddress.c_str(),
-                             firmware_version, ssid.c_str(),
+                             firmware_version.c_str(), ssid.c_str(),
                              (uint32_t)AppState::get(), detail);
-    } else if (lastTarget != 0) {
+    } else if (!lastTarget.empty()) {
         // OTA foi iniciado mas o download foi interrompido (ex: WDT crash).
         // esp_ota_get_last_invalid_partition() retorna NULL porque a partição
         // nunca foi marcada como inválida.
-        // Reportamos o evento para o MDM.
-        SLOG_W("OTA v%u abortado (download incompleto). Notificando MDM...", lastTarget);
-
-        nvs_read_float("main_store", "fw_version", &firmware_version);
-        
-        // char detail[64];
-        // snprintf(detail, sizeof(detail), "OTA_FAILED:v%lu:mid_download_crash", lastTarget);
-        // AppState::setError(ErrorCode.OTA_FAIL, "");
-
-        // Trabalhar melhor quando tiver o agent especifico de erro e o event handler tiver o ErrorDetector
-
+        SLOG_W("OTA v%s abortado (download incompleto). Notificando MDM...", lastTarget.c_str());
 
         // Limpa target_ver para não reportar novamente no próximo boot
         nvs_handle_t otaWriter;
@@ -584,7 +618,7 @@ static void handle_boot_audit() {
             AppState::transition(DeviceState::COMMAND_COMPLETE, {TAG, "handle_boot_audit"});
 
             publish_proto_status(topic, g_macAddress.c_str(),
-                                 firmware_version, ssid.c_str(),
+                                 firmware_version.c_str(), ssid.c_str(),
                                  (uint32_t)AppState::get(), detail);
 
             nvs_set_i8(commandHandler, "commandNotified", 1);

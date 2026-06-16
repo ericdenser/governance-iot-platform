@@ -7,6 +7,7 @@ enum class CommandType {
     UPDATE,
     DEEP_SLEEP,
     REBOOT,
+    FIRMWARE_ROLLBACK,
     UNKNOWN
 };
 

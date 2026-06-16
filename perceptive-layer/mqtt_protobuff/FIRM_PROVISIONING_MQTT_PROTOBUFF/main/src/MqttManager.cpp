@@ -5,8 +5,10 @@
 #include "CryptoManager.h"
 #include "AppState.h"
 #include "esp_timer.h"
+#include <vector>
+#include <utility>
 
-#define BROKER_URL     "mqtts://192.168.15.76:8883"
+#define BROKER_URL     "mqtts://172.16.39.40:8883"
 #define MAX_RECONNECT_ATTEMPTS  5
 #define RECONNECT_DELAY_MS      5000
 
@@ -21,6 +23,21 @@ static MqttManager::MessageCallback s_message_callback = nullptr;
 
 static int                s_reconnect_count = 0;
 static esp_timer_handle_t s_reconnect_timer = NULL;
+static bool               s_is_connected    = false;
+static bool               s_error_reported  = false;
+
+static std::vector<std::pair<std::string, int>> s_subscriptions;
+
+static void resubscribe_all() {
+    for (const auto& [topic, qos] : s_subscriptions) {
+        int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic.c_str(), qos);
+        if (msg_id >= 0) {
+            ESP_LOGI(TAG, "Re-inscrito no tópico: %s (msg_id=%d)", topic.c_str(), msg_id);
+        } else {
+            ESP_LOGE(TAG, "Falha ao re-inscrever no tópico: %s", topic.c_str());
+        }
+    }
+}
 
 // Chamado pelo timer após RECONNECT_DELAY_MS para tentar reconectar
 static void reconnect_timer_cb(void*) {
@@ -33,12 +50,15 @@ static void reconnect_timer_cb(void*) {
 // Agenda próxima tentativa ou seta erro se esgotou as tentativas
 static void schedule_reconnect() {
     if (s_reconnect_count >= MAX_RECONNECT_ATTEMPTS) {
-        ESP_LOGE(TAG, "Broker inacessível após %d tentativas. Setando erro.", MAX_RECONNECT_ATTEMPTS);
-        AppState::setError(
-            ErrorCode::MQTT_DISCONNECTED,
-            "Broker MQTT inacessível após 5 tentativas de reconexão",
-            {TAG, "schedule_reconnect"}
-        );
+        if (!s_error_reported) {
+            s_error_reported = true;
+            ESP_LOGE(TAG, "Broker inacessível após %d tentativas. Setando erro.", MAX_RECONNECT_ATTEMPTS);
+            AppState::setError(
+                ErrorCode::MQTT_DISCONNECTED,
+                "Broker MQTT inacessível após 5 tentativas de reconexão",
+                {TAG, "schedule_reconnect"}
+            );
+        }
         return;
     }
     // stop ignora se o timer não está rodando
@@ -54,16 +74,24 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
     switch ((esp_mqtt_event_id_t)event_id) {
 
-        case MQTT_EVENT_CONNECTED: 
+        case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "Conectado ao Broker MQTT com sucesso!");
+            s_is_connected    = true;
             s_reconnect_count = 0;
+            s_error_reported  = false;
             esp_timer_stop(s_reconnect_timer);
-            AppState::transition(DeviceState::BOOT_AUDIT, {TAG, "mqtt_event_handler"});
-            
+            if (AppState::is(DeviceState::MQTT_WAITING_CONNECT)) {
+                AppState::transition(DeviceState::BOOT_AUDIT, {TAG, "mqtt_event_handler"});
+            } else {
+                resubscribe_all();
+                AppState::resolveError(ErrorCode::MQTT_DISCONNECTED);
+                AppState::transition(DeviceState::ERROR, {TAG, "mqtt_event_handler"});
+            }
             break;
 
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGW(TAG, "Desconectado do Broker MQTT.");
+            s_is_connected = false;
             schedule_reconnect();
             break;
 
@@ -78,14 +106,14 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             if (s_message_callback) {
                 s_message_callback(topic, payload);
             }
-
+            
             break;
         }
 
         case MQTT_EVENT_ERROR:
-            // Falha de TCP durante reconexão — agenda próxima tentativa
             ESP_LOGE(TAG, "Erro no cliente MQTT (tipo: %d).",
                      event->error_handle ? event->error_handle->error_type : -1);
+            s_is_connected = false;
             schedule_reconnect();
             break;
 
@@ -156,25 +184,33 @@ void MqttManager::init_mqtt(void) {
     esp_mqtt_client_start(mqtt_client);
 }
 
-void MqttManager::publish(const uint8_t* data, size_t len, const char* topic) {
+void MqttManager::publish(const uint8_t* data, size_t len, const char* topic, int qos) {
     if (mqtt_client == NULL) {
         ESP_LOGW(TAG, "publish() chamado antes de init_mqtt().");
         return;
     }
 
     int msg_id = esp_mqtt_client_publish(
-        mqtt_client, topic, (const char*)data, (int)len, 0, 0);
+        mqtt_client, topic, (const char*)data, (int)len, qos, 0);
 
-    ESP_LOGI(TAG, "Publicado (msg_id=%d, %u bytes) no tópico [%s]",
-             msg_id, (unsigned)len, topic);
+    ESP_LOGI(TAG, "Publicado (msg_id=%d, %u bytes, qos=%d) no tópico [%s]",
+             msg_id, (unsigned)len, qos, topic);
 }
 
 void MqttManager::subscribe(const std::string& topic, int qos) {
 
-     if (mqtt_client == NULL) {
+    if (mqtt_client == NULL) {
         ESP_LOGE(TAG, "subscribe() chamado antes de init_mqtt().");
         return;
     }
+
+    for (const auto& [t, q] : s_subscriptions) {
+        if (t == topic) {
+            ESP_LOGW(TAG, "Tópico já registrado: %s", topic.c_str());
+            return;
+        }
+    }
+    s_subscriptions.emplace_back(topic, qos);
 
     int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic.c_str(), qos);
     if (msg_id >= 0) {
@@ -187,6 +223,16 @@ void MqttManager::subscribe(const std::string& topic, int qos) {
             {TAG, "subscribe"}
         );
     }
+}
+
+bool MqttManager::isConnected() {
+    return s_is_connected;
+}
+
+void MqttManager::tryReconnect() {
+    if (mqtt_client == NULL) return;
+    s_reconnect_count = 0;
+    schedule_reconnect();
 }
 
 void MqttManager::setCallback(MessageCallback cb) {

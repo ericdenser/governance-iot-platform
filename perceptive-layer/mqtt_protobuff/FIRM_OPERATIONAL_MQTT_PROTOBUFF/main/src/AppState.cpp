@@ -246,6 +246,7 @@ const char* AppState::toString(ErrorCode code) {
         case ErrorCode::DEVICE_ID_MISSING:             return "DEVICE_ID_MISSING";
         case ErrorCode::WIFI_CREDENTIALS_MISSING:      return "WIFI_CREDENTIALS_MISSING";
         case ErrorCode::FIRMWARE_VERSION_MISSING:      return "FIRMWARE_VERSION_MISSING";
+        case ErrorCode::FIRMWARE_ROLLBACK_FAILED:      return "FIRMWARE_ROLLBACK_FAILED";
         case ErrorCode::UNKNOWN:                       return "UNKNOWN";
         default:                                       return "UNKNOWN";
     }

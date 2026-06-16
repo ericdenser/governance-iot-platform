@@ -17,26 +17,9 @@
 static const char* TAG = "CommandProcessor";
 
 struct OtaTaskParams {
-    float newVersion;
+    std::string newVersion;
     std::string url_bin;
 };
-
-// =============================================================================
-//  HELPER FUNCTIONS
-// =============================================================================
-static void nvs_read_float(const char* ns, const char* key, const float* result) {
-    nvs_handle_t h;
-
-    uint32_t aux;
-
-    if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return;
-
-    esp_err_t err = nvs_get_u32(h, key, &aux);
-    if (err == ESP_OK) {
-        memcpy((void*)result, &aux, sizeof(aux));
-    }
-    nvs_close(h);
-}
 
 // get string -> enum
 static CommandType getCommandType(std::string cmd) {
@@ -165,9 +148,9 @@ bool CommandProcessor::manage(const std::string& payload) {
             }
 
             // Now check the types
-            if (!cJSON_IsNumber(newVersion)) {
-                ESP_LOGE(TAG, "'version' is not a number.");
-                AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Version is not a number", {TAG, "manage"});
+            if (!cJSON_IsString(newVersion)) {
+                ESP_LOGE(TAG, "'version' is not a string.");
+                AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Version is not a string", {TAG, "manage"});
                 break;
             }
             if (!cJSON_IsString(url)) {
@@ -182,11 +165,11 @@ bool CommandProcessor::manage(const std::string& payload) {
                 break;
             }
 
-            ESP_LOGI(TAG, "OTA COMMAND RECEIVED FOR UPGRADING TO v%.2f", newVersion->valuedouble);
+            ESP_LOGI(TAG, "OTA COMMAND RECEIVED FOR UPGRADING TO v%s", newVersion->valuestring);
             AppState::transition(DeviceState::OTA_FOUND, {TAG, "manage"});
 
             OtaTaskParams* params = new OtaTaskParams();
-            params->newVersion = newVersion->valuedouble;
+            params->newVersion = newVersion->valuestring;
             params->url_bin = url->valuestring;
 
             BaseType_t xReturned = xTaskCreate(

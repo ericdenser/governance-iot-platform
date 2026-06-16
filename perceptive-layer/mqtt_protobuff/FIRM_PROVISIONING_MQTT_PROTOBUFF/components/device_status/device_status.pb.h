@@ -4,7 +4,7 @@
  *   message DeviceStatus {
  *     string device_id  = 1;
  *     string mac        = 2;
- *     float  fw_version = 3;
+ *     string fw_version = 3;
  *     string ssid       = 4;
  *     uint32 state      = 5;
  *     string detail     = 6;
@@ -23,7 +23,7 @@
 
 typedef struct _DeviceStatus {
     pb_callback_t mac;         /* field 1 — string */
-    float         fw_version;  /* field 2 — float  (static) */
+    pb_callback_t fw_version;  /* field 2 — string */
     pb_callback_t ssid;        /* field 3 — string */
     uint32_t      state;       /* field 4 — uint32 (static) */
     pb_callback_t detail;      /* field 5 — string (opcional) */
@@ -37,7 +37,7 @@ extern "C" {
 
 #define DeviceStatus_init_default { \
     {{NULL}, NULL},  \
-    0,               \
+    {{NULL}, NULL},  \
     {{NULL}, NULL},  \
     0,               \
     {{NULL}, NULL}   \
@@ -56,7 +56,7 @@ extern "C" {
 
 #define DeviceStatus_FIELDLIST(X, a) \
 X(a, CALLBACK, SINGULAR, STRING, mac,        1) \
-X(a, STATIC,   SINGULAR, FLOAT,  fw_version, 2) \
+X(a, CALLBACK, SINGULAR, STRING, fw_version, 2) \
 X(a, CALLBACK, SINGULAR, STRING, ssid,       3) \
 X(a, STATIC,   SINGULAR, UINT32, state,      4) \
 X(a, CALLBACK, SINGULAR, STRING, detail,     5)

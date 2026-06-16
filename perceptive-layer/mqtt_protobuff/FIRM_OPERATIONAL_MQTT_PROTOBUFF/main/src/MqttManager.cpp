@@ -5,8 +5,10 @@
 #include "CryptoManager.h"
 #include "AppState.h"
 #include "esp_timer.h"
+#include <vector>
+#include <utility>
 
-#define BROKER_URL     "mqtts://192.168.15.76:8883"
+#define BROKER_URL     "mqtts://172.16.39.40:8883"
 #define MAX_RECONNECT_ATTEMPTS  5
 #define RECONNECT_DELAY_MS      5000
 
@@ -23,6 +25,19 @@ static int                s_reconnect_count = 0;
 static esp_timer_handle_t s_reconnect_timer = NULL;
 static bool               s_is_connected    = false;
 static bool               s_error_reported  = false;
+
+static std::vector<std::pair<std::string, int>> s_subscriptions;
+
+static void resubscribe_all() {
+    for (const auto& [topic, qos] : s_subscriptions) {
+        int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic.c_str(), qos);
+        if (msg_id >= 0) {
+            ESP_LOGI(TAG, "Re-inscrito no tópico: %s (msg_id=%d)", topic.c_str(), msg_id);
+        } else {
+            ESP_LOGE(TAG, "Falha ao re-inscrever no tópico: %s", topic.c_str());
+        }
+    }
+}
 
 // Chamado pelo timer após RECONNECT_DELAY_MS para tentar reconectar
 static void reconnect_timer_cb(void*) {
@@ -68,6 +83,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             if (AppState::is(DeviceState::MQTT_WAITING_CONNECT)) {
                 AppState::transition(DeviceState::BOOT_AUDIT, {TAG, "mqtt_event_handler"});
             } else {
+                resubscribe_all();
                 AppState::resolveError(ErrorCode::MQTT_DISCONNECTED);
                 AppState::transition(DeviceState::ERROR, {TAG, "mqtt_event_handler"});
             }
@@ -183,10 +199,18 @@ void MqttManager::publish(const uint8_t* data, size_t len, const char* topic, in
 
 void MqttManager::subscribe(const std::string& topic, int qos) {
 
-     if (mqtt_client == NULL) {
+    if (mqtt_client == NULL) {
         ESP_LOGE(TAG, "subscribe() chamado antes de init_mqtt().");
         return;
     }
+
+    for (const auto& [t, q] : s_subscriptions) {
+        if (t == topic) {
+            ESP_LOGW(TAG, "Tópico já registrado: %s", topic.c_str());
+            return;
+        }
+    }
+    s_subscriptions.emplace_back(topic, qos);
 
     int msg_id = esp_mqtt_client_subscribe(mqtt_client, topic.c_str(), qos);
     if (msg_id >= 0) {
