@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+// Os field numbers DEVEM bater com device_error.pb.h do firmware (nanopb).
+// Qualquer mudança aqui precisa ser refletida lá e vice-versa.
+
+package device;
+
+option java_package = "com.eric.agent.proto";
+option java_multiple_files = true;
+
+message DeviceError {
+  string device_id    = 1;
+  string mac          = 2;
+  float  fw_version   = 3;
+  string ssid         = 4;
+  uint32 error_code   = 6;
+  string error_msg    = 7;
+  string error_source = 8;
+  string extra        = 9;
+  bool   resolved     = 10;
+}

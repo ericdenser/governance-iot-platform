@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package iot;
+
+option java_package = "com.eric.agent.grpc.datalogger";
+option java_multiple_files = true;
+
+message TestMessage {
+  string text = 1;
+}
+
+message Ack {
+  bool   ok     = 1;
+  string detail = 2;
+}
+
+service Datalogger {
+  rpc SendTest(TestMessage) returns (Ack);
+}

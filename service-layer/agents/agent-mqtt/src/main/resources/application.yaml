@@ -1,0 +1,18 @@
+server:
+  port: 8087
+
+mqtt:
+  broker-url: ssl://${HOST_IP}:8883
+  client-id: agent-mqtt
+  topic: status/#
+  error-topic: error/#
+
+  keystore-path: classpath:certs/agents.p12
+  keystore-password: ${AGENT_KEYSTORE_PASS}
+
+  truststore-path: classpath:certs/truststore.p12
+  truststore-password: ${AGENT_TRUSTSTORE_PASS}
+
+spring:
+  application:
+    name: agent-mqtt

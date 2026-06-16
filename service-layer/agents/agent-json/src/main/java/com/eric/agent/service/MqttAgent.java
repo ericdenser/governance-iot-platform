@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.eric.agent.model.ErrorDTO;
 import com.eric.agent.model.StatusDTO;
 
 import jakarta.annotation.PostConstruct;
@@ -26,9 +27,12 @@ public class MqttAgent {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final StatusForwardingService statusForwardingService;
+    private final ErrorForwardingService errorForwardingService;
 
-    public MqttAgent(StatusForwardingService statusForwardingService) {
+    public MqttAgent(StatusForwardingService statusForwardingService,
+                     ErrorForwardingService errorForwardingService) {
         this.statusForwardingService = statusForwardingService;
+        this.errorForwardingService = errorForwardingService;
     }
 
     @Value("${mqtt.broker-url}")
@@ -39,6 +43,9 @@ public class MqttAgent {
 
     @Value("${mqtt.topic}")
     private String topic;
+
+    @Value("${mqtt.error-topic}")
+    private String errorTopic;
 
     @Value("${mqtt.keystore-path}")
     private Resource keystoreResource;
@@ -77,10 +84,16 @@ public class MqttAgent {
                     log.info("Mensagem recebida em [{}]: {}", topic, payload);
 
                     try {
-                        StatusDTO dto = objectMapper.readValue(payload, StatusDTO.class);
-                        statusForwardingService.fowardStatusToEventHandler(dto);
+                        if (topic.startsWith("status/")) {
+                            StatusDTO dto = objectMapper.readValue(payload, StatusDTO.class);
+                            statusForwardingService.fowardStatusToEventHandler(dto);
+
+                        } else if (topic.startsWith("error/")) {
+                            ErrorDTO dto = objectMapper.readValue(payload, ErrorDTO.class);
+                            errorForwardingService.fowardErrorToEventHandler(dto);
+                        }
                     } catch (Exception e) {
-                        log.warn("Erro ao processar mensagem: {}", e.getMessage());
+                        log.warn("Erro ao processar mensagem (tópico={}): {}", topic, e.getMessage());
                     }
                 }
 
@@ -129,8 +142,8 @@ public class MqttAgent {
                 log.info("Tentando conectar ao Broker MQTT em {}...", brokerUrl);
                 client.connect(options);
                 
-                log.info("Conectado com sucesso! Realizando inscrição no tópico [{}]", topic);
-                client.subscribe(topic);
+                log.info("Conectado com sucesso! Inscrevendo nos tópicos [{}, {}]", topic, errorTopic);
+                client.subscribe(new String[]{topic, errorTopic}, new int[]{1, 1});
                 
                 isConnecting.set(false); // Libera o lock
                 return; // Sai do loop e encerra a thread

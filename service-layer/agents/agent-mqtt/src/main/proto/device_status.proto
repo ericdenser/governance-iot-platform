@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+// Os field numbers DEVEM bater com device_status.pb.h do firmware (nanopb).
+// Qualquer mudança aqui precisa ser refletida lá e vice-versa.
+
+package device;
+
+option java_package = "com.eric.agent.proto";
+option java_multiple_files = true;
+
+message DeviceStatus {
+  string mac        = 1;
+  float  fw_version = 2;
+  string ssid       = 3;
+  uint32 state      = 4;
+  string detail     = 5;
+}
