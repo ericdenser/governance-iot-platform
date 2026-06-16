@@ -10,7 +10,7 @@ option java_multiple_files = true;
 
 message DeviceStatus {
   string mac        = 1;
-  float  fw_version = 2;
+  string fw_version = 2;
   string ssid       = 3;
   uint32 state      = 4;
   string detail     = 5;

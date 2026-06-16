@@ -64,7 +64,7 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         Firmware firmware_atual = null;
 
         // VALIDAÇÃO 2: FIRMWARE QUE O DEVICE ATUAL ESTA RODANDO EXISTE?
-        float current_firmware_version = event.deviceInfo().firmware_version(); 
+        String current_firmware_version = event.deviceInfo().firmware_version();
         Optional<Firmware> firmware_atualOptional = firmwareRepository.findByVersion(current_firmware_version);
 
         // se essa versão não existe
@@ -81,12 +81,12 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         // VALIDAÇÃO 3: O FIRMWARE QUE SOFREU ROLLBACK É VÁLIDO?
         Firmware rollback_firmware;
         Map<String, Object> params = event.deviceInfo().params();
-        float rollback_version = ((Number) params.get("invalid_ver")).floatValue();
+        String rollback_version = params.get("invalid_ver") != null ? params.get("invalid_ver").toString() : null;
 
         // busca nos firmwares registrados
-        Optional<Firmware> rollback_firmwareOptional = firmwareRepository.findByVersion(rollback_version);
+        Optional<Firmware> rollback_firmwareOptional = rollback_version != null ? firmwareRepository.findByVersion(rollback_version) : Optional.empty();
 
-        boolean firmware_not_informed = ((Number) params.get("invalid_ver")).intValue() == 0;
+        boolean firmware_not_informed = rollback_version == null || rollback_version.isEmpty();
         boolean firmware_not_found = rollback_firmwareOptional.isEmpty();
 
         // Se o firmware não foi informado pelo device, ou o firmware não estava registrado no cmdb

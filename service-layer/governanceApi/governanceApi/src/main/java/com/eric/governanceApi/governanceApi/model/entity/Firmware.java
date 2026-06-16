@@ -19,7 +19,7 @@ public class Firmware {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private float version;
+    private String version;
 
     @Column(nullable = false)
     private String filename;           
@@ -49,4 +49,12 @@ public class Firmware {
     private int deployCount = 0;       // incrementa a cada broadcast
 
     private boolean provisioningFirmware = false;
+
+    public void decrementDeployCount() {
+        this.deployCount = Math.max(0, deployCount - 1);
+    }
+
+    public void incrementDeployCount() {
+        this.deployCount++;
+    }
 }

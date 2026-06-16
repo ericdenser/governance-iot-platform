@@ -11,7 +11,7 @@ option java_multiple_files = true;
 message DeviceError {
   string device_id    = 1;
   string mac          = 2;
-  float  fw_version   = 3;
+  string fw_version   = 3;
   string ssid         = 4;
   uint32 error_code   = 6;
   string error_msg    = 7;

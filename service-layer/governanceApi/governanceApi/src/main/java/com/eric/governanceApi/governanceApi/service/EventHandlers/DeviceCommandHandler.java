@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
+import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
@@ -12,8 +13,10 @@ import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
+import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
+import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DeviceCommandHandler implements DeviceEventHandler{
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
+    private final FirmwareRepository firmwareRepository;
 
 
     @Override
@@ -43,7 +47,7 @@ public class DeviceCommandHandler implements DeviceEventHandler{
 
         Optional<Device> deviceOptional = deviceRepository.findByDeviceId(event.deviceId());
 
-        // Se naão existe este device
+        // Se não existe este device
         if (deviceOptional.isEmpty()) {
             log.warn("Device de ID {} não encontrado.", event.deviceId());
             eventRegistry.setDevice(null);
@@ -74,7 +78,6 @@ public class DeviceCommandHandler implements DeviceEventHandler{
             log.warn("Device de ID {} confirmou execução, mas não há comandos PENDING no banco", device.getDeviceId());
 
             device.setStatus(DeviceStatus.ACTIVE);
-            deviceRepository.save(device);
             return;
         }
 
@@ -82,12 +85,31 @@ public class DeviceCommandHandler implements DeviceEventHandler{
         record.setCompletedAt(LocalDateTime.now());
         record.setStatus(CommandStatus.COMPLETED_SUCCESS);
         device.setStatus(DeviceStatus.ACTIVE);
+    
+
+        if (record.getCommandType() == DeviceCommands.FIRMWARE_ROLLBACK) {
+
+            Firmware currentFirmware = device.getFirmware();
+            currentFirmware.decrementDeployCount();
+
+            String reportedVersion = event.deviceInfo().firmware_version();
+            Optional<Firmware> firmwareOpt = firmwareRepository.findByVersion(reportedVersion);
+            if (firmwareOpt.isPresent()) {
+                device.setFirmware(firmwareOpt.get());
+                firmwareOpt.get().incrementDeployCount();
+                log.info("Rollback forçado confirmado. Device {} atualizado para firmware v{}.", device.getDeviceId(), reportedVersion);
+            } else {
+                log.warn("Rollback forçado confirmado, mas firmware v{} não está registrado no CMDB.", reportedVersion);
+                device.setFirmware(null);
+            }
+        }
+
         eventRegistry.setCompleted(true);
-        eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + "executou o comando [" + record.getCommandType().toString() + "] com sucesso!!");
+        eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + " executou o comando [" + record.getCommandType().toString() + "] com sucesso!");
 
         eventRegistryRepository.save(eventRegistry);
 
-        log.info("Device de ID {} executou o comando {} com sucesso!.", event.deviceId(), record.getCommandType().toString());
+        log.info("Device de ID {} executou o comando {} com sucesso.", event.deviceId(), record.getCommandType().toString());
 
     }
 }

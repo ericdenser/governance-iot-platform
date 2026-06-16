@@ -71,7 +71,7 @@ public class FlashPackageService {
 
             Firmware firmware = resolveProvisioningFirmware();
 
-            float firmwareVersion = firmware.getVersion();
+            String firmwareVersion = firmware.getVersion();
 
             writeCsv(csvPath, request, token.getToken(), deviceId, firmwareVersion);
             generateNvsBin(csvPath, nvsBinPath);
@@ -127,10 +127,8 @@ public class FlashPackageService {
         return path;
     }
 
-    private void writeCsv(Path csvPath, GenerateFlashPackageRequest request, String token, String deviceId, float firmwareVersion) throws IOException {
-        // fw_version é armazenado como bits de float (IEEE 754) via memcpy no firmware.
-        // O NVS partition gen espera o valor decimal do uint32 correspondente.
-        long fwVersionBits = Integer.toUnsignedLong(Float.floatToRawIntBits(firmwareVersion));
+    private void writeCsv(Path csvPath, GenerateFlashPackageRequest request, String token, String deviceId, String firmwareVersion) throws IOException {
+
         String csv = """
                 key,type,encoding,value
                 crypto_store,namespace,,
@@ -139,8 +137,8 @@ public class FlashPackageService {
                 prov_token,data,string,%s
                 device_id,data,string,%s
                 main_store,namespace,,
-                fw_version,data,u32,%d
-                """.formatted(request.wifiSsid(), request.wifiPass(), token, deviceId, fwVersionBits);
+                fw_version,data,string,%s
+                """.formatted(request.wifiSsid(), request.wifiPass(), token, deviceId, firmwareVersion);
 
         log.info(csv);
         Files.writeString(csvPath, csv);

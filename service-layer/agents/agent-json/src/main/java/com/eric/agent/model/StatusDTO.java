@@ -17,7 +17,7 @@ public record StatusDTO(
     String mac,
 
     @JsonProperty("fw_version")
-    Double firmwareVersion,
+    String firmwareVersion,
 
     @NotBlank(message = "ssid cannot be blank")
     String ssid,

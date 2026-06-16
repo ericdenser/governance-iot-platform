@@ -1,7 +1,8 @@
 package com.eric.governanceApi.governanceApi.enums.status;
 
 public enum ErrorStatus {
+    PENDING,
     FIXED,
-    FIX_FAILED,
-    PENDING
+    RETRY_FAILED,
+    NOT_FIXABLE
 }

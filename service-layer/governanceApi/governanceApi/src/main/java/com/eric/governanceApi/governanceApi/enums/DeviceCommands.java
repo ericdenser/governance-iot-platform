@@ -4,5 +4,6 @@ public enum DeviceCommands {
     UPDATE,
     REBOOT,
     DEEP_SLEEP,
+    FIRMWARE_ROLLBACK
 
 }

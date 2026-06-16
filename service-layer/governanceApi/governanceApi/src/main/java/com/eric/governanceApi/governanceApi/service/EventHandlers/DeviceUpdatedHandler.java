@@ -5,15 +5,18 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
+import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
 import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
+import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 
@@ -28,6 +31,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
     private final FirmwareRepository firmwareRepository;
+    private final ErrorRecordRepository errorRecordRepository;
 
     public EventType handles() { return EventType.DEVICE_UPDATED; }
 
@@ -75,7 +79,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
 
         // VALIDA FIRMWARE ATUAL
         Firmware current_firmware = null;
-        float current_firmware_version = event.deviceInfo().firmware_version();
+        String current_firmware_version = event.deviceInfo().firmware_version();
         Optional<Firmware> current_firmwareOptional = firmwareRepository.findByVersion(current_firmware_version);
 
         if (!current_firmwareOptional.isPresent()) {
@@ -110,6 +114,13 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         CommandRecord record = pendingCommand.get();
         record.setCompletedAt(LocalDateTime.now());
         record.setStatus(CommandStatus.COMPLETED_SUCCESS);
+
+        errorRecordRepository.findFirstByDevice_DeviceIdAndErrorOrderByReportedAtDesc(device.getDeviceId(), DeviceError.OTA_FAIL)
+            .ifPresent(err -> {
+                err.setFixedAt(LocalDateTime.now());
+                err.setStatus(ErrorStatus.FIXED);
+            });
+
 
     }   
 

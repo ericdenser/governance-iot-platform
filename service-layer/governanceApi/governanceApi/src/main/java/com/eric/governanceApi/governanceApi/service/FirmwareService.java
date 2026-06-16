@@ -52,7 +52,7 @@ public class FirmwareService {
 
     //  UPLOAD FIRMWARE: valida, salva no disco, registra no banco
     @Transactional
-    public Firmware upload(MultipartFile file, float version, String releaseNotes, boolean isProvisioning) throws Exception {
+    public Firmware upload(MultipartFile file, String version, String releaseNotes, boolean isProvisioning) throws Exception {
 
         // Não podemos subir 2 firmwares de provisionamento
         if (isProvisioning && firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
@@ -63,7 +63,7 @@ public class FirmwareService {
         validateBinary(file, version);
 
         String sha256    = computeSha256(file);
-        String filename  = String.format(java.util.Locale.US, "firmware_v%.2f_%s.bin", version, sha256.substring(0, 12));
+        String filename = "firmware_v" + version + "_" + sha256.substring(0, 12) + ".bin";
         Path dest        = Paths.get(storagePath, filename);
         
         try {
@@ -242,7 +242,7 @@ public class FirmwareService {
 
 
     //  Validações do arqv binário (METODO AUXILIAR)
-    private void validateBinary(MultipartFile file, float version) throws IOException {
+    private void validateBinary(MultipartFile file, String version) throws IOException {
 
         if (file.isEmpty())
             throw new IllegalArgumentException("Arquivo vazio.");

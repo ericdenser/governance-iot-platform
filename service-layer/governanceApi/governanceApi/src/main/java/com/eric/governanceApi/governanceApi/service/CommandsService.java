@@ -32,6 +32,7 @@ public class CommandsService {
             case UPDATE    -> handleUpdate(request);
             case REBOOT    -> handleSimpleCommand(request);
             case DEEP_SLEEP -> handleSimpleCommand(request);
+            case FIRMWARE_ROLLBACK -> handleSimpleCommand(request);
         };
     }
 

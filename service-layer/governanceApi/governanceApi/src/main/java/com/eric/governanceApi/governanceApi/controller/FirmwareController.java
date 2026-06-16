@@ -27,7 +27,7 @@ public class FirmwareController {
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
     public ResponseEntity<ApiResponse<Firmware>> upload(
             @RequestPart("file") MultipartFile file,
-            @RequestParam("version") float version,
+            @RequestParam("version") String version,
             @RequestParam("isProvisioning") boolean isProvisioning,
             @RequestParam(value = "releaseNotes", required = false) String releaseNotes,
             HttpServletRequest httpRequest) throws Exception {

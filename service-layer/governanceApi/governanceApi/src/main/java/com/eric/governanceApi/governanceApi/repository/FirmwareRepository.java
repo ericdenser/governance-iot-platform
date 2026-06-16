@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
 
-    Optional<Firmware> findByVersion(float version);
+    Optional<Firmware> findByVersion(String version);
 
     // busca qual o firmware que é o provisioning
     Optional<Firmware> findByProvisioningFirmwareTrue();
@@ -19,5 +19,5 @@ public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
 
     List<Firmware> findAllByOrderByVersionDesc();
 
-    boolean existsByVersion(float version);
+    boolean existsByVersion(String version);
 }

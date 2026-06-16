@@ -24,6 +24,8 @@ public class ErrorController {
 
     @PostMapping("/ingest")
     public ResponseEntity<Void> ingestError(@RequestBody DeviceErrorDTO errorDTO) {
+
+        log.info("Recebeu no ErrorController {}", errorDTO);
         errorDispatcherService.dispatch(errorDTO);
         return ResponseEntity.ok().build();
     }

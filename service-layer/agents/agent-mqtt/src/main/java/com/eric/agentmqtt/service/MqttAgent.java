@@ -99,7 +99,7 @@ public class MqttAgent {
                             StatusDTO dto = new StatusDTO(
                                 deviceId,
                                 proto.getMac(),
-                                String.valueOf(proto.getFwVersion()),
+                                proto.getFwVersion(),
                                 proto.getSsid(),
                                 String.valueOf(proto.getState()),
                                 parseDetail(proto.getDetail())
@@ -112,7 +112,7 @@ public class MqttAgent {
                             ErrorDTO dto = new ErrorDTO(
                                 err.getDeviceId(),
                                 err.getMac(),
-                                String.valueOf(err.getFwVersion()),
+                                err.getFwVersion(),
                                 err.getSsid(),
                                 String.valueOf(err.getErrorCode()),
                                 err.getErrorMsg(),

@@ -34,6 +34,9 @@ public class GlobalExceptionHandler {
 
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException ex, HttpServletRequest request) {
+
+                log.warn("Erro de validação: {}", ex.getMessage(), ex);
+
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(ApiResponse.error("PARAM_400", ex.getMessage(), request.getRequestURI()));
@@ -58,6 +61,7 @@ public class GlobalExceptionHandler {
 
         @ExceptionHandler(ResourceNotFoundException.class)
         public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
+                log.info(ex.getMessage());
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(ApiResponse.error("NOT_FOUND_404", ex.getMessage(), request.getRequestURI()));
@@ -97,6 +101,9 @@ public class GlobalExceptionHandler {
                 // Remove o atributo de content-negotiation que o ResourceHttpRequestHandler
                 // seta como 'application/octet-stream' ao servir .bin; sem isso, o Spring
                 // não encontra converter para ApiResponse e lança HttpMessageNotWritableException.
+                log.error("Erro não tratado em {}", request.getRequestURI(), ex);
+
+
                 request.removeAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
                 if (!response.isCommitted()) {
                         response.reset();

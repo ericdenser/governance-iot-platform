@@ -22,42 +22,25 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @Slf4j
 @RequiredArgsConstructor
-public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
+public class ErrorRollbackFailedHandler implements ErrorHandlerInterface {
 
     private final DeviceRepository deviceRepository;
     private final ErrorRecordRepository errorRecordRepository;
 
     @Override
-    public DeviceError handles() { return DeviceError.OTA_FAIL; }
+    public DeviceError handles() { return DeviceError.FIRMWARE_ROLLBACK_FAILED; }
 
     @Override
     @Transactional
     public void process(DeviceErrorDTO errorDTO) {
         log.info("PROCESSANDO ERRO {} PARA DEVICE ID-> {}", errorDTO.errorCode(), errorDTO.deviceId());
 
-        if (errorDTO.resolved()) {
-            log.info("ERRO {} PARA DEVICE ID-> {} FOI MARCADO COMO RESOLVED", errorDTO.errorCode(), errorDTO.deviceId());
-            errorRecordRepository.findLatestByDeviceAndErrorAndStatus(
-                errorDTO.deviceId(), DeviceError.OTA_FAIL, ErrorStatus.PENDING
-                ).ifPresentOrElse( record -> {
-                    record.setStatus(ErrorStatus.FIXED);
-                    record.setFixedAt(LocalDateTime.now());
-                    errorRecordRepository.save(record);
-                    log.info("ErrorRecord [{}] marcado como FIXED para device [{}]", record.getId(), errorDTO.deviceId());
-                }  , () -> 
-                    log.warn("Nenhum ErrorRecord PENDING de OTA_FAIL encontrado para device [{}]",
-                    errorDTO.deviceId())
-                ); 
-            return;
-        }
-
         ErrorRecord errorRecord = new ErrorRecord();
-
         errorRecord.setError(DeviceError.fromCode(errorDTO.errorCode()));
         errorRecord.setReportedAt(LocalDateTime.now());
         errorRecord.setMessage(errorDTO.errorMsg());
         errorRecord.setDetails(errorDTO.extra());
-        
+        errorRecord.setStatus(ErrorStatus.NOT_FIXABLE);
         
         Optional<Device> deviceOptional = deviceRepository.findByDeviceId(errorDTO.deviceId());
 
@@ -90,10 +73,8 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
         record.setStatus(CommandStatus.FAILED);
         device.setStatus(DeviceStatus.ACTIVE);
 
-        String attemptedVersion = record.getPayload().substring("firmware_version: ".length());
-
         
-        log.warn("Device [{}] falhou ao atualizar para v{} — OTA foi iniciado mas o download foi interrompido", errorDTO.deviceId(), attemptedVersion);
+        log.warn("Device [{}] falhou ao executar comando {}. Detalhes: {}", errorDTO.deviceId(), record.getCommandType().toString(), errorDTO.errorMsg());
 
         errorRecordRepository.save(errorRecord);
     }

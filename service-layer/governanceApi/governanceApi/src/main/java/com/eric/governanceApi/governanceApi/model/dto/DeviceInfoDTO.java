@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 public record DeviceInfoDTO(
 
     String mac,
-    float firmware_version,
+    String firmware_version,
     String ssid,
     String status,
     Map<String, Object> params

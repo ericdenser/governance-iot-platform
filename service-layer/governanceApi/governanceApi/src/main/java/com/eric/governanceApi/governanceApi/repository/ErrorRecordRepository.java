@@ -19,4 +19,9 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long> 
         @Param("status") ErrorStatus status
     );
 
+    Optional<ErrorRecord> findFirstByDevice_DeviceIdAndErrorOrderByReportedAtDesc(
+        String deviceId, 
+        DeviceError error
+    );
+
 }

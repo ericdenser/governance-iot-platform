@@ -31,6 +31,7 @@ public enum DeviceError {
     DEVICE_ID_MISSING,
     WIFI_CREDENTIALS_MISSING,
     FIRMWARE_VERSION_MISSING,
+    FIRMWARE_ROLLBACK_FAILED,
     UNKNOWN;
 
     public static DeviceError fromCode(String code) {
