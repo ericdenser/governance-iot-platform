@@ -3,7 +3,6 @@ import java.util.Map;
 
 import com.eric.eventhandler.event_handler.enums.DeviceState;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -18,9 +17,8 @@ public record StatusDTO(
     @NotBlank(message = "macAddress cannot be blank")
     String mac,
 
-    @JsonProperty("fw_version")
-    @NotNull(message = "firm version cannot be blank")
-    Double firmware_version,
+    @NotNull(message = "firm version cannot be null")
+    String firmware_version,
 
     @NotBlank(message = "ssid cannot be blank")
     String ssid,

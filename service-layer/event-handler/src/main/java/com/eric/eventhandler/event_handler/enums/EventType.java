@@ -19,6 +19,9 @@ public enum EventType {
     DEVICE_ERROR_REPORTED,
     DEVICE_REBOOTED,
 
+    // Comandos
+    DEVICE_COMMAND_COMPLETE,
+
     // Administrativo
     DEVICE_REVOKED
 }

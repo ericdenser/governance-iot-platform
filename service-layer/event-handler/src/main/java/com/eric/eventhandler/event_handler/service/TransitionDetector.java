@@ -136,14 +136,24 @@ public class TransitionDetector {
                 );
                 break;
 
-            case OTA_FAILED:
+            // EM OUTRO DETECTOR (ErrorDetector)
+            // case OTA_FAILED:
+
+            //     event = buildEvent(
+            //             EventType.DEVICE_UPDATE_FAILED,
+            //             dto,
+            //             previousState,
+            //             currentState);
+            //     break;
+
+            case COMMAND_COMPLETE:
 
                 event = buildEvent(
-                        EventType.DEVICE_UPDATE_FAILED,
-                        dto,
-                        previousState,
-                        currentState);
-                break;
+                    EventType.DEVICE_COMMAND_COMPLETE,
+                    dto,
+                    previousState, 
+                    currentState);
+
 
             default:
                 break;

@@ -28,7 +28,7 @@ public class DeviceSnapshot {
     @Enumerated(EnumType.STRING)
     private DeviceState status;
     
-    private Double firmwareVersion;
+    private String firmwareVersion;
     private String ssid;
     private LocalDateTime lastSeen;
 
