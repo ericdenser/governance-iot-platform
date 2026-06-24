@@ -16,7 +16,7 @@ public:
 
     static std::string handleRegisteringResponse(const std::string& responseBuffer, std::string& msgOut);
 
-    static bool handleProvisioningResponse(const std::string& responseBuffer, std::string& msgOut);
+    static bool handleProvisioningResponse(const std::string& responseBuffer, std::string& msgOut, bool time_synced);
 
     // Recupera a chave privada da NVS
     static std::string getPrivateKey();

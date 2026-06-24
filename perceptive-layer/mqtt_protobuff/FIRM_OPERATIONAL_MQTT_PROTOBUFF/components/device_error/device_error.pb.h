@@ -34,6 +34,7 @@ typedef struct _DeviceError {
     pb_callback_t error_source; /* field 8  — string */
     pb_callback_t extra;        /* field 9  — string (opcional) */
     bool          resolved;     /* field 10 — bool   (static) */
+    uint64_t      timestamp;    /* field 11 — uint64 Unix epoch seconds */
 } DeviceError;
 
 #ifdef __cplusplus
@@ -51,7 +52,8 @@ extern "C" {
     {{NULL}, NULL},  \
     {{NULL}, NULL},  \
     {{NULL}, NULL},  \
-    false            \
+    false,           \
+    0                \
 }
 #define DeviceError_init_zero DeviceError_init_default
 
@@ -66,6 +68,7 @@ extern "C" {
 #define DeviceError_error_source_tag 8
 #define DeviceError_extra_tag        9
 #define DeviceError_resolved_tag     10
+#define DeviceError_timestamp_tag    11
 
 /* ---- Descritores de campo (usados pelo PB_BIND em .pb.c) ---- */
 
@@ -78,7 +81,8 @@ X(a, STATIC,   SINGULAR, UINT32, error_code,   6)  \
 X(a, CALLBACK, SINGULAR, STRING, error_msg,    7)  \
 X(a, CALLBACK, SINGULAR, STRING, error_source, 8)  \
 X(a, CALLBACK, SINGULAR, STRING, extra,        9)  \
-X(a, STATIC,   SINGULAR, BOOL,   resolved,     10)
+X(a, STATIC,   SINGULAR, BOOL,   resolved,     10) \
+X(a, STATIC,   SINGULAR, UINT64, timestamp,    11)
 
 #define DeviceError_CALLBACK pb_default_field_callback
 #define DeviceError_DEFAULT  NULL

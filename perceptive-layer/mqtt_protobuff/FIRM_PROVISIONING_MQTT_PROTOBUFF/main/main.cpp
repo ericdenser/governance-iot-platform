@@ -6,8 +6,11 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_sntp.h"
+#include "i2cdev.h"
+#include "ds3231.h"
 
 #include "src/AppState.h"
+#include "src/GpsManager.h"
 #include "src/CryptoManager.h"
 #include "src/WifiManager.h"
 #include "src/HttpService.h"
@@ -18,6 +21,7 @@
 #include "src/CommandProcessor.h"
 #include "PayloadManager.h"
 
+#include "driver/uart.h"
 #include "pb_encode.h"
 #include "device_status.pb.h"
 #include "device_error.pb.h"
@@ -27,13 +31,19 @@
 // =============================================================================
 #define MAX_WIFI_RETRIES        10
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
-#define URL_PROVISIONING        "http://172.16.39.40:8082/api/provisioning/activate"
-#define URL_ERROR_REPORT        "http://172.16.39.40:8082/api/provisioning/error"
-#define ADVERTISE_INTERVAL_MS   1000
+#define URL_PROVISIONING        "http://172.16.39.40:8082/provisioning/activate"
+#define URL_ERROR_REPORT        "http://172.16.39.40:8082/provisioning/error"
+#define ADVERTISE_INTERVAL_MS   10000
+
+#define GPS_UART_PORT    UART_NUM_1
+#define GPS_UART_RX_PIN  GPIO_NUM_17
+#define GPS_UART_TX_PIN  GPIO_NUM_16
+#define GPS_POWER_PIN    GPIO_NUM_18  // NPN base (via 1kΩ) → corta VCC do GPS pelo PNP
 
 static const char* TAG           = "MAIN";
 static const char* NVS_NAMESPACE = "main_store";
 static bool valid_firmware       = false;
+static bool time_synced          = false;
 
 // =============================================================================
 //  Macros de log contextuais — prefixam automaticamente o estado atual
@@ -80,7 +90,7 @@ static bool encode_string(pb_ostream_t* stream, const pb_field_t* field, void* c
 
 
 static void publish_proto_error(const char* topic,
-                                const char* device_id,
+                                const char* device_id, 
                                 const char* mac,
                                 const char* fw_ver,
                                 const char* ssid,
@@ -100,6 +110,7 @@ static void publish_proto_error(const char* topic,
     msg.error_msg.funcs.encode    = encode_string; msg.error_msg.arg    = (void*)error_msg;
     msg.error_source.funcs.encode = encode_string; msg.error_source.arg = (void*)error_source;
     msg.resolved                  = resolved;
+    msg.timestamp                 = (uint64_t)time(NULL);
     if (extra) {
         msg.extra.funcs.encode = encode_string; msg.extra.arg = (void*)extra;
     }
@@ -113,7 +124,12 @@ static void publish_proto_error(const char* topic,
 }
 
 
-static void publish_proto_status(const char* topic, const char* mac, const char* fw_ver, const char* ssid, uint32_t state, const char* detail = nullptr) {
+static void publish_proto_status(const char* topic, 
+                                 const char* mac, 
+                                 const char* fw_ver, 
+                                 const char* ssid, 
+                                 uint32_t state, 
+                                 const char* detail = nullptr) {
 
     uint8_t proto_buf[256] = {};
     DeviceStatus msg = DeviceStatus_init_zero;
@@ -122,6 +138,7 @@ static void publish_proto_status(const char* topic, const char* mac, const char*
     msg.fw_version.funcs.encode = encode_string; msg.fw_version.arg = (void*)fw_ver;
     msg.ssid.funcs.encode      = encode_string; msg.ssid.arg      = (void*)ssid;
     msg.state                  = state;
+    msg.timestamp              = (uint64_t)time(NULL);
     if (detail) {
         msg.detail.funcs.encode = encode_string; msg.detail.arg  = (void*)detail;
     }
@@ -279,26 +296,128 @@ static void handle_wifi_connecting() {
 
 // ---- TIME_SYNC --------------------------------------------------------------
 static void handle_time_sync() {
-    SLOG_I("Iniciando sincronização NTP (servidor: pool.ntp.org)...");
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_init();
-    int retry = 2;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < 2) {
-        SLOG_I("Aguardando resposta NTP... (%d/15)", retry + 1);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        WatchdogManager::reset();
-        retry++;
+    SLOG_I("Iniciando sincronização de horário (GPS → NTP → MDM)...");
+
+    struct tm timeinfo = {};
+
+    // Helper local: grava struct tm no DS3231 (pula silenciosamente se não detectado)
+    auto writeToRTC = [&](const char* source) {
+        // Probe rápido via i2c_master_probe — retorno imediato, sem retry loop
+        i2c_dev_t probe = {};
+        probe.port               = I2C_NUM_0;
+        probe.addr               = 0x68;
+        probe.cfg.sda_io_num     = GPIO_NUM_8;
+        probe.cfg.scl_io_num     = GPIO_NUM_9;
+        probe.cfg.sda_pullup_en  = true;
+        probe.cfg.scl_pullup_en  = true;
+        probe.cfg.master.clk_speed = 400000;
+        i2c_dev_create_mutex(&probe);
+        bool ds3231Present = (i2c_dev_probe(&probe, I2C_DEV_WRITE) == ESP_OK);
+        i2c_dev_delete_mutex(&probe);
+
+        if (!ds3231Present) {
+            SLOG_W("DS3231 não detectado — gravação de horário ignorada.");
+            return;
+        }
+
+        i2c_dev_t rtc_dev = {};
+        if (ds3231_init_desc(&rtc_dev, I2C_NUM_0, GPIO_NUM_8, GPIO_NUM_9) == ESP_OK) {
+            rtc_dev.cfg.sda_pullup_en    = true;
+            rtc_dev.cfg.scl_pullup_en    = true;
+            rtc_dev.cfg.master.clk_speed = 400000;
+            if (ds3231_set_time(&rtc_dev, &timeinfo) == ESP_OK) {
+                SLOG_I("DS3231 atualizado com horário %s.", source);
+            } else {
+                SLOG_W("Falha ao gravar horário %s no DS3231.", source);
+            }
+            ds3231_free_desc(&rtc_dev);
+        } else {
+            SLOG_E("Falha ao inicializar descritor DS3231.");
+        }
+    };
+
+    // --- 1. GPS (mais preciso, não depende de rede) ---------------------------
+    SLOG_I("Ligando GPS (GPIO%d)...", GPS_POWER_PIN);
+    gpio_set_level(GPS_POWER_PIN, 1);
+    vTaskDelay(pdMS_TO_TICKS(500)); // aguarda módulo inicializar
+
+    // Probe rápido: instala UART, tenta ler sentença NMEA por ~2s.
+    // Evita bloquear 90s quando nenhum GPS está conectado.
+    bool gpsPresent = false;
+    {
+        uart_config_t probe_cfg = {
+            .baud_rate  = 9600,
+            .data_bits  = UART_DATA_8_BITS,
+            .parity     = UART_PARITY_DISABLE,
+            .stop_bits  = UART_STOP_BITS_1,
+            .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+            .source_clk = UART_SCLK_DEFAULT,
+        };
+        if (uart_driver_install(GPS_UART_PORT, 256, 0, 0, NULL, 0) == ESP_OK) {
+            uart_param_config(GPS_UART_PORT, &probe_cfg);
+            uart_set_pin(GPS_UART_PORT, GPS_UART_TX_PIN, GPS_UART_RX_PIN,
+                         UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+            uint8_t buf[64];
+            for (int i = 0; i < 10 && !gpsPresent; i++) {
+                int len = uart_read_bytes(GPS_UART_PORT, buf, sizeof(buf), pdMS_TO_TICKS(200));
+                for (int j = 0; j < len; j++) {
+                    if (buf[j] == '$') { gpsPresent = true; break; }
+                }
+            }
+            uart_driver_delete(GPS_UART_PORT);
+        }
     }
-    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET) {
-        SLOG_W("NTP não respondeu após %d tentativas. Continuando sem sincronização.", retry);
+
+    if (!gpsPresent) {
+        SLOG_W("GPS não detectado na UART%d — pulando espera de fix.", GPS_UART_PORT);
+        gpio_set_level(GPS_POWER_PIN, 0);
     } else {
-        time_t now;
-        struct tm timeinfo;
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        SLOG_I("Relógio sincronizado: %s", asctime(&timeinfo));
+        SLOG_I("GPS detectado. Aguardando fix (timeout 90s — cold start)...");
+        GpsFix gpsFix = {};
+        if (GpsManager::waitForFix(GPS_UART_TX_PIN, GPS_UART_RX_PIN, GPS_UART_PORT, gpsFix, 90000)) {
+            timeinfo          = gpsFix.time;
+            timeinfo.tm_isdst = 0;
+            time_t epoch = mktime(&timeinfo);
+            struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+            settimeofday(&tv, nullptr);
+            SLOG_I("Horário obtido do GPS: %04d-%02d-%02d %02d:%02d:%02d UTC",
+                   timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+            writeToRTC("GPS");
+            time_synced = true;
+        } else {
+            SLOG_W("GPS sem fix após 90s. Tentando NTP...");
+        }
+        gpio_set_level(GPS_POWER_PIN, 0);
+        SLOG_I("GPS desligado.");
     }
+
+    // --- 2. NTP (fallback via rede) -------------------------------------------
+    if (!time_synced) {
+        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, "pool.ntp.org");
+        esp_sntp_init();
+        int retry = 0;
+        while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < 3) {
+            SLOG_I("Aguardando resposta NTP... (%d/3)", retry + 1);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            WatchdogManager::reset();
+            retry++;
+        }
+        if (sntp_get_sync_status() != SNTP_SYNC_STATUS_RESET) {
+            time_t now;
+            time(&now);
+            localtime_r(&now, &timeinfo);
+            SLOG_I("Horário sincronizado via NTP: %s", asctime(&timeinfo));
+            writeToRTC("NTP");
+            time_synced = true;
+        } else {
+            SLOG_W("NTP não respondeu após %d tentativas. Fallback para timestamp do MDM.", retry);
+            // TODO: AppState::setError(ErrorCode::TIME_SYNC_FAIL, "NTP timeout", {TAG, "handle_time_sync"});
+        }
+    }
+
+    // --- 3. MDM timestamp: fallback final tratado em CryptoManager::handleProvisioningResponse
 
     // Verificação de próximo estado
     bool isProvisioned = CryptoManager::isProvisioned();
@@ -347,7 +466,7 @@ static void handle_provisioning() {
     SLOG_I("Processando resposta e salvando certificado na NVS...");
 
     // ============= CONSUMO DA RESPOSTA ===============
-    bool saved = CryptoManager::handleProvisioningResponse(responseBuffer, g_msgOut);
+    bool saved = CryptoManager::handleProvisioningResponse(responseBuffer, g_msgOut, time_synced);
     if (!saved) {
         SLOG_E("Falha ao processar resposta do MDM");
         return;
@@ -377,7 +496,7 @@ static void handle_mqtt_connecting() {
 // ---- PROVISIONING SUCCESS ------------------------------------------------------------
 static void handle_provisioning_success() {
 
-    int64_t now = esp_timer_get_time() / 10000; 
+    int64_t now = esp_timer_get_time() / 1000;
 
     // Avisa periodicamente que esta pronto para operação
     if (now - g_lastAdvertiseMs >= ADVERTISE_INTERVAL_MS) {
@@ -643,6 +762,13 @@ static void handle_waiting_instruction() {
 // =============================================================================
 extern "C" void app_main(void) {
     AppState::init();
+    i2cdev_init();
+
+    // GPIO de controle do transistor PNP que liga/desliga VCC do GPS
+    gpio_reset_pin(GPS_POWER_PIN);
+    gpio_set_direction(GPS_POWER_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPS_POWER_PIN, 0); // GPS começa desligado
+
     WatchdogManager::init(300000, true);
     WatchdogManager::addToCurrentTask();
 

@@ -5,8 +5,10 @@
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "AppState.h"
-
-
+#include <time.h>
+#include <sys/time.h>
+#include "ds3231.h"
+#include "i2cdev.h"
 
 // Bibliotecas da mbedTLS
 #include "mbedtls/entropy.h"
@@ -59,7 +61,7 @@ std::string CryptoManager::handleProvisioning(const std::string& deviceId, const
     return "";
 }
 
-bool CryptoManager::handleProvisioningResponse(const std::string& responseBuffer, std::string& msgOut) {
+bool CryptoManager::handleProvisioningResponse(const std::string& responseBuffer, std::string& msgOut, bool time_synced) {
     cJSON *root = cJSON_Parse(responseBuffer.c_str());
 
     if (root == NULL) {
@@ -88,6 +90,41 @@ bool CryptoManager::handleProvisioningResponse(const std::string& responseBuffer
         );
         cleanup();
         return false;
+    }
+
+    // Fallback de tempo: se NTP não sincronizou, usa o timestamp retornado pelo MDM
+    // e grava no DS3231 para persistir entre reboots
+    cJSON* tsNode = cJSON_GetObjectItem(root, "timestamp");
+    if (!time_synced && cJSON_IsString(tsNode)) {
+        struct tm t = {};
+        // Formato Java Instant: "2026-06-18T10:30:00.123456789Z"
+        // strptime para no '.' das frações de segundo — comportamento correto
+        if (strptime(tsNode->valuestring, "%Y-%m-%dT%H:%M:%S", &t) != nullptr) {
+            t.tm_isdst = 0;
+            time_t epoch = mktime(&t);
+            struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+            settimeofday(&tv, nullptr);
+
+            i2c_dev_t rtc_dev = {};
+            if (ds3231_init_desc(&rtc_dev, I2C_NUM_0, GPIO_NUM_8, GPIO_NUM_9) == ESP_OK) {
+                rtc_dev.cfg.sda_pullup_en    = true;
+                rtc_dev.cfg.scl_pullup_en    = true;
+                rtc_dev.cfg.master.clk_speed = 400000;
+                if (ds3231_set_time(&rtc_dev, &t) == ESP_OK) {
+                    ESP_LOGI(TAG, "DS3231 sincronizado via timestamp do MDM: %s", tsNode->valuestring);
+                } else {
+                    ESP_LOGW(TAG, "Falha ao gravar no DS3231.");
+                    // TODO: AppState::setError(ErrorCode::TIME_SYNC_FAIL, "Falha ao gravar timestamp MDM no DS3231", {TAG, "handleProvisioningResponse"});
+                }
+                ds3231_free_desc(&rtc_dev);
+            } else {
+                ESP_LOGE(TAG, "Falha ao inicializar descritor DS3231.");
+                // TODO: AppState::setError(ErrorCode::TIME_SYNC_FAIL, "DS3231 init_desc falhou", {TAG, "handleProvisioningResponse"});
+            }
+        } else {
+            ESP_LOGW(TAG, "Falha ao parsear timestamp do MDM: %s", tsNode->valuestring);
+            // TODO: AppState::setError(ErrorCode::TIME_SYNC_FAIL, "Falha ao parsear timestamp do MDM", {TAG, "handleProvisioningResponse"});
+        }
     }
 
     cJSON* dataNode = cJSON_GetObjectItem(root, "data");

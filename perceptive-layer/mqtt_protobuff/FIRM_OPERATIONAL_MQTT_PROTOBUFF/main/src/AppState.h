@@ -29,7 +29,8 @@ enum class DeviceState {
     HTTP_INIT,
     HTTP_REQUEST,
     WAITING_RESPONSE,
-    COMMAND_COMPLETE
+    COMMAND_COMPLETE,
+    SENSORS_INIT
 };
 
 enum class ErrorCode {

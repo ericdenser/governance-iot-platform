@@ -1,12 +1,20 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "esp_sntp.h"
 #include "cJSON.h"
+#include <sys/time.h>
+#include "ds3231.h"
+#include "i2cdev.h"
+
+#include "src/SensorDiscovery.h"
+#include "src/GpsManager.h"
+#include "src/BatteryManager.h"
+#include "src/AdcManager.h"
 
 #include "src/AppState.h"
 #include "src/CryptoManager.h"
@@ -20,6 +28,7 @@
 #include "pb_encode.h"
 #include "device_status.pb.h"
 #include "device_error.pb.h"
+#include "device_telemetry.pb.h"
 
 // =============================================================================
 //  Configurações
@@ -28,10 +37,12 @@
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
 #define URL_PROVISIONING        "http://172.16.39.40:8082/api/provisioning/activate"
 #define URL_ERROR_REPORT        "http://172.16.39.40:8082/api/provisioning/error"
-#define ADVERTISE_INTERVAL_MS   1000
+#define STATUS_INTERVAL_MS      30000
+#define TELEMETRY_INTERVAL_MS   5000
+#define GPS_SYNC_EVERY_N_BOOTS  24   // corrige drift do DS3231 a cada ~48min (ciclos de 2min)
 
 //ppgeec 172.16.39.40
-// alencar 192.168.15.76
+//alencar 192.168.15.76
 
 static const char* TAG           = "MAIN";
 static const char* NVS_NAMESPACE = "main_store";
@@ -50,11 +61,21 @@ static bool valid_firmware       = false;
 static std::string        g_macAddress;
 static std::string        g_deviceId;
 static std::string        g_msgOut;
-static int64_t            g_lastAdvertiseMs = 0;
-static esp_reset_reason_t g_reset_reason; // last reset reason
+static esp_reset_reason_t g_reset_reason;
 static std::string        firmware_version;
 static int                crashCount = 0;
-static bool hasBrokerConnection;
+
+static SensorMap   g_sensors      = {};
+static GpsManager  g_gpsManager;
+static std::string g_activeSensors;  // CSV populado em handle_sensor_discovery
+
+// ---- Fila de mensagens para o publisher task ---
+struct MqttMessage {
+    char    topic[128];
+    uint8_t payload[512];
+    size_t  payload_len;
+};
+static QueueHandle_t g_mqttQueue = NULL;
 
 // =============================================================================
 //  Helpers NVS
@@ -101,6 +122,7 @@ static void publish_proto_error(const char* topic,
     msg.error_msg.funcs.encode    = encode_string; msg.error_msg.arg    = (void*)error_msg;
     msg.error_source.funcs.encode = encode_string; msg.error_source.arg = (void*)error_source;
     msg.resolved                  = resolved;
+    msg.timestamp                 = (uint64_t)time(NULL);
     if (extra) {
         msg.extra.funcs.encode = encode_string; msg.extra.arg = (void*)extra;
     }
@@ -126,7 +148,8 @@ static void publish_proto_status(const char* topic,
     msg.mac.funcs.encode          = encode_string; msg.mac.arg          = (void*)mac;
     msg.fw_version.funcs.encode   = encode_string; msg.fw_version.arg   = (void*)fw_ver;
     msg.ssid.funcs.encode         = encode_string; msg.ssid.arg         = (void*)ssid;
-    msg.state                  = state;
+    msg.state                     = state;
+    msg.timestamp                 = (uint64_t)time(NULL);
     if (detail) {
         msg.detail.funcs.encode = encode_string; msg.detail.arg  = (void*)detail;
     }
@@ -140,8 +163,122 @@ static void publish_proto_status(const char* topic,
 }
 
 
+// =============================================================================
+//  Tasks operacionais — criadas uma única vez ao entrar em OPERATIONAL
+// =============================================================================
 
+// ---- Task: leitura de sensores e publicação de telemetria (5 s) ---------
+static void telemetry_task(void* /*pvParameters*/) {
+    while (true) {
+        if (!AppState::is(DeviceState::OPERATIONAL)) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
 
+        MqttMessage msg = {};
+        snprintf(msg.topic, sizeof(msg.topic), "telemetry/%s", g_deviceId.c_str());
+
+        DeviceTelemetry proto = DeviceTelemetry_init_zero;
+        proto.device_id.funcs.encode = encode_string;
+        proto.device_id.arg          = (void*)g_deviceId.c_str();
+        proto.timestamp              = (uint64_t)time(NULL);
+
+        pb_size_t n = 0;
+
+        // --- GPS: latitude, longitude, altitude ---
+        if (g_sensors.gps && g_gpsManager.hasFix()) {
+            strncpy(proto.readings[n].key, "latitude",  SENSOR_KEY_MAX_SIZE - 1);
+            proto.readings[n].value = g_gpsManager.getLat(); n++;
+
+            strncpy(proto.readings[n].key, "longitude", SENSOR_KEY_MAX_SIZE - 1);
+            proto.readings[n].value = g_gpsManager.getLon(); n++;
+
+            strncpy(proto.readings[n].key, "altitude",  SENSOR_KEY_MAX_SIZE - 1);
+            proto.readings[n].value = g_gpsManager.getAlt(); n++;
+        }
+
+        // --- Bateria (mV) via ADC + divisor de tensão ---
+        if (g_sensors.battery_adc) {
+            strncpy(proto.readings[n].key, "battery_mv", SENSOR_KEY_MAX_SIZE - 1);
+            proto.readings[n].value = BatteryManager::readBattery(); n++;
+        }
+
+        // --- BMP280 (pressão / temperatura) ---
+        if (g_sensors.bmp280) {
+            // --- Temperatura (°C) ---
+            strncpy(proto.readings[n].key, "temperature", SENSOR_KEY_MAX_SIZE - 1);
+            proto.readings[n].value = 1.0f; // TODO: bmp280
+            n++;
+
+            // --- Umidade (%) ---
+            strncpy(proto.readings[n].key, "humidity", SENSOR_KEY_MAX_SIZE - 1);
+            proto.readings[n].value = 2.0f; // TODO: bmp280
+            n++;
+        }
+
+        proto.readings_count = n;
+
+        pb_ostream_t os = pb_ostream_from_buffer(msg.payload, sizeof(msg.payload));
+        if (pb_encode(&os, DeviceTelemetry_fields, &proto)) {
+            msg.payload_len = os.bytes_written;
+            xQueueSend(g_mqttQueue, &msg, 0);
+        } else {
+            ESP_LOGE(TAG, "pb_encode DeviceTelemetry falhou: %s", PB_GET_ERROR(&os));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(TELEMETRY_INTERVAL_MS));
+    }
+}
+
+// ---- Task: publicação de status do device (30 s) ------------------------
+static void status_task(void* /*pvParameters*/) {
+    while (true) {
+        if (!AppState::is(DeviceState::OPERATIONAL)) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        MqttMessage msg = {};
+        snprintf(msg.topic, sizeof(msg.topic), "status/%s", g_deviceId.c_str());
+
+        std::string ssid = WifiManager::getSSID();
+
+        DeviceStatus proto = DeviceStatus_init_zero;
+        proto.mac.funcs.encode        = encode_string; proto.mac.arg        = (void*)g_macAddress.c_str();
+        proto.fw_version.funcs.encode = encode_string; proto.fw_version.arg = (void*)firmware_version.c_str();
+        proto.ssid.funcs.encode       = encode_string; proto.ssid.arg       = (void*)ssid.c_str();
+        proto.state                   = (uint32_t)AppState::get();
+        proto.timestamp               = (uint64_t)time(NULL);
+        if (!g_activeSensors.empty()) {
+            proto.active_sensors.funcs.encode = encode_string;
+            proto.active_sensors.arg          = (void*)g_activeSensors.c_str();
+        }
+
+        pb_ostream_t os = pb_ostream_from_buffer(msg.payload, sizeof(msg.payload));
+        if (pb_encode(&os, DeviceStatus_fields, &proto)) {
+            msg.payload_len = os.bytes_written;
+            xQueueSend(g_mqttQueue, &msg, 0);
+        } else {
+            ESP_LOGE(TAG, "pb_encode DeviceStatus falhou: %s", PB_GET_ERROR(&os));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(STATUS_INTERVAL_MS));
+    }
+}
+
+// ---- Task: drena a fila e publica no broker (bloqueante) ----------------
+static void mqtt_publisher_task(void* /*pvParameters*/) {
+    MqttMessage msg;
+    while (true) {
+        if (xQueueReceive(g_mqttQueue, &msg, pdMS_TO_TICKS(5000))) {
+            if (AppState::is(DeviceState::OPERATIONAL) && MqttManager::isConnected()) {
+                MqttManager::publish(msg.payload, msg.payload_len, msg.topic);
+            }
+            // Se desconectado ou fora de OPERATIONAL: descarta. O status/telemetria
+            // não tem garantia de entrega (QoS 0) — o próximo ciclo vai reenviar.
+        }
+    }
+}
 
 
 // =============================================================================
@@ -287,29 +424,157 @@ static void handle_wifi_connecting() {
 
 // ---- TIME_SYNC -------------------------------[TRANSICIONA PRA MQTT]---------------------
 static void handle_time_sync() {
-    SLOG_I("Iniciando sincronização NTP (servidor: pool.ntp.org)...");
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_init();
-    int retry = 2;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < 2) {
-        SLOG_I("Aguardando resposta NTP... (%d/15)", retry + 1);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        WatchdogManager::reset();
-        retry++;
-    }
-    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET) {
-        SLOG_W("NTP não respondeu após %d tentativas. Continuando sem sincronização.", retry);
+    SLOG_I("Iniciando sincronização de horário (DS3231 → GPS a cada %d boots)...", GPS_SYNC_EVERY_N_BOOTS);
+
+    struct tm timeinfo = {};
+    bool synced        = false;
+
+    // Probe rápido via i2c_master_probe para ver se ds3231 está disponivel
+    auto probeDS3231 = [&]() -> bool {
+        i2c_dev_t probe = {};
+        probe.port               = I2C_NUM_0;
+        probe.addr               = 0x68;
+        probe.cfg.sda_io_num     = GPIO_NUM_8;
+        probe.cfg.scl_io_num     = GPIO_NUM_9;
+        probe.cfg.sda_pullup_en  = true;
+        probe.cfg.scl_pullup_en  = true;
+        probe.cfg.master.clk_speed = 400000;
+        i2c_dev_create_mutex(&probe);
+        bool present = (i2c_dev_probe(&probe, I2C_DEV_WRITE) == ESP_OK);
+        i2c_dev_delete_mutex(&probe);
+        return present;
+    };
+
+    // Helper: grava timeinfo no DS3231 (pula se não detectado)
+    auto writeToRTC = [&](const char* source) {
+        if (!probeDS3231()) {
+            SLOG_W("DS3231 não detectado — gravação de horário ignorada.");
+            return;
+        }
+        i2c_dev_t rtc_dev = {};
+        if (ds3231_init_desc(&rtc_dev, I2C_NUM_0, GPIO_NUM_8, GPIO_NUM_9) == ESP_OK) {
+            rtc_dev.cfg.sda_pullup_en    = true;
+            rtc_dev.cfg.scl_pullup_en    = true;
+            rtc_dev.cfg.master.clk_speed = 400000;
+            if (ds3231_set_time(&rtc_dev, &timeinfo) == ESP_OK) {
+                SLOG_I("DS3231 atualizado com horário %s.", source);
+            } else {
+                SLOG_W("Falha ao gravar horário %s no DS3231.", source);
+            }
+            ds3231_free_desc(&rtc_dev);
+        } else {
+            SLOG_E("Falha ao inicializar descritor DS3231.");
+        }
+    };
+
+    // --- 1. DS3231: fonte primária 
+    if (probeDS3231()) {
+        i2c_dev_t rtc_dev = {};
+        if (ds3231_init_desc(&rtc_dev, I2C_NUM_0, GPIO_NUM_8, GPIO_NUM_9) == ESP_OK) {
+            rtc_dev.cfg.sda_pullup_en    = true;
+            rtc_dev.cfg.scl_pullup_en    = true;
+            rtc_dev.cfg.master.clk_speed = 400000;
+            if (ds3231_get_time(&rtc_dev, &timeinfo) == ESP_OK && timeinfo.tm_year >= 124) {
+                timeinfo.tm_isdst = 0;
+                time_t epoch = mktime(&timeinfo);
+                struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+                settimeofday(&tv, nullptr);
+                SLOG_I("Horário restaurado do DS3231: %04d-%02d-%02d %02d:%02d:%02d",
+                       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+                synced = true;
+            } else {
+                SLOG_W("DS3231 sem horário válido. Tentando GPS...");
+            }
+            ds3231_free_desc(&rtc_dev);
+        }
     } else {
-        time_t now;
-        struct tm timeinfo;
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        SLOG_I("Relógio sincronizado: %s", asctime(&timeinfo));
+        SLOG_W("DS3231 não detectado. Tentando GPS...");
+    }
+
+    // --- 2. GPS: corrige drift do DS3231 a cada N boots OU sem sincronização ---
+    int32_t boot_count = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_get_i32(h, "boot_count", &boot_count);
+        boot_count++;
+        nvs_set_i32(h, "boot_count", boot_count);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    bool gps_sync_due = (boot_count % GPS_SYNC_EVERY_N_BOOTS == 0);
+
+    if (!synced || gps_sync_due) {
+        if (gps_sync_due && synced) {
+            SLOG_I("Boot #%ld — ciclo periódico de correção GPS do DS3231.", boot_count);
+        }
+        SLOG_I("Ligando GPS (GPIO%d)...", GPS_POWER_PIN);
+        gpio_set_level(GPS_POWER_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(500)); // aguarda módulo inicializar
+
+        SLOG_I("Tentando obter horário e posição do GPS (timeout 8s)...");
+        GpsFix gpsFix = {};
+        if (GpsManager::waitForFix(GPS_UART_TX_PIN, GPS_UART_RX_PIN, GPS_UART_PORT, gpsFix, 8000)) {
+            timeinfo          = gpsFix.time;
+            timeinfo.tm_isdst = 0;
+            time_t epoch = mktime(&timeinfo);
+            struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+            settimeofday(&tv, nullptr);
+            SLOG_I("Horário obtido do GPS: %04d-%02d-%02d %02d:%02d:%02d UTC",
+                   timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                   timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+            writeToRTC("GPS");
+            synced = true;
+        } else {
+            SLOG_W("GPS sem fix. %s", synced ? "Mantendo horário do DS3231." : "Sem fonte de tempo disponível.");
+            // TODO: AppState::setError(ErrorCode::TIME_SYNC_FAIL, "GPS timeout no ciclo de correção", {TAG, "handle_time_sync"});
+        }
+
+        gpio_set_level(GPS_POWER_PIN, 0); // desliga GPS 
+        SLOG_I("GPS desligado após time_sync.");
+    }
+
+    if (!synced) {
+        SLOG_W("Nenhuma fonte de tempo disponível. Continuando sem sincronização.");
     }
 
     AppState::transition(DeviceState::MQTT_INIT, {TAG, "handle_time_sync"});
+}
 
+// ---- SENSORS_INIT ----------------------------[TRANSICIONA PRA OPERATIONAL]--------------
+static void handle_sensor_discovery() {
+    SLOG_I("Iniciando descoberta de sensores...");
+
+    // Liga GPS para que o probe de UART funcione
+    gpio_set_level(GPS_POWER_PIN, 1);
+    vTaskDelay(pdMS_TO_TICKS(500)); // aguarda módulo inicializar
+
+    SensorDiscovery::run(g_sensors, &g_gpsManager);
+
+    g_activeSensors.clear();
+    auto appendSensor = [](const char* name) {
+        if (!g_activeSensors.empty()) g_activeSensors += ',';
+        g_activeSensors += name;
+    };
+    if (g_sensors.bmp280)       appendSensor("bmp280");
+    if (g_sensors.ds3231)       appendSensor("ds3231");
+    if (g_sensors.gps)          appendSensor("gps");
+    if (g_sensors.battery_adc)  appendSensor("battery_adc");
+
+    SLOG_I("Mapa de sensores — BMP280:%s | DS3231:%s | GPS:%s | BAT_ADC:%s",
+           g_sensors.bmp280      ? "SIM" : "NÃO",
+           g_sensors.ds3231      ? "SIM" : "NÃO",
+           g_sensors.gps         ? "SIM" : "NÃO",
+           g_sensors.battery_adc ? "SIM" : "NÃO");
+
+    if (!g_sensors.gps) {
+        gpio_set_level(GPS_POWER_PIN, 0); // GPS não detectado: desliga para poupar energia
+        SLOG_W("GPS não detectado. Pino de energia desligado.");
+    } else {
+        SLOG_I("GPS detectado. Mantendo ligado para a task contínua.");
+    }
+
+    AppState::transition(DeviceState::OPERATIONAL, {TAG, "handle_sensor_discovery"});
 }
 
 // ---- MQTT_CONNECTING -------------------------[TRANSICIONA PRA HANDLE_ROLLBACK]----------
@@ -509,35 +774,28 @@ static void handle_boot_audit() {
     if (AppState::hasQueuedErrors()) {
         AppState::transition(DeviceState::ERROR, {TAG, "handle_boot_audit"});
     } else {
-        AppState::transition(DeviceState::OPERATIONAL, {TAG, "handle_boot_audit"});
+        AppState::transition(DeviceState::SENSORS_INIT, {TAG, "handle_boot_audit"});
     }
 }
 
-// ---- PROVISIONING SUCCESS ------------------------------------------------------------
+// ---- OPERATIONAL --------------------------------------------------------
 static void handle_operational() {
-
-    int64_t now = esp_timer_get_time() / 10000; 
-    
-
-    // TODO: FLUXO DE LER SENSOR, ENVIAR DADOS PRO TOPICO TELEMETRIA E STATUS PRO TOPICO STATUS
-    // Avisa periodicamente que esta pronto para operação
-    if (now - g_lastAdvertiseMs >= ADVERTISE_INTERVAL_MS) {
-        g_lastAdvertiseMs = now;
-
-        if (!MqttManager::isConnected()) {
-            vTaskDelay(pdMS_TO_TICKS(500));
-            return;
+    static bool started = false;
+    if (!started) {
+        g_mqttQueue = xQueueCreate(10, sizeof(MqttMessage));
+        xTaskCreate(telemetry_task,      "telemetry", 4096, NULL, 4, NULL);
+        xTaskCreate(status_task,         "status",    4096, NULL, 4, NULL);
+        xTaskCreate(mqtt_publisher_task, "mqtt_pub",  4096, NULL, 5, NULL);
+        if (g_sensors.gps) {
+            xTaskCreate(GpsManager::taskWrapper, "gps", 4096, &g_gpsManager, 3, NULL);
         }
-
-        std::string ssid = WifiManager::getSSID();
-        char topic[64];
-        snprintf(topic, sizeof(topic), "status/%s", g_deviceId.c_str());
-
-        SLOG_I("Publicando advertise. Tópico: [%s]", topic);
-
-        publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(), ssid.c_str(), (uint8_t)AppState::get());
+        started = true;
+        SLOG_I("Tasks operacionais iniciadas (telemetria %ds / status %ds) | GPS:%s BAT:%s BMP280:%s",
+               TELEMETRY_INTERVAL_MS / 1000, STATUS_INTERVAL_MS / 1000,
+               g_sensors.gps         ? "SIM" : "NÃO",
+               g_sensors.battery_adc ? "SIM" : "NÃO",
+               g_sensors.bmp280      ? "SIM" : "NÃO");
     }
-
     vTaskDelay(pdMS_TO_TICKS(500));
 }
 
@@ -637,6 +895,13 @@ static void handle_waiting_instruction() {
 // =============================================================================
 extern "C" void app_main(void) {
     AppState::init();
+    i2cdev_init();
+
+    // GPIO de controle do transistor PNP que liga/desliga VCC do GPS
+    gpio_reset_pin(GPS_POWER_PIN);
+    gpio_set_direction(GPS_POWER_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPS_POWER_PIN, 0); // GPS começa desligado
+
     WatchdogManager::init(60000, true);
     WatchdogManager::addToCurrentTask();
 
@@ -651,6 +916,7 @@ extern "C" void app_main(void) {
             case DeviceState::MQTT_WAITING_CONNECT:      vTaskDelay(pdMS_TO_TICKS(5000)); break;
             case DeviceState::ERROR:                     handle_error();                break;
             case DeviceState::BOOT_AUDIT:                handle_boot_audit();           break;
+            case DeviceState::SENSORS_INIT:              handle_sensor_discovery();     break;
             case DeviceState::OTA_FOUND:                                                break;
             case DeviceState::OTA_DOWNLOADING:                                          break;
             case DeviceState::WAITING_RESPONSE:          handle_waiting_instruction();  break;

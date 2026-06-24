@@ -211,6 +211,7 @@ const char* AppState::toString(DeviceState state) {
         case DeviceState::HTTP_REQUEST:         return "HTTP_REQUEST";
         case DeviceState::WAITING_RESPONSE:     return "WAITING_RESPONSE";
         case DeviceState::COMMAND_COMPLETE:     return "COMMAND_COMPLETE";
+        case DeviceState::SENSORS_INIT:         return "SENSORS_INIT";
         default:                                return "UNKNOWN";
     }
 }
