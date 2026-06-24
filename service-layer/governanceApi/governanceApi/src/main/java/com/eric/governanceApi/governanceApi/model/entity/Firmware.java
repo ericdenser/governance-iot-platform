@@ -1,22 +1,30 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 
 @Entity
 @Table(name = "firmwares")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 public class Firmware {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "firmware_id", unique = true, nullable = false, updatable = false)
+    private String firmwareId;
 
     @Column(nullable = false, unique = true)
     private String version;
@@ -43,8 +51,12 @@ public class Firmware {
     @Column(nullable = false)
     private FirmwareStatus status = FirmwareStatus.STAGED;
 
+    // TODO
+    @OneToMany(mappedBy = "firmware", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<FirmwareSensorConfig> sensorConfigs = new ArrayList<>();
+
     @Column(nullable = false)
-    private LocalDateTime uploadedAt = LocalDateTime.now();
+    private Instant uploadedAt = Instant.now();
 
     private int deployCount = 0;       // incrementa a cada broadcast
 
@@ -56,5 +68,12 @@ public class Firmware {
 
     public void incrementDeployCount() {
         this.deployCount++;
+    }
+
+    @PrePersist
+    private void generateDeviceId() {
+        if (this.firmwareId == null) {
+            this.firmwareId = UUID.randomUUID().toString();
+        }
     }
 }

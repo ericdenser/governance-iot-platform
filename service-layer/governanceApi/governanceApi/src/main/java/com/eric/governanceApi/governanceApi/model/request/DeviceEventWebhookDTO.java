@@ -1,4 +1,4 @@
-package com.eric.governanceApi.governanceApi.model.dto;
+package com.eric.governanceApi.governanceApi.model.request;
 
 import java.time.Instant;
 

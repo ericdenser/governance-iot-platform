@@ -9,9 +9,15 @@ import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
+import com.eric.governanceApi.governanceApi.model.request.FirmwareUploadMetadataDTO;
+import com.eric.governanceApi.governanceApi.model.request.SensorConfigDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
+import com.eric.governanceApi.governanceApi.repository.SensorRepository;
+
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +36,7 @@ public class FirmwareService {
     private final FirmwareRepository firmwareRepository;
     private final DeviceRepository deviceRepository;
     private final AgentClient agentClient;
+    private final SensorRepository sensorRepository;
     //private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${ota.firmware-storage-path}")
@@ -43,27 +50,28 @@ public class FirmwareService {
 
     public FirmwareService(FirmwareRepository firmwareRepository,
                            DeviceRepository deviceRepository,
-                           AgentClient agentClient) {
+                           AgentClient agentClient, SensorRepository sensorRepository) {
         this.firmwareRepository = firmwareRepository;
         this.deviceRepository = deviceRepository;
         this.agentClient = agentClient;
+        this.sensorRepository = sensorRepository;
     }
 
 
     //  UPLOAD FIRMWARE: valida, salva no disco, registra no banco
     @Transactional
-    public Firmware upload(MultipartFile file, String version, String releaseNotes, boolean isProvisioning) throws Exception {
+    public Firmware upload(MultipartFile file, FirmwareUploadMetadataDTO metadataDTO) throws Exception {
 
         // Não podemos subir 2 firmwares de provisionamento
-        if (isProvisioning && firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
+        if (metadataDTO.isProvisioning() && firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
 
             throw new ConflictException("Provisioning firmware already exists");
         }
 
-        validateBinary(file, version);
+        validateBinary(file, metadataDTO.version());
 
         String sha256    = computeSha256(file);
-        String filename = "firmware_v" + version + "_" + sha256.substring(0, 12) + ".bin";
+        String filename = "firmware_v" + metadataDTO.version() + "_" + sha256.substring(0, 12) + ".bin";
         Path dest        = Paths.get(storagePath, filename);
         
         try {
@@ -77,20 +85,37 @@ public class FirmwareService {
         dest.toFile().setWritable(false);
 
         Firmware fw = new Firmware();
-        fw.setVersion(version);
+        fw.setVersion(metadataDTO.version());
         fw.setFilename(filename);
         fw.setOriginalFilename(file.getOriginalFilename());
         fw.setSha256(sha256);
         fw.setSizeBytes(file.getSize());
         fw.setDownloadUrl(publicBaseUrl + "/" + filename);
-        fw.setReleaseNotes(releaseNotes);
-        fw.setProvisioningFirmware(isProvisioning);
+        fw.setReleaseNotes(metadataDTO.releaseNotes());
+        fw.setProvisioningFirmware(metadataDTO.isProvisioning());
         fw.setStatus(FirmwareStatus.STAGED);
+
+
+        // Valida sensores
+        if (metadataDTO.sensors() != null && !metadataDTO.sensors().isEmpty()) {
+            for (SensorConfigDTO sensorDto : metadataDTO.sensors()) {
+                sensorRepository.findBySensorId(sensorDto.sensorId()).ifPresent(sensor -> {
+
+                    FirmwareSensorConfig cfg = new FirmwareSensorConfig();
+                    cfg.setFirmware(fw);
+                    cfg.setPin(sensorDto.pin());
+                    cfg.setSensor(sensor);
+
+                    fw.getSensorConfigs().add(cfg);
+                }
+                );
+            }
+        }
 
         firmwareRepository.save(fw);
 
         log.info("Firmware v{} registrado — SHA256: {} | {} bytes | ID: {}",
-                 version, sha256, file.getSize(), fw.getId());
+                 metadataDTO.version(), sha256, file.getSize(), fw.getId());
 
         return fw;
     }
@@ -201,10 +226,12 @@ public class FirmwareService {
     }
 
     //  LIST: retorna todos os firmwares ordenados por versão
+    // TODO retornar lista de FirmwareResponseDTO para nao expor o ID do banco de dados
     public List<Firmware> listAll() {
         return firmwareRepository.findAllByOrderByVersionDesc();
     }
 
+    // TODO retornar lista de FirmwareResponseDTO para nao expor o ID do banco de dados
     public List<Firmware> listDeployable() {
         List<Firmware> result = new ArrayList<>();
         result.addAll(firmwareRepository.findByStatusOrderByVersionDesc(FirmwareStatus.STAGED));
@@ -212,6 +239,7 @@ public class FirmwareService {
         return result;
     }
 
+    // TODO retornar lista de FirmwareResponseDTO para nao expor o ID do banco de dados
     @Transactional
     public Firmware setProvisioningFirmware(Long newFirmwareId) {
         firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(

@@ -1,6 +1,6 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -31,13 +31,13 @@ public class DeviceCertificate {
     private String serialNumber;
 
     @Column(name = "issued_at")
-    private LocalDateTime issuedAt;
+    private Instant issuedAt;
 
     @Column(name = "expires_at")
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     @Column(name = "revoked_at")
-    private LocalDateTime revokedAt;
+    private Instant revokedAt;
 
     @OneToOne
     @JoinColumn(name = "device_id")
@@ -45,7 +45,7 @@ public class DeviceCertificate {
 
     @PrePersist
     public void prePersist() {
-        this.issuedAt = LocalDateTime.now();
+        this.issuedAt = Instant.now();
     }
 }
 

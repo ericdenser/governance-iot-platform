@@ -1,6 +1,5 @@
 package com.eric.governanceApi.governanceApi.service.EventHandlers;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.springframework.stereotype.Component;
@@ -9,11 +8,11 @@ import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
-import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
@@ -57,7 +56,7 @@ public class DeviceCommandHandler implements DeviceEventHandler{
         }
 
         Device device = deviceOptional.get();
-        device.setLastSeen(LocalDateTime.now());
+        device.setLastSeen(event.timestamp());
         eventRegistry.setDevice(device);
 
         // Se não estava com status válido
@@ -82,7 +81,7 @@ public class DeviceCommandHandler implements DeviceEventHandler{
         }
 
         CommandRecord record = pendingCommand.get();
-        record.setCompletedAt(LocalDateTime.now());
+        record.setCompletedAt(event.timestamp());
         record.setStatus(CommandStatus.COMPLETED_SUCCESS);
         device.setStatus(DeviceStatus.ACTIVE);
     

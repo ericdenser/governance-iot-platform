@@ -1,7 +1,6 @@
 package com.eric.governanceApi.governanceApi.service;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -97,12 +96,8 @@ public class DeviceProvisioningService {
         DeviceCertificate cert = new DeviceCertificate();
         cert.setCertificatePem(certData.pemString);
         cert.setDevice(device);
-        cert.setIssuedAt(certData.certificateObj.getNotBefore().toInstant()
-            .atZone(ZoneId.systemDefault())
-            .toLocalDateTime());
-        cert.setExpiresAt(certData.certificateObj.getNotAfter().toInstant()
-            .atZone(ZoneId.systemDefault())
-            .toLocalDateTime());
+        cert.setIssuedAt(certData.certificateObj.getNotBefore().toInstant());
+        cert.setExpiresAt(certData.certificateObj.getNotAfter().toInstant());
 
         deviceCertificateRepository.save(cert);
         
@@ -110,7 +105,7 @@ public class DeviceProvisioningService {
         device.setDeviceId(request.getDeviceId());
         device.setMacAddress(request.getMacAddress());
         device.setStatus(DeviceStatus.PROVISIONING);
-        device.setLastSeen(LocalDateTime.now());
+        device.setLastSeen(Instant.now());
         device.setFirmware(firmwareRepository.findByProvisioningFirmwareTrue().get());
 
         // Retorna o PEM do certificado para o ESP32 guardar na memória (NVS)

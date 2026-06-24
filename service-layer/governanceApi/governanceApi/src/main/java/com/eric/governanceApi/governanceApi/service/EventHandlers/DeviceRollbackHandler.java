@@ -1,7 +1,7 @@
 package com.eric.governanceApi.governanceApi.service.EventHandlers;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.stereotype.Component;
@@ -10,10 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
-import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
+import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
@@ -59,7 +60,7 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         }
         // persiste
         Device device = deviceOptional.get();
-        device.setLastSeen(LocalDateTime.now());
+        device.setLastSeen(event.timestamp());
         eventRegistry.setDevice(device);
         Firmware firmware_atual = null;
 
@@ -76,6 +77,14 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
 
             device.setFirmware(firmware_atual); // substitui o antigo (que sofreu rollback) pelo atual
             firmware_atual.setDeployCount(firmware_atual.getDeployCount() + 1); // incrementa deploy count
+        }
+
+        if (firmware_atual != null) {
+            Map<String, Boolean> sensorStatus = new HashMap<>();
+            for (FirmwareSensorConfig cfg : firmware_atual.getSensorConfigs()) {
+                sensorStatus.put(cfg.getSensor().getName(), false);
+            }
+            device.setSensorStatus(sensorStatus);
         }
 
         // VALIDAÇÃO 3: O FIRMWARE QUE SOFREU ROLLBACK É VÁLIDO?

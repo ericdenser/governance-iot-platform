@@ -1,6 +1,6 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
 
@@ -36,14 +36,14 @@ public class ErrorRecord {
 
     // Data de envio
     @Column(name = "sent_at", nullable = false)
-    private LocalDateTime reportedAt = LocalDateTime.now();
+    private Instant reportedAt = Instant.now();
 
     @Column(name = "message", columnDefinition = "TEXT")
     private String message;
 
     // Data em que o ESP32 confirmou a execução (pode ser null se ainda estiver pendente)
     @Column(name = "completed_at")
-    private LocalDateTime fixedAt;
+    private Instant fixedAt;
 
     @Column(name = "error_details", length = 500)
     private String details;

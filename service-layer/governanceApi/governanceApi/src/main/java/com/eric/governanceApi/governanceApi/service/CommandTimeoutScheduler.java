@@ -1,6 +1,7 @@
 package com.eric.governanceApi.governanceApi.service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -26,7 +27,7 @@ public class CommandTimeoutScheduler {
     @Transactional
     public void processCommandTimeouts() {
         // Define a tolerância. Se o ESP32 não responder em 5 minutos, consideramos Timeout.
-        LocalDateTime timeoutThreshold = LocalDateTime.now().minusMinutes(5);
+        Instant timeoutThreshold = Instant.now().minus(5, ChronoUnit.MINUTES);
 
         List<CommandRecord> expiredCommands = commandRecordRepository
                 .findByStatusAndSentAtBefore(CommandStatus.PENDING, timeoutThreshold);
@@ -37,10 +38,10 @@ public class CommandTimeoutScheduler {
 
         log.info("Encontrados {} comandos estagnados. Processando expiração por Timeout...", expiredCommands.size());
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
 
         for (CommandRecord command : expiredCommands) {
-            
+
             command.setStatus(CommandStatus.TIMEOUT);
             command.setCompletedAt(now);
             command.setErrorMessage("Timeout atingido: O dispositivo não respondeu dentro do limite de 5 minutos.");

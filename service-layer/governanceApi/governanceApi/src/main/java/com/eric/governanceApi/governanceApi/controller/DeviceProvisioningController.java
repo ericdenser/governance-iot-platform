@@ -22,7 +22,7 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/provisioning")
+@RequestMapping("/provisioning")
 public class DeviceProvisioningController {
 
     private final DeviceProvisioningService provisioningService;
@@ -56,6 +56,7 @@ public class DeviceProvisioningController {
         return ResponseEntity.ok(ApiResponse.success(certificatePem, httpRequest.getRequestURI()));
     }
 
+    // TODO trocar pelo UUID
     @PostMapping("/{device_id}/revoke")
     public ResponseEntity<ApiResponse<String>> revokeDevice(@PathVariable("device_id") Long device_id, HttpServletRequest httpRequest) throws Exception {
         

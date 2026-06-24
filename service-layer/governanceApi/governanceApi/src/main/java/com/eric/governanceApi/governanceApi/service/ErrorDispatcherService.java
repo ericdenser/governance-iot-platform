@@ -1,6 +1,6 @@
 package com.eric.governanceApi.governanceApi.service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -9,9 +9,9 @@ import org.springframework.stereotype.Service;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
-import com.eric.governanceApi.governanceApi.model.dto.DeviceErrorDTO;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
+import com.eric.governanceApi.governanceApi.model.request.DeviceErrorDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import com.eric.governanceApi.governanceApi.service.ErrorHandlers.ErrorHandlerInterface;
@@ -58,18 +58,20 @@ public class ErrorDispatcherService {
 
             log.warn("Saving error record...");
 
+            Instant ts = errorDTO.deviceTimestamp() != null ? errorDTO.deviceTimestamp() : Instant.now();
+
             ErrorRecord errorRecord = new ErrorRecord();
             errorRecord.setError(DeviceError.fromCode(errorDTO.errorCode()));
-            errorRecord.setReportedAt(LocalDateTime.now());
+            errorRecord.setReportedAt(ts);
             errorRecord.setMessage(errorDTO.errorMsg());
             errorRecord.setDetails(errorDTO.extra());
             errorRecord.setDevice(device);
 
-            device.setLastSeen(LocalDateTime.now());
+            device.setLastSeen(ts);
             deviceRepository.save(device);
 
             if (errorDTO.resolved()) {
-                errorRecord.setFixedAt(LocalDateTime.now());
+                errorRecord.setFixedAt(ts);
                 errorRecord.setStatus(ErrorStatus.FIXED);
             }
 

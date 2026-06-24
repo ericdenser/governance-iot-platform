@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 import com.eric.governanceApi.governanceApi.enums.EventType;
-import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
+import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.service.EventHandlers.DeviceEventHandler;
 
 import lombok.extern.slf4j.Slf4j;

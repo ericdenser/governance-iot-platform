@@ -41,6 +41,9 @@ public class DeviceRevokeService {
         this.restClient = restClient;
     }
 
+
+
+    // TODO trocar pelo UUID
     @Transactional
     public String revokeDevice(Long device_id) throws Exception{
 

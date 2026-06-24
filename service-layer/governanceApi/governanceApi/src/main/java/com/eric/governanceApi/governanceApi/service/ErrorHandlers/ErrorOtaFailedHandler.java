@@ -1,6 +1,6 @@
 package com.eric.governanceApi.governanceApi.service.ErrorHandlers;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 import org.springframework.stereotype.Component;
@@ -10,10 +10,10 @@ import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
-import com.eric.governanceApi.governanceApi.model.dto.DeviceErrorDTO;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
+import com.eric.governanceApi.governanceApi.model.request.DeviceErrorDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,30 +35,32 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
     public void process(DeviceErrorDTO errorDTO) {
         log.info("PROCESSANDO ERRO {} PARA DEVICE ID-> {}", errorDTO.errorCode(), errorDTO.deviceId());
 
+        Instant ts = errorDTO.deviceTimestamp() != null ? errorDTO.deviceTimestamp() : Instant.now();
+
         if (errorDTO.resolved()) {
             log.info("ERRO {} PARA DEVICE ID-> {} FOI MARCADO COMO RESOLVED", errorDTO.errorCode(), errorDTO.deviceId());
             errorRecordRepository.findLatestByDeviceAndErrorAndStatus(
                 errorDTO.deviceId(), DeviceError.OTA_FAIL, ErrorStatus.PENDING
-                ).ifPresentOrElse( record -> {
+                ).ifPresentOrElse(record -> {
                     record.setStatus(ErrorStatus.FIXED);
-                    record.setFixedAt(LocalDateTime.now());
+                    record.setFixedAt(ts);
                     errorRecordRepository.save(record);
                     log.info("ErrorRecord [{}] marcado como FIXED para device [{}]", record.getId(), errorDTO.deviceId());
-                }  , () -> 
+                }, () ->
                     log.warn("Nenhum ErrorRecord PENDING de OTA_FAIL encontrado para device [{}]",
                     errorDTO.deviceId())
-                ); 
+                );
             return;
         }
 
         ErrorRecord errorRecord = new ErrorRecord();
 
         errorRecord.setError(DeviceError.fromCode(errorDTO.errorCode()));
-        errorRecord.setReportedAt(LocalDateTime.now());
+        errorRecord.setReportedAt(ts);
         errorRecord.setMessage(errorDTO.errorMsg());
         errorRecord.setDetails(errorDTO.extra());
-        
-        
+
+
         Optional<Device> deviceOptional = deviceRepository.findByDeviceId(errorDTO.deviceId());
 
         if (deviceOptional.isEmpty()) {
@@ -69,10 +71,10 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
         }
 
         Device device = deviceOptional.get();
-        device.setLastSeen(LocalDateTime.now()); // TODO, AJUSTAR PARA SER O TIMESTAMP QUE O ESP ENVIA
+        device.setLastSeen(ts);
         errorRecord.setDevice(device);
 
-        
+
         Optional<CommandRecord> pendingCommand = device.getCommandRecords().stream()
                                                 .filter(c -> c.getStatus() == CommandStatus.PENDING).findFirst();
 
@@ -86,7 +88,7 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
         }
 
         CommandRecord record = pendingCommand.get();
-        record.setCompletedAt(LocalDateTime.now());
+        record.setCompletedAt(ts);
         record.setStatus(CommandStatus.FAILED);
         device.setStatus(DeviceStatus.ACTIVE);
 

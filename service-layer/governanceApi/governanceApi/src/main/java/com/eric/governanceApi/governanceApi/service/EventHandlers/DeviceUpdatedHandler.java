@@ -1,6 +1,7 @@
 package com.eric.governanceApi.governanceApi.service.EventHandlers;
 
-import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.stereotype.Component;
@@ -10,11 +11,12 @@ import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
-import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
+import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
@@ -61,7 +63,8 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
 
         Device device = deviceOptional.get();
         eventRegistry.setDevice(device);
-        device.setLastSeen(LocalDateTime.now());
+        device.setLastSeen(event.timestamp());
+
 
         // ESTADO INVÁLIDO
         if (device.getStatus() != DeviceStatus.COMMAND_PENDING) {
@@ -100,6 +103,16 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + "atualizou para a versão [v" + current_firmware_version + "] com sucesso!!");
         eventRegistry.setCompleted(true);
 
+        // TODO: Atualiza o mapa de sensores daquele device para bater com do firmware novo
+
+       
+        Map<String, Boolean> sensorStatus = new HashMap<>();
+        for (FirmwareSensorConfig cfg : current_firmware.getSensorConfigs()) {
+                sensorStatus.put(cfg.getSensor().getName(), false);
+        }
+
+        device.setSensorStatus(sensorStatus);
+
         eventRegistryRepository.save(eventRegistry);
 
         // Atualiza no registro de comandos
@@ -112,12 +125,13 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         }
 
         CommandRecord record = pendingCommand.get();
-        record.setCompletedAt(LocalDateTime.now());
+        record.setCompletedAt(event.timestamp());
         record.setStatus(CommandStatus.COMPLETED_SUCCESS);
 
+        final java.time.Instant ts = event.timestamp();
         errorRecordRepository.findFirstByDevice_DeviceIdAndErrorOrderByReportedAtDesc(device.getDeviceId(), DeviceError.OTA_FAIL)
             .ifPresent(err -> {
-                err.setFixedAt(LocalDateTime.now());
+                err.setFixedAt(ts);
                 err.setStatus(ErrorStatus.FIXED);
             });
 

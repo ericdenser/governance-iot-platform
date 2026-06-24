@@ -1,15 +1,19 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 
 import lombok.Data;
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -19,6 +23,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
@@ -53,10 +58,10 @@ public class Device {
     private DeviceStatus status;
 
     @Column(name = "created_at")
-    private LocalDateTime created_at = LocalDateTime.now();
+    private Instant createdAt = Instant.now();
 
     @Column(name = "last_seen")
-    private LocalDateTime lastSeen;
+    private Instant lastSeen;
 
     @Column(name = "command_record")
     @OneToMany(mappedBy = "targetDevice", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -68,7 +73,17 @@ public class Device {
     @OneToOne(mappedBy = "device", cascade = CascadeType.ALL)
     private DeviceCertificate certificate;
 
-    
+    @ElementCollection
+    @CollectionTable(
+        name = "device_sensors_status",
+        joinColumns = @JoinColumn(name = "device_id")
+
+    )
+    @MapKeyColumn(name = "sensor_name")
+    @Column(name = "active")
+    Map<String, Boolean> sensorStatus = new HashMap<>();
+
+
     @PrePersist
     private void generateDeviceId() {
         if (this.deviceId == null) {

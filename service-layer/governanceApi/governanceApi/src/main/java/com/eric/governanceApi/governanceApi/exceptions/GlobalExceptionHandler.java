@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.HandlerMapping;
+import org.springframework.web.servlet.NoHandlerFoundException;
 
 import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 
@@ -118,6 +119,23 @@ public class GlobalExceptionHandler {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(ApiResponse.error("CONFLICT_409", ex.getMessage(), request.getRequestURI()));
+        }
+
+
+        @ExceptionHandler(NoHandlerFoundException.class)
+        public ResponseEntity<ApiResponse<Void>> handleNoHandlerFound(
+                NoHandlerFoundException ex,
+                HttpServletRequest request) {
+
+        log.warn("Endpoint não encontrado: {} {}", ex.getHttpMethod(), ex.getRequestURL());
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(ApiResponse.error(
+                        "NOT_FOUND_404",
+                        "Endpoint não encontrado",
+                        request.getRequestURI()
+                ));
         }
 
         @ExceptionHandler({ClientAbortException.class, IOException.class})

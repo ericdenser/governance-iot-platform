@@ -1,4 +1,4 @@
-package com.eric.governanceApi.governanceApi.model.dto;
+package com.eric.governanceApi.governanceApi.model.request;
 
 import java.util.Map;
 
@@ -12,7 +12,8 @@ public record DeviceInfoDTO(
     String firmware_version,
     String ssid,
     String status,
-    Map<String, Object> params
+    Map<String, Object> params,
+    String activeSensors
 ) {
     
 

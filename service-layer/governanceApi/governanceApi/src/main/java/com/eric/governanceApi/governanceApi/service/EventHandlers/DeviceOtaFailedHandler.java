@@ -1,6 +1,5 @@
 package com.eric.governanceApi.governanceApi.service.EventHandlers;
 
-import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 
@@ -9,9 +8,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
-import com.eric.governanceApi.governanceApi.model.dto.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
+import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 
@@ -51,7 +50,7 @@ public class DeviceOtaFailedHandler implements DeviceEventHandler {
         }
 
         Device device = deviceOptional.get();
-        device.setLastSeen(LocalDateTime.now());
+        device.setLastSeen(event.timestamp());
         eventRegistry.setDevice(device);
 
         Map<String, Object> params = event.deviceInfo().params();

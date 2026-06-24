@@ -1,4 +1,6 @@
-package com.eric.governanceApi.governanceApi.model.dto;
+package com.eric.governanceApi.governanceApi.model.request;
+
+import java.time.Instant;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -10,22 +12,22 @@ public record DeviceErrorDTO (
     String mac,
 
     String firmware_version,
-    
+
     String ssid,
-    
+
     @JsonProperty("error_code")
     String errorCode,
-    
+
     @JsonProperty("error_msg")
     String errorMsg,
-    
+
     @JsonProperty("error_source")
     String errorSource,
 
     String extra,
 
-    boolean resolved
+    boolean resolved,
 
-){
-    
-}
+    Instant deviceTimestamp
+
+){}

@@ -1,6 +1,6 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -31,10 +31,10 @@ public class ProvisioningToken {
     private boolean used = false;
 
     @Column(name = "expires_at")
-    private LocalDateTime exp;
+    private Instant exp;
 
     @Column(name = "issued_at")
-    private LocalDateTime iat;
+    private Instant iat;
 
     @OneToOne
     @JoinColumn(name = "device_id")
@@ -46,7 +46,7 @@ public class ProvisioningToken {
             throw new SecurityException("Token already used.");
             
         }
-        if (this.exp.isBefore(LocalDateTime.now())) {
+        if (this.exp.isBefore(Instant.now())) {
             throw new SecurityException("Token expired.");
         }
     }
@@ -54,7 +54,7 @@ public class ProvisioningToken {
     public ProvisioningToken(Device device, int lifeTimeInSeconds) {
         this.device = device;
         this.token = UUID.randomUUID().toString().replace("-", "");
-        this.iat = LocalDateTime.now();
+        this.iat = Instant.now();
         this.exp = this.iat.plusSeconds(lifeTimeInSeconds);
     }
 }
