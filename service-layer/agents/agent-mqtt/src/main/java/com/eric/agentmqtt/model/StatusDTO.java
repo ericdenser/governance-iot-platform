@@ -1,5 +1,6 @@
 package com.eric.agentmqtt.model;
 
+import java.time.Instant;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -23,6 +24,10 @@ public record StatusDTO(
     @NotNull(message = "status cannot be null")
     String status,
 
-    Map<String, Object> params
+    Map<String, Object> params,
+
+    Instant deviceTimestamp,
+
+    String activeSensors
 
 ) {}

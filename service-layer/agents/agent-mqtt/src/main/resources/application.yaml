@@ -6,12 +6,14 @@ mqtt:
   client-id: agent-mqtt
   topic: status/#
   error-topic: error/#
-
+  telemetry-topic: telemetry/#
   keystore-path: classpath:certs/agents.p12
   keystore-password: ${AGENT_KEYSTORE_PASS}
-
   truststore-path: classpath:certs/truststore.p12
   truststore-password: ${AGENT_TRUSTSTORE_PASS}
+
+datalogger:
+  url: http://localhost:8081
 
 spring:
   application:

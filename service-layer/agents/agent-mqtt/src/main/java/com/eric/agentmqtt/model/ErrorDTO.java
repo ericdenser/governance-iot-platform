@@ -1,5 +1,7 @@
 package com.eric.agentmqtt.model;
 
+import java.time.Instant;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -22,6 +24,8 @@ public record ErrorDTO(
 
     String extra,
 
-    boolean resolved
+    boolean resolved,
+
+    Instant deviceTimestamp
 
 ){}

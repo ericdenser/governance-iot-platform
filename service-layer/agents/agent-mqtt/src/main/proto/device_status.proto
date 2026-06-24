@@ -14,4 +14,6 @@ message DeviceStatus {
   string ssid       = 3;
   uint32 state      = 4;
   string detail     = 5;
+  uint64 timestamp  = 6;
+  string active_sensors = 7;
 }

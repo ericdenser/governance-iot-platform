@@ -2,11 +2,15 @@ package com.eric.agentmqtt.service;
 
 import com.eric.agent.proto.DeviceError;
 import com.eric.agent.proto.DeviceStatus;
+import com.eric.agent.proto.DeviceTelemetry;
+import com.eric.agent.proto.SensorReading;
 import com.eric.agentmqtt.model.ErrorDTO;
 import com.eric.agentmqtt.model.StatusDTO;
+import com.eric.agentmqtt.model.TelemetryDTO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import java.time.Instant;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
@@ -18,6 +22,7 @@ import org.springframework.stereotype.Service;
 import javax.net.ssl.*;
 import java.io.InputStream;
 import java.security.KeyStore;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -27,11 +32,14 @@ public class MqttAgent {
 
     private final StatusForwardingService statusForwardingService;
     private final ErrorForwardingService errorForwardingService;
+    private final TelemetryForwardingService telemetryForwardingService;
 
     public MqttAgent(StatusForwardingService statusForwardingService,
-                     ErrorForwardingService errorForwardingService) {
+                     ErrorForwardingService errorForwardingService,
+                     TelemetryForwardingService telemetryForwardingService) {
         this.statusForwardingService = statusForwardingService;
         this.errorForwardingService = errorForwardingService;
+        this.telemetryForwardingService = telemetryForwardingService;
     }
 
     @Value("${mqtt.broker-url}")
@@ -45,6 +53,9 @@ public class MqttAgent {
 
     @Value("${mqtt.error-topic}")
     private String errorTopic;
+
+    @Value("${mqtt.telemetry-topic}")
+    private String telemetryTopic;
 
     @Value("${mqtt.keystore-path}")
     private Resource keystoreResource;
@@ -96,19 +107,28 @@ public class MqttAgent {
                         if (topic.startsWith("status/")) {
                             String deviceId = topic.substring(topic.indexOf("/") + 1);
                             DeviceStatus proto = DeviceStatus.parseFrom(payload);
+                            Instant ts = proto.getTimestamp() > 0
+                                ? Instant.ofEpochSecond(proto.getTimestamp())
+                                : Instant.now();
                             StatusDTO dto = new StatusDTO(
                                 deviceId,
                                 proto.getMac(),
                                 proto.getFwVersion(),
                                 proto.getSsid(),
                                 String.valueOf(proto.getState()),
-                                parseDetail(proto.getDetail())
+                                parseDetail(proto.getDetail()),
+                                ts,
+                                proto.getActiveSensors()
+                                
                             );
                             log.info("{}", dto);
                             statusForwardingService.fowardStatusToEventHandler(dto);
 
                         } else if (topic.startsWith("error/")) {
                             DeviceError err = DeviceError.parseFrom(payload);
+                            Instant ts = err.getTimestamp() > 0
+                                ? Instant.ofEpochSecond(err.getTimestamp())
+                                : Instant.now();
                             ErrorDTO dto = new ErrorDTO(
                                 err.getDeviceId(),
                                 err.getMac(),
@@ -118,10 +138,24 @@ public class MqttAgent {
                                 err.getErrorMsg(),
                                 err.getErrorSource(),
                                 err.getExtra().isEmpty() ? null : err.getExtra(),
-                                err.getResolved()
+                                err.getResolved(),
+                                ts
                             );
                             log.info("{}", dto);
                             errorForwardingService.fowardErrorToEventHandler(dto);
+
+                        } else if (topic.startsWith("telemetry/")) {
+                            DeviceTelemetry proto = DeviceTelemetry.parseFrom(payload);
+                            Instant ts = proto.getTimestamp() > 0
+                                ? Instant.ofEpochSecond(proto.getTimestamp())
+                                : Instant.now();
+                            Map<String, Float> readings = new LinkedHashMap<>();
+                            for (SensorReading r : proto.getReadingsList()) {
+                                readings.put(r.getKey(), r.getValue());
+                            }
+                            TelemetryDTO dto = new TelemetryDTO(proto.getDeviceId(), readings, ts);
+                            log.info("{}", dto);
+                            telemetryForwardingService.forwardTelemetryToDataLogger(dto);
                         }
 
                     } catch (Exception e) {
@@ -165,8 +199,8 @@ public class MqttAgent {
             try {
                 log.info("Tentando conectar ao Broker MQTT em {}...", brokerUrl);
                 client.connect(options);
-                log.info("Conectado! Inscrevendo nos tópicos [{}, {}]", topic, errorTopic);
-                client.subscribe(new String[]{topic, errorTopic}, new int[]{1, 1});
+                log.info("Conectado! Inscrevendo nos tópicos [{}, {}, {}]", topic, errorTopic, telemetryTopic);
+                client.subscribe(new String[]{topic, errorTopic, telemetryTopic}, new int[]{1, 1, 0});
                 isConnecting.set(false);
                 return;
             } catch (Exception e) {

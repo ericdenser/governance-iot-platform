@@ -18,4 +18,5 @@ message DeviceError {
   string error_source = 8;
   string extra        = 9;
   bool   resolved     = 10;
+  uint64 timestamp    = 11;
 }

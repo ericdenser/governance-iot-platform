@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+// Field numbers DEVEM bater com device_telemetry.pb.h do firmware (nanopb).
+// Qualquer mudança aqui precisa ser refletida lá e vice-versa.
+
+package device;
+
+option java_package = "com.eric.agent.proto";
+option java_multiple_files = true;
+
+message SensorReading {
+  string key   = 1;
+  float  value = 2;
+}
+
+message DeviceTelemetry {
+  string                 device_id = 1;
+  repeated SensorReading readings  = 2;
+  uint64                 timestamp = 3;
+}
