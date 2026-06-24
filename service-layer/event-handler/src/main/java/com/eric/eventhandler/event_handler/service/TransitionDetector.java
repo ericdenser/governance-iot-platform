@@ -3,6 +3,7 @@ package com.eric.eventhandler.event_handler.service;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 
@@ -41,15 +42,39 @@ public class TransitionDetector {
             deviceSnapshot.setDeviceId(dto.device_id());
         }
 
+        // Busca ultimo estado
         DeviceState previousState = deviceSnapshot.getStatus();
-
+        String previousSensors = deviceSnapshot.getActiveSensors();
+        
+        // Atualiza ultimo estado
         deviceSnapshot.updateFrom(dto);
 
+        // Persiste
         snapshotRepository.save(deviceSnapshot);
 
-        return detectTransition(dto, previousState);
+        // Check transição
+        DeviceEvent stateEvent = detectTransition(dto, previousState);
+        if (stateEvent != null) return stateEvent;
+
+        // Segundo check - só dispara se sensores mudaram e operational
+        return detectSensorChange(dto, previousSensors);
     }
 
+    private DeviceEvent detectSensorChange(StatusDTO dto, String previousSensors) {
+        String currentSensors = dto.activeSensors();
+
+        boolean emptyReports = (currentSensors == null || currentSensors.isBlank()) 
+                                && (previousSensors == null || previousSensors.isBlank());
+
+        boolean sensorsChanged = !Objects.equals(previousSensors, currentSensors);
+        boolean isOperational = dto.status() == DeviceState.OPERATIONAL;
+
+        if (isOperational && sensorsChanged && !emptyReports) {
+            log.info("Mudança de sensores detectada: [{}] -> [{}]", previousSensors, currentSensors);
+            return buildEvent(EventType.DEVICE_SENSOR_STATUS_CHANGED, dto, dto.status(), dto.status());
+        }
+        return null;
+    }
 
     private DeviceEvent detectTransition(StatusDTO dto, DeviceState previousState) {
 
@@ -114,7 +139,9 @@ public class TransitionDetector {
                         dto.firmware_version(),
                         dto.ssid(),
                         currentState,
-                        params
+                        params,
+                        dto.deviceTimestamp(),
+                        dto.activeSensors()
                     );
 
                     event = buildEvent(
@@ -135,16 +162,6 @@ public class TransitionDetector {
                     currentState
                 );
                 break;
-
-            // EM OUTRO DETECTOR (ErrorDetector)
-            // case OTA_FAILED:
-
-            //     event = buildEvent(
-            //             EventType.DEVICE_UPDATE_FAILED,
-            //             dto,
-            //             previousState,
-            //             currentState);
-            //     break;
 
             case COMMAND_COMPLETE:
 
@@ -175,7 +192,7 @@ public class TransitionDetector {
             .previousStatus(previousStatus)
             .newStatus(newStatus)
             .deviceInfo(dto)
-            .timestamp(Instant.now())
+            .timestamp(dto.deviceTimestamp() != null ? dto.deviceTimestamp() : Instant.now())
             .build();
     }
 

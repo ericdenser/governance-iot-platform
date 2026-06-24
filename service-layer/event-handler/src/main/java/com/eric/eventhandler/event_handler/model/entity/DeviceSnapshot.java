@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import com.eric.eventhandler.event_handler.enums.DeviceState;
 import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
@@ -30,13 +30,15 @@ public class DeviceSnapshot {
     
     private String firmwareVersion;
     private String ssid;
-    private LocalDateTime lastSeen;
+    private Instant lastSeen;
+    private String activeSensors;
 
     public void updateFrom(StatusDTO dto) {
         this.mac = dto.mac();
         this.status = dto.status();
         this.firmwareVersion = dto.firmware_version();
         this.ssid = dto.ssid();
-        this.lastSeen = LocalDateTime.now();
+        this.lastSeen = dto.deviceTimestamp() != null ? dto.deviceTimestamp() : Instant.now();
+        this.activeSensors = dto.activeSensors();
     }
 }

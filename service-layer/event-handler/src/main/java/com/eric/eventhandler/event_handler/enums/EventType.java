@@ -23,5 +23,8 @@ public enum EventType {
     DEVICE_COMMAND_COMPLETE,
 
     // Administrativo
-    DEVICE_REVOKED
+    DEVICE_REVOKED,
+
+    // Operacional
+    DEVICE_SENSOR_STATUS_CHANGED
 }

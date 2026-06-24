@@ -1,6 +1,6 @@
 package com.eric.eventhandler.event_handler.model.entity;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import com.eric.eventhandler.event_handler.enums.DeviceState;
 import com.eric.eventhandler.event_handler.enums.EventType;
@@ -45,6 +45,6 @@ public class EventLog {
     @Enumerated(EnumType.STRING)
     private DeviceState newStatus;
 
-    private LocalDateTime timestamp = LocalDateTime.now();
+    private Instant timestamp = Instant.now();
 }
 

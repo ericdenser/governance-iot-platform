@@ -102,7 +102,7 @@ public class SubscriberRegistry {
             subscriber.getEventsSubscribed().add(sub);
             
             log.info("New signature: {} → {} in {}", subscriberName, eventType, webhookUrl);
-            result = "New sub: " + subscriberName + " signed to -> " + eventType +  " with the webhookUrl: " + webhookUrl + "successfully";
+            result = "New sub: " + subscriberName + " signed to -> " + eventType +  " with the webhookUrl: " + webhookUrl + " successfully";
         }
 
         eventSubRepository.save(sub);

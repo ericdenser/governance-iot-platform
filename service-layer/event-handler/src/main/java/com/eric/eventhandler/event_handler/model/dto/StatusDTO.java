@@ -1,4 +1,6 @@
 package com.eric.eventhandler.event_handler.model.dto;
+
+import java.time.Instant;
 import java.util.Map;
 
 import com.eric.eventhandler.event_handler.enums.DeviceState;
@@ -8,7 +10,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-// DTO enviado pelo agent
 public record StatusDTO(
 
     @NotBlank(message = "device_id cannot be blank")
@@ -26,8 +27,10 @@ public record StatusDTO(
     @NotNull(message = "status cannot be null")
     DeviceState status,
 
-    Map<String, Object> params
+    Map<String, Object> params,
 
-) {
-    
-}
+    Instant deviceTimestamp,
+
+    String activeSensors
+
+) {}
