@@ -2,14 +2,13 @@ package com.eric.governanceApi.governanceApi.controller;
 
 import com.eric.governanceApi.governanceApi.model.request.CommandRequest;
 import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
+import com.eric.governanceApi.governanceApi.model.response.CommandResultResponseDTO;
 import com.eric.governanceApi.governanceApi.service.CommandsService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -34,14 +33,14 @@ public class CommandController {
       
      */
     @PostMapping
-    public ResponseEntity<ApiResponse<Map<String, Object>>> sendCommand(
+    public ResponseEntity<ApiResponse<CommandResultResponseDTO>> sendCommand(
             @Valid @RequestBody CommandRequest request,
             HttpServletRequest httpRequest) throws Exception {
 
         log.info("Comando [{}] recebido para {} devices",
                  request.command(), request.targetDevices().size());
 
-        Map<String, Object> result = commandsService.execute(request);
+        CommandResultResponseDTO result = commandsService.execute(request);
         return ResponseEntity.ok(ApiResponse.success(result, httpRequest.getRequestURI()));
     }
 }

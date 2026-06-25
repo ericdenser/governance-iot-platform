@@ -2,6 +2,8 @@ package com.eric.governanceApi.governanceApi.repository;
 
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,8 +22,9 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long> 
     );
 
     Optional<ErrorRecord> findFirstByDevice_DeviceIdAndErrorOrderByReportedAtDesc(
-        String deviceId, 
+        String deviceId,
         DeviceError error
     );
 
+    Page<ErrorRecord> findByDevice_DeviceId(String deviceId, Pageable pageable);
 }

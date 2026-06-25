@@ -8,8 +8,10 @@ import com.eric.governanceApi.governanceApi.model.request.SensorDTO;
 import com.eric.governanceApi.governanceApi.model.response.SensorResponseDTO;
 import com.eric.governanceApi.governanceApi.repository.SensorRepository;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
 
 @Service
 @Slf4j
@@ -21,6 +23,13 @@ public class SensorService {
         this.sensorRepository = sensorRepository;
     }
 
+
+    @Transactional(readOnly = true)
+    public List<SensorResponseDTO> listAll() {
+        return sensorRepository.findAll().stream()
+                .map(s -> new SensorResponseDTO(s.getSensorId(), s.getName()))
+                .toList();
+    }
 
     @Transactional
     public SensorResponseDTO registerSensor(SensorDTO sensorDTO) {

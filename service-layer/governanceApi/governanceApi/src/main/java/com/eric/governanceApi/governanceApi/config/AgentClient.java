@@ -2,8 +2,9 @@ package com.eric.governanceApi.governanceApi.config;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.eric.governanceApi.governanceApi.model.response.AgentBroadcastResultDTO;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
@@ -21,7 +22,6 @@ import java.util.Map;
 public class AgentClient {
 
     private final RestClient restClient;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${agent.url}")
     private String agentBaseUrl;
@@ -36,8 +36,7 @@ public class AgentClient {
     /**
      * Envia um broadcast ao Agent para publicar em commands/<MAC>/<subtopic>.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> broadcastCommands(DeviceCommands command, Map<String, Object> payload, List<String> targetDevices) {
+    public AgentBroadcastResultDTO broadcastCommands(DeviceCommands command, Map<String, Object> payload, List<String> targetDevices) {
         Map<String, Object> request = Map.of(
             "command",    command,
             "payload",    payload,
@@ -47,16 +46,15 @@ public class AgentClient {
         log.info("Enviando payload {} para os devices {}", payload, targetDevices);
 
         try {
-            String body = restClient.post()
+            AgentBroadcastResultDTO response = restClient.post()
                 .uri(agentBaseUrl + "/agent/broadcast")
-                .header("Content-Type", "application/json")
                 .header("api-key", infraApiKey)
                 .body(request)
                 .retrieve()
-                .body(String.class);
+                .body(AgentBroadcastResultDTO.class);
 
-            Map<String, Object> response = mapper.readValue(body, Map.class);
-            log.info("Agent respondeu: {}", body);
+            
+            log.info("Agent respondeu: {}", response);
             return response;
 
         } catch (ResourceAccessException e) {

@@ -63,7 +63,6 @@ public class Device {
     @Column(name = "last_seen")
     private Instant lastSeen;
 
-    @Column(name = "command_record")
     @OneToMany(mappedBy = "targetDevice", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CommandRecord> commandRecords = new ArrayList<>();
 

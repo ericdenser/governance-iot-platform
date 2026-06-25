@@ -32,4 +32,6 @@ public class EventController {
         return ResponseEntity.ok().build();
     }
 
+
+    // TODO endpoint para buscar erros e exibir no dashboard
 }

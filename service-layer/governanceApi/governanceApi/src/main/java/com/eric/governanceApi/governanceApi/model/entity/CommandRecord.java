@@ -1,6 +1,7 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
@@ -15,6 +16,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -26,6 +28,9 @@ public class CommandRecord {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "command_id", unique = true, nullable = false, updatable = false)
+    private String commandId;
 
     // O Enum do comando enviado (ex: REBOOT, DEEP_SLEEP, UPDATE)
     @Enumerated(EnumType.STRING)
@@ -50,8 +55,16 @@ public class CommandRecord {
     @Column(name = "error_message", length = 500)
     private String errorMessage;
 
-    @JoinColumn(name = "device_id", nullable = false)
+    @JoinColumn(name = "event_id", nullable = false)
     @ManyToOne(fetch = FetchType.LAZY)
     private Device targetDevice;
+
+
+    @PrePersist
+    private void generadeCommandID() {
+        if (this.commandId == null) {
+            this.commandId = UUID.randomUUID().toString();
+        }
+    }
 
 }

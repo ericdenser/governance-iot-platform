@@ -20,4 +20,6 @@ public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
     List<Firmware> findAllByOrderByVersionDesc();
 
     boolean existsByVersion(String version);
+
+    Optional<Firmware> findByFirmwareId(String firmwareId);
 }

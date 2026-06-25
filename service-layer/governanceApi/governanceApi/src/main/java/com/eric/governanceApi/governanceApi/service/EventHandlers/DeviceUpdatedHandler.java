@@ -17,6 +17,7 @@ import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
@@ -34,6 +35,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
     private final EventRegistryRepository eventRegistryRepository;
     private final FirmwareRepository firmwareRepository;
     private final ErrorRecordRepository errorRecordRepository;
+    private final CommandRecordRepository commandRecordRepository;
 
     public EventType handles() { return EventType.DEVICE_UPDATED; }
 
@@ -116,8 +118,8 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         eventRegistryRepository.save(eventRegistry);
 
         // Atualiza no registro de comandos
-        Optional<CommandRecord> pendingCommand = device.getCommandRecords().stream()
-                                                .filter(c -> c.getStatus() == CommandStatus.PENDING).findFirst();
+        Optional<CommandRecord> pendingCommand = commandRecordRepository
+                .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);
         
         if (!pendingCommand.isPresent()) {
             log.warn("Device de ID {} confirmou execução, mas não há comandos PENDING no banco", device.getDeviceId());

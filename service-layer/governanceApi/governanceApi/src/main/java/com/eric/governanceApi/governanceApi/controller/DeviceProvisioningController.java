@@ -37,7 +37,9 @@ public class DeviceProvisioningController {
         this.flashPackageService = flashPackageService;
     }
 
-   @PostMapping("/register")
+
+    // Antigo endpoint para fluxo de provisioning (token via wifi_ap)
+    @PostMapping("/register")
     public ResponseEntity<ApiResponse<Map<String, String>>> registerDevice(
             @RequestBody RegisterDeviceRequest deviceRequest, 
             HttpServletRequest httpRequest) {
@@ -48,6 +50,7 @@ public class DeviceProvisioningController {
         return ResponseEntity.ok(ApiResponse.success(data, httpRequest.getRequestURI()));
     }
 
+    // Endpoint destinado ao esp na fase de provisioning
     @PostMapping("/activate")
     public ResponseEntity<ApiResponse<String>> activateDevice(@RequestBody DeviceRegistrationRequest request, HttpServletRequest httpRequest) {
        
@@ -56,12 +59,9 @@ public class DeviceProvisioningController {
         return ResponseEntity.ok(ApiResponse.success(certificatePem, httpRequest.getRequestURI()));
     }
 
-    // TODO trocar pelo UUID
-    @PostMapping("/{device_id}/revoke")
-    public ResponseEntity<ApiResponse<String>> revokeDevice(@PathVariable("device_id") Long device_id, HttpServletRequest httpRequest) throws Exception {
-        
-        String msg = deviceRevokeService.revokeDevice(device_id);
-
+    @PostMapping("/{deviceId}/revoke")
+    public ResponseEntity<ApiResponse<String>> revokeDevice(@PathVariable String deviceId, HttpServletRequest httpRequest) throws Exception {
+        String msg = deviceRevokeService.revokeDevice(deviceId);
         return ResponseEntity.ok(ApiResponse.success(msg, httpRequest.getRequestURI()));
     }
 

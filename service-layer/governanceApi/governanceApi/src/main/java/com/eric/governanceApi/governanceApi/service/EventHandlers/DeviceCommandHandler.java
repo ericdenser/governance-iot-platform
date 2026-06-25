@@ -13,11 +13,12 @@ import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +29,7 @@ public class DeviceCommandHandler implements DeviceEventHandler{
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
     private final FirmwareRepository firmwareRepository;
+    private final CommandRecordRepository commandRecordRepository;
 
 
     @Override
@@ -70,8 +72,8 @@ public class DeviceCommandHandler implements DeviceEventHandler{
         }
 
 
-        Optional<CommandRecord> pendingCommand = device.getCommandRecords().stream()
-                                                .filter(c -> c.getStatus() == CommandStatus.PENDING).findFirst();
+        Optional<CommandRecord> pendingCommand = commandRecordRepository
+                .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);
         
         if (!pendingCommand.isPresent()) {
             log.warn("Device de ID {} confirmou execução, mas não há comandos PENDING no banco", device.getDeviceId());

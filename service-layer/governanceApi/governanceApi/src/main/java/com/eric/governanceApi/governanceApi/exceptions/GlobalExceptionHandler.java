@@ -36,7 +36,7 @@ public class GlobalExceptionHandler {
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException ex, HttpServletRequest request) {
 
-                log.warn("Erro de validação: {}", ex.getMessage(), ex);
+                log.warn("Erro de validação: {}", ex.getMessage());
 
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .contentType(MediaType.APPLICATION_JSON)

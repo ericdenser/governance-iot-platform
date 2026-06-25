@@ -15,6 +15,7 @@ import org.springframework.web.client.RestClient;
 
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
@@ -43,18 +44,17 @@ public class DeviceRevokeService {
 
 
 
-    // TODO trocar pelo UUID
     @Transactional
-    public String revokeDevice(Long device_id) throws Exception{
+    public String revokeDevice(String deviceId) throws Exception {
 
-        log.info("Iniciando processo de revogação para o dispositivo ID: {}", device_id);
-        Device device = deviceRepository.findById(device_id)
-            .orElseThrow(() -> new ResourceNotFoundException("Device with ID" + device_id + " not found"));
+        log.info("Iniciando processo de revogação para o dispositivo ID: {}", deviceId);
+        Device device = deviceRepository.findByDeviceId(deviceId)
+            .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " not found"));
 
         
         if (device.getStatus() == DeviceStatus.REVOKED) {
-            log.warn("Device with ID {} already revoked.", device_id);
-            return "Device com ID " + device_id + " ja revogado";
+            log.warn("Device {} already revoked.", deviceId);
+            throw new ConflictException("Device " + deviceId + " ja revogado");
         }
 
         device.setStatus(DeviceStatus.REVOKED);
@@ -98,6 +98,6 @@ public class DeviceRevokeService {
             throw new IllegalStateException("Falha na sincronização com o Broker MQTT."); 
         }
 
-        return "Device com ID " + device_id + " revogado com sucesso.";
+        return "Device " + deviceId + " revogado com sucesso.";
     }
 }

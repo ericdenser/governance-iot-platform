@@ -106,7 +106,8 @@ public class DeviceProvisioningService {
         device.setMacAddress(request.getMacAddress());
         device.setStatus(DeviceStatus.PROVISIONING);
         device.setLastSeen(Instant.now());
-        device.setFirmware(firmwareRepository.findByProvisioningFirmwareTrue().get());
+        device.setFirmware(firmwareRepository.findByProvisioningFirmwareTrue()
+                .orElseThrow(() -> new ResourceNotFoundException("Nenhum firmware de provisioning registrado.")));
 
         // Retorna o PEM do certificado para o ESP32 guardar na memória (NVS)
         return certData.pemString;

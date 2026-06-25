@@ -12,6 +12,9 @@ import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
 import com.eric.governanceApi.governanceApi.model.request.FirmwareUploadMetadataDTO;
 import com.eric.governanceApi.governanceApi.model.request.SensorConfigDTO;
+import com.eric.governanceApi.governanceApi.model.response.AgentBroadcastResultDTO;
+import com.eric.governanceApi.governanceApi.model.response.CommandResultResponseDTO;
+import com.eric.governanceApi.governanceApi.model.response.FirmwareResponseDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.SensorRepository;
@@ -60,7 +63,7 @@ public class FirmwareService {
 
     //  UPLOAD FIRMWARE: valida, salva no disco, registra no banco
     @Transactional
-    public Firmware upload(MultipartFile file, FirmwareUploadMetadataDTO metadataDTO) throws Exception {
+    public FirmwareResponseDTO upload(MultipartFile file, FirmwareUploadMetadataDTO metadataDTO) throws Exception {
 
         // Não podemos subir 2 firmwares de provisionamento
         if (metadataDTO.isProvisioning() && firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
@@ -117,12 +120,13 @@ public class FirmwareService {
         log.info("Firmware v{} registrado — SHA256: {} | {} bytes | ID: {}",
                  metadataDTO.version(), sha256, file.getSize(), fw.getId());
 
-        return fw;
+
+        return FirmwareResponseDTO.from(fw);
     }
 
     //  DEPLOY: seleciona firmware existente + lista de devices
     @Transactional
-    public Map<String, Object> deploy(Long firmwareId, List<String> targetDevices) throws Exception {
+    public CommandResultResponseDTO deploy(Long firmwareId, List<String> targetDevices) throws Exception {
 
         Firmware fw = firmwareRepository.findById(firmwareId)
             .orElseThrow(() -> new ResourceNotFoundException("Firmware ID " + firmwareId + " não encontrado."));
@@ -185,63 +189,69 @@ public class FirmwareService {
         }
 
         if (activeDevs.isEmpty()) {
-            return Map.of(
-                "firmwareId", fw.getId(),
-                "version", fw.getVersion(),
-                "publishedTo", List.of(),
-                "skipped", skipped,
-                "message", "Nenhum device ativo para atualizar"
+
+            return new CommandResultResponseDTO(
+                DeviceCommands.UPDATE.toString(),
+                List.of(),
+                List.of(),
+                skipped
             );
         }
 
-        Map<String, Object> agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeDevs);
+        AgentBroadcastResultDTO agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeDevs);
 
         // Atualiza status do firmware (deploy_count é atualizado pelo DeviceUpdatedHandler
         // quando o device confirma que está rodando o firmware)
         fw.setStatus(FirmwareStatus.DEPLOYED);
         firmwareRepository.save(fw);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("firmwareId", fw.getId());
-        result.put("version", fw.getVersion());
-        result.put("downloadUrl", fw.getDownloadUrl());
-        result.put("sha256", fw.getSha256());
-        result.put("publishedTo", agentResult.getOrDefault("publishedTo", List.of()));
-        result.put("failed", agentResult.getOrDefault("failed", List.of()));
-        result.put("skipped", skipped);
-        return result;
+        return new CommandResultResponseDTO(
+            DeviceCommands.UPDATE.toString(),
+            agentResult.publishedTo(),
+            agentResult.failed(),
+            skipped);
     }
 
     //  DEPRECATE, impede novos deploys desse firmware
     @Transactional
-    public Firmware deprecate(Long firmwareId) {
-        Firmware fw = firmwareRepository.findById(firmwareId)
-            .orElseThrow(() -> new ResourceNotFoundException("Firmware ID " + firmwareId + " não encontrado."));
+    public FirmwareResponseDTO deprecate(String firmwareId) {
+        Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
+            .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
 
         fw.setStatus(FirmwareStatus.DEPRECATED);
         firmwareRepository.save(fw);
 
-        log.info("Firmware v{} (ID {}) marcado como DEPRECATED", fw.getVersion(), fw.getId());
-        return fw;
+        log.info("Firmware v{} ({}) marcado como DEPRECATED", fw.getVersion(), firmwareId);
+
+        return FirmwareResponseDTO.from(fw);
+    }
+
+    @Transactional(readOnly = true)
+    public FirmwareResponseDTO getByFirmwareId(String firmwareId) {
+        Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
+                .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
+        return FirmwareResponseDTO.from(fw);
     }
 
     //  LIST: retorna todos os firmwares ordenados por versão
-    // TODO retornar lista de FirmwareResponseDTO para nao expor o ID do banco de dados
-    public List<Firmware> listAll() {
-        return firmwareRepository.findAllByOrderByVersionDesc();
+    @Transactional(readOnly = true)
+    public List<FirmwareResponseDTO> listAll() {
+        return firmwareRepository.findAll().stream()
+                .map(FirmwareResponseDTO::from).toList();
     }
 
-    // TODO retornar lista de FirmwareResponseDTO para nao expor o ID do banco de dados
-    public List<Firmware> listDeployable() {
+    @Transactional(readOnly = true)
+    public List<FirmwareResponseDTO> listDeployable() {
         List<Firmware> result = new ArrayList<>();
         result.addAll(firmwareRepository.findByStatusOrderByVersionDesc(FirmwareStatus.STAGED));
         result.addAll(firmwareRepository.findByStatusOrderByVersionDesc(FirmwareStatus.DEPLOYED));
-        return result;
+
+        return result.stream()
+                .map(FirmwareResponseDTO::from).toList();
     }
 
-    // TODO retornar lista de FirmwareResponseDTO para nao expor o ID do banco de dados
     @Transactional
-    public Firmware setProvisioningFirmware(Long newFirmwareId) {
+    public FirmwareResponseDTO setProvisioningFirmware(String firmwareId) {
         firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(
             current -> {
                 current.setProvisioningFirmware(false);
@@ -249,9 +259,9 @@ public class FirmwareService {
             }
         );
 
-        Firmware fw = firmwareRepository.findById(newFirmwareId)
-                    .orElseThrow(() -> 
-                        new ResourceNotFoundException("Firmware ID" + newFirmwareId + "não encontrado."));
+        Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
+                    .orElseThrow(() ->
+                        new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
 
         if (fw.getStatus() == FirmwareStatus.DEPRECATED) {
             throw new IllegalArgumentException(
@@ -265,40 +275,62 @@ public class FirmwareService {
         }
 
         fw.setProvisioningFirmware(true);
-        return firmwareRepository.save(fw);
+        firmwareRepository.save(fw);
+        return FirmwareResponseDTO.from(fw);
     }
 
 
     //  Validações do arqv binário (METODO AUXILIAR)
     private void validateBinary(MultipartFile file, String version) throws IOException {
 
-        if (file.isEmpty())
+        if (file.isEmpty()){
+            log.warn("Arquivo vazio.");
             throw new IllegalArgumentException("Arquivo vazio.");
+        }
+            
 
         String name = file.getOriginalFilename();
-        if (name == null || !name.toLowerCase().endsWith(".bin"))
+
+        if (name == null || !name.toLowerCase().endsWith(".bin")) {
+            log.warn("Apenas .bin aceito. Recebido: " + name);
             throw new IllegalArgumentException("Apenas .bin aceito. Recebido: " + name);
+        }
+            
 
         long maxBytes = (long) maxSizeMb * 1024 * 1024;
-        if (file.getSize() > maxBytes)
+        if (file.getSize() > maxBytes) {
+            log.warn("Excede %dMB. Recebido: %d bytes.", maxSizeMb, file.getSize());
             throw new IllegalArgumentException(String.format(
                 "Excede %dMB. Recebido: %d bytes.", maxSizeMb, file.getSize()));
+        }
+            
 
-        if (file.getSize() < 30_000)
+        if (file.getSize() < 30_000) {
+
+            log.warn("Muito pequeno (%d bytes). Mínimo: ~30KB.", file.getSize());
             throw new IllegalArgumentException(String.format(
                 "Muito pequeno (%d bytes). Mínimo: ~30KB.", file.getSize()));
+        }
+            
 
         byte[] header = new byte[16];
         try (InputStream is = file.getInputStream()) {
-            if (is.read(header) < 16)
+            if (is.read(header) < 16) {
+                log.warn("Arquivo curto demais.");
                 throw new IllegalArgumentException("Arquivo curto demais.");
+            }
+        
         }
-        if ((header[0] & 0xFF) != 0xE9)
+        if ((header[0] & 0xFF) != 0xE9){
+            log.warn("Magic byte 0x%02X inválido. Esperado: 0xE9.", header[0] & 0xFF);
             throw new IllegalArgumentException(String.format(
                 "Magic byte 0x%02X inválido. Esperado: 0xE9.", header[0] & 0xFF));
-
-        if (firmwareRepository.existsByVersion(version))
-            throw new IllegalArgumentException("Versão " + version + " já existe no banco.");
+        }
+        if (firmwareRepository.existsByVersion(version)){
+            log.warn("Versão " + version + " já existe no banco.");
+            throw new ConflictException("Versão " + version + " já existe no banco.");
+        }
+            
     }
 
     private String computeSha256(MultipartFile file) throws Exception {

@@ -5,9 +5,12 @@ import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.request.CommandRequest;
+import com.eric.governanceApi.governanceApi.model.response.AgentBroadcastResultDTO;
+import com.eric.governanceApi.governanceApi.model.response.CommandResultResponseDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -27,7 +30,8 @@ public class CommandsService {
     }
 
     // Interpreta qual foi o comando
-    public Map<String, Object> execute(CommandRequest request) throws Exception {
+    @Transactional
+    public CommandResultResponseDTO execute(CommandRequest request) throws Exception {
         return switch (request.command()) {
             case UPDATE    -> handleUpdate(request);
             case REBOOT    -> handleSimpleCommand(request);
@@ -37,7 +41,7 @@ public class CommandsService {
     }
 
     // Delega ao service dedicado exclusivamente ao OTA
-    private Map<String, Object> handleUpdate(CommandRequest request) throws Exception {
+    private CommandResultResponseDTO handleUpdate(CommandRequest request) throws Exception {
 
         if (request.params() == null || !request.params().containsKey("firmwareId")) {
             throw new IllegalArgumentException("UPDATE exige 'firmwareId' em params.");
@@ -51,7 +55,7 @@ public class CommandsService {
     }
 
     //  Comandos simples — reboot, deepsleep, etc
-    private Map<String, Object> handleSimpleCommand(CommandRequest request) {
+    private CommandResultResponseDTO handleSimpleCommand(CommandRequest request) {
 
         log.info("Verificando situação dos devices destinatários.");
 
@@ -105,12 +109,15 @@ public class CommandsService {
         if (activeDevs.isEmpty()) {
 
             log.info ("Nenhum Device ativo");
-            return Map.of(
-                "command", request.command().name(),
-                "publishedTo", List.of(),
-                "skipped", skipped,
-                "message", "Nenhum device ativo"
+
+            CommandResultResponseDTO result = new CommandResultResponseDTO(
+                request.command().name(),
+                List.of(),
+                List.of(),
+                skipped   
             );
+
+            return result;
         }
 
 
@@ -118,15 +125,13 @@ public class CommandsService {
         Map<String, Object> payload = buildPayload(request.command(), request.params());
 
         // Envia pro Agent
-        Map<String, Object> agentResult = agentClient.broadcastCommands(request.command(), payload, activeDevs);
+        AgentBroadcastResultDTO agentResult = agentClient.broadcastCommands(request.command(), payload, activeDevs);
 
-        // Resultado do Agent
-        Map<String, Object> result = new HashMap<>();
-        result.put("command", request.command().name());
-        result.put("publishedTo", agentResult.getOrDefault("publishedTo", List.of()));
-        result.put("failed", agentResult.getOrDefault("failed", List.of()));
-        result.put("skipped", skipped);
-        return result;
+        return new CommandResultResponseDTO(
+            request.command().name(),
+            agentResult.publishedTo(),
+            agentResult.failed(),
+            skipped);
     }
 
     // Metodo para construir payload generico contendo comando e os parametros

@@ -14,6 +14,7 @@ import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
 import com.eric.governanceApi.governanceApi.model.request.DeviceErrorDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
 
     private final DeviceRepository deviceRepository;
     private final ErrorRecordRepository errorRecordRepository;
+    private final CommandRecordRepository commandRecordRepository;
 
     @Override
     public DeviceError handles() { return DeviceError.OTA_FAIL; }
@@ -75,9 +77,8 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
         errorRecord.setDevice(device);
 
 
-        Optional<CommandRecord> pendingCommand = device.getCommandRecords().stream()
-                                                .filter(c -> c.getStatus() == CommandStatus.PENDING).findFirst();
-
+        Optional<CommandRecord> pendingCommand = commandRecordRepository
+                .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);
 
         if (!pendingCommand.isPresent()) {
             log.warn("Device de ID {} falhou ao executar comando, mas não há comandos PENDING no banco", device.getDeviceId());
@@ -92,10 +93,7 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
         record.setStatus(CommandStatus.FAILED);
         device.setStatus(DeviceStatus.ACTIVE);
 
-        String attemptedVersion = record.getPayload().substring("firmware_version: ".length());
-
-        
-        log.warn("Device [{}] falhou ao atualizar para v{} — OTA foi iniciado mas o download foi interrompido", errorDTO.deviceId(), attemptedVersion);
+        log.warn("Device [{}] falhou ao executar OTA — payload: {}", errorDTO.deviceId(), record.getPayload());
 
         errorRecordRepository.save(errorRecord);
     }

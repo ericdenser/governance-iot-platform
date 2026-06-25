@@ -14,6 +14,7 @@ import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
 import com.eric.governanceApi.governanceApi.model.request.DeviceErrorDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class ErrorRollbackFailedHandler implements ErrorHandlerInterface {
 
     private final DeviceRepository deviceRepository;
     private final ErrorRecordRepository errorRecordRepository;
+    private final CommandRecordRepository commandRecordRepository;
 
     @Override
     public DeviceError handles() { return DeviceError.FIRMWARE_ROLLBACK_FAILED; }
@@ -58,8 +60,8 @@ public class ErrorRollbackFailedHandler implements ErrorHandlerInterface {
         errorRecord.setDevice(device);
 
 
-        Optional<CommandRecord> pendingCommand = device.getCommandRecords().stream()
-                                                .filter(c -> c.getStatus() == CommandStatus.PENDING).findFirst();
+        Optional<CommandRecord> pendingCommand = commandRecordRepository
+                .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);
 
 
         if (!pendingCommand.isPresent()) {
