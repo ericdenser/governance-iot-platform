@@ -54,7 +54,7 @@
 			<version>1.2.5</version>
 		</dependency>
 
-		<!-- Protobuf (deserialização do DeviceStatus enviado pelo ESP32) -->
+		<!-- Protobuf-->
 		<dependency>
 			<groupId>com.google.protobuf</groupId>
 			<artifactId>protobuf-java</artifactId>
