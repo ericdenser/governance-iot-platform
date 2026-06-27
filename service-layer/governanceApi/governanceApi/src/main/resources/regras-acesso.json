@@ -1,0 +1,50 @@
+{
+  "/devices": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/devices/**": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+
+  "/firmware": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/firmware/upload": {
+    "POST": ["ROLE_ADMIN"]
+  },
+  "/firmware/deployable": {
+    "GET": ["ROLE_ADMIN"]
+  },
+  "/firmware/**": {
+    "GET":   ["ROLE_ADMIN", "ROLE_USER"],
+    "PATCH": ["ROLE_ADMIN"],
+    "PUT":   ["ROLE_ADMIN"]
+  },
+
+  "/sensors": {
+    "GET":  ["ROLE_ADMIN", "ROLE_USER"],
+    "POST": ["ROLE_ADMIN"]
+  },
+  "/sensors/**": {
+    "GET":  ["ROLE_ADMIN", "ROLE_USER"],
+    "POST": ["ROLE_ADMIN"]
+  },
+
+  "/commands": {
+    "POST": ["ROLE_ADMIN"]
+  },
+
+  "/events": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+
+  "/provisioning/register": {
+    "POST": ["ROLE_ADMIN"]
+  },
+  "/provisioning/generate-package": {
+    "POST": ["ROLE_ADMIN"]
+  },
+  "/provisioning/**": {
+    "POST": ["ROLE_ADMIN"]
+  }
+}
