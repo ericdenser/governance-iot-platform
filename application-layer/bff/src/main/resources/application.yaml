@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: bff
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: ${KEYCLOAK_CLIENT_ID:spring-bff}
+            client-secret: ${KEYCLOAK_CLIENT_SECRET}
+            scope: openid, profile, email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          keycloak:
+            issuer-uri: ${KEYCLOAK_ISSUER_URI}
+
+  session:
+    store-type: redis
+
+server:
+  port: ${SERVER_PORT:8083}
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  gov-api-url: ${GOV_API_URL:http://localhost:8082}
+
+logging:
+  level:
+    org.springframework.security: ${LOG_LEVEL_SECURITY:WARN}
+    org.springframework.oauth2: ${LOG_LEVEL_OAUTH:WARN}

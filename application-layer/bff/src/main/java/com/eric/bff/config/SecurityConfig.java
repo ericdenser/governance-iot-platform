@@ -1,0 +1,85 @@
+package com.eric.bff.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.util.matcher.RequestHeaderRequestMatcher;
+
+@EnableWebSecurity
+@Configuration
+public class SecurityConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+
+    @Autowired
+    private ClientRegistrationRepository clientRegistrationRepository;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
+
+    @Bean
+    public OAuth2AuthorizedClientRepository authorizedClientRepository() {
+        return new HttpSessionOAuth2AuthorizedClientRepository();
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        return http
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+            )
+            .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
+            .exceptionHandling(ex -> ex
+                .defaultAuthenticationEntryPointFor(
+                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                    new RequestHeaderRequestMatcher("X-Requested-With", "XMLHttpRequest")
+                )
+            )
+            .authorizeHttpRequests(req -> req
+                .requestMatchers("/", "/public/**", "/login", "/favicon.ico", "/error", "/me").permitAll()
+                .anyRequest().authenticated()
+            )
+            .oauth2Login(auth -> auth
+                .loginPage("/login")
+                .defaultSuccessUrl(frontendUrl + "/tarefas", true)
+                .failureHandler((request, response, exception) -> {
+                    logger.info("OAuth2 flow failure — cleaning up session and redirecting to frontend");
+                    if (request.getSession(false) != null) {
+                        request.getSession(false).invalidate();
+                    }
+                    response.sendRedirect(frontendUrl + "/");
+                })
+            )
+            .logout(log -> log
+                .logoutSuccessHandler(oidcLogoutSuccessHandler())
+                .invalidateHttpSession(true)
+                .deleteCookies("SESSION")
+            )
+            .build();
+    }
+
+    private LogoutSuccessHandler oidcLogoutSuccessHandler() {
+        OidcClientInitiatedLogoutSuccessHandler handler =
+                new OidcClientInitiatedLogoutSuccessHandler(this.clientRegistrationRepository);
+        handler.setPostLogoutRedirectUri(frontendUrl + "/");
+        handler.setDefaultTargetUrl(frontendUrl + "/");
+        return handler;
+    }
+}
