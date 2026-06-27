@@ -1,22 +1,56 @@
 package com.eric.eventhandler.event_handler.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.security.oauth2.client.AuthorizedClientServiceOAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProviderBuilder;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.client.OAuth2ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestClient;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature; // Importar
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule; // Importar
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 @Configuration
 @EnableAsync
 public class AppConfig {
 
+    @Value("${govapi.url}")
+    private String govApiUrl;
+
     @Bean
-    public RestClient restClient() {
-        return RestClient.builder().build();
+    public OAuth2AuthorizedClientManager authorizedClientManager(
+            ClientRegistrationRepository clientRegistrationRepository,
+            OAuth2AuthorizedClientService clientService) {
+
+        var provider = OAuth2AuthorizedClientProviderBuilder.builder()
+                .clientCredentials()
+                .build();
+
+        var manager = new AuthorizedClientServiceOAuth2AuthorizedClientManager(
+                clientRegistrationRepository, clientService);
+        manager.setAuthorizedClientProvider(provider);
+        return manager;
+    }
+
+    @Bean
+    public RestClient restClient(OAuth2AuthorizedClientManager authorizedClientManager) {
+        var interceptor = new OAuth2ClientHttpRequestInterceptor(authorizedClientManager);
+        // adiciona token apenas em chamadas para a govApi; outros webhooks (externos) não recebem
+        interceptor.setClientRegistrationIdResolver(request -> {
+            String uri = request.getURI().toString();
+            return uri.startsWith(govApiUrl) ? "govapi" : null;
+        });
+
+        return RestClient.builder()
+                .requestInterceptor(interceptor)
+                .build();
     }
 
     @Bean

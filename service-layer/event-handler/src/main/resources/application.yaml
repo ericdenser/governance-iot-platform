@@ -12,7 +12,23 @@ spring:
     hibernate:
       ddl-auto: create
     show-sql: false
-  
+  security:
+    oauth2:
+      client:
+        registration:
+          govapi:
+            client-id: event-handler
+            client-secret: ${EVENT_HANDLER_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+        provider:
+          govapi:
+            token-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/token
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+
+govapi:
+  url: ${GOVAPI_URL:http://localhost:8082}
 
 # Configuração do webhook dispatcher
 webhook:
