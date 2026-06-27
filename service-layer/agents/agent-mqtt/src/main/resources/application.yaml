@@ -12,9 +12,26 @@ mqtt:
   truststore-path: classpath:certs/truststore.p12
   truststore-password: ${AGENT_TRUSTSTORE_PASS}
 
+govapi:
+  url: ${GOVAPI_URL:http://localhost:8082}
+
+event-handler:
+  url: ${EVENT_HANDLER_URL:http://localhost:8085}
+
 datalogger:
   url: http://localhost:8081
 
 spring:
   application:
     name: agent-mqtt
+  security:
+    oauth2:
+      client:
+        registration:
+          govapi:
+            client-id: agent-mqtt
+            client-secret: ${AGENT_MQTT_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+        provider:
+          govapi:
+            token-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/token

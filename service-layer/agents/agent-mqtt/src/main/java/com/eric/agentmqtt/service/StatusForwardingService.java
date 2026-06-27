@@ -2,6 +2,7 @@ package com.eric.agentmqtt.service;
 
 import com.eric.agentmqtt.model.StatusDTO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -11,6 +12,9 @@ public class StatusForwardingService {
 
     private final RestClient restClient;
 
+    @Value("${event-handler.url}")
+    private String eventHandlerUrl;
+
     public StatusForwardingService(RestClient restClient) {
         this.restClient = restClient;
     }
@@ -19,7 +23,7 @@ public class StatusForwardingService {
         log.info("Encaminhando status ao event-handler: {}", dto);
         try {
             restClient.post()
-                .uri("http://localhost:8085/events/ingest")
+                .uri(eventHandlerUrl + "/events/ingest")
                 .body(dto)
                 .retrieve()
                 .toBodilessEntity();
