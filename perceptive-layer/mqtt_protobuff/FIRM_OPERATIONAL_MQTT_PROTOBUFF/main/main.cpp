@@ -35,8 +35,6 @@
 // =============================================================================
 #define MAX_WIFI_RETRIES        10
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
-#define URL_PROVISIONING        "http://172.16.39.40:8082/api/provisioning/activate"
-#define URL_ERROR_REPORT        "http://172.16.39.40:8082/api/provisioning/error"
 #define STATUS_INTERVAL_MS      30000
 #define TELEMETRY_INTERVAL_MS   5000
 #define GPS_SYNC_EVERY_N_BOOTS  24   // corrige drift do DS3231 a cada ~48min (ciclos de 2min)
