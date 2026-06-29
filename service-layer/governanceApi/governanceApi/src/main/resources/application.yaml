@@ -57,3 +57,7 @@ provisioning:
   partition-table-bin-path: ${PROVISIONING_PARTITION_TABLE_BIN_PATH}
   token-ttl-seconds: 86400
 
+logging:
+  level:
+    org.springframework.web.servlet.DispatcherServlet: DEBUG
+

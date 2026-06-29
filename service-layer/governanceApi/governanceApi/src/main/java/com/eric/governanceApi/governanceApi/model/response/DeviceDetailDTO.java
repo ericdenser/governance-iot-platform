@@ -14,7 +14,9 @@ public record DeviceDetailDTO(
     Instant createdAt,
     Instant lastSeen,
     FirmwareSummaryDTO firmware,
-    Map<String, Boolean> sensorStatus
+    Map<String, Boolean> sensorStatus,
+    String issuedByActorId,
+    String issuedByUsername
 ) {
     public static DeviceDetailDTO from(Device device) {
         return new DeviceDetailDTO(
@@ -25,7 +27,9 @@ public record DeviceDetailDTO(
             device.getCreatedAt(),
             device.getLastSeen(),
             FirmwareSummaryDTO.from(device.getFirmware()),
-            device.getSensorStatus()
+            device.getSensorStatus(),
+            device.getIssuedByActorId(),
+            device.getIssuedByUsername()
         );
     }
 }

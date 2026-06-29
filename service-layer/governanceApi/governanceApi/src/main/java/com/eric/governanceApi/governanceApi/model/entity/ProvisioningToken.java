@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @Table(name = "provisioning_tokens")
 @Data
 @NoArgsConstructor
-public class ProvisioningToken {
+public class ProvisioningToken extends AuthoredEntity {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

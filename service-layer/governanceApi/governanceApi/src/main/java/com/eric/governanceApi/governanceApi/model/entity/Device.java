@@ -60,6 +60,14 @@ public class Device {
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 
+    /** Sub UUID of the operator who generated the flash package that provisioned this device. */
+    @Column(name = "issued_by_actor_id", updatable = false, length = 36)
+    private String issuedByActorId;
+
+    /** Username snapshot of that operator at provisioning time. */
+    @Column(name = "issued_by_username", updatable = false, length = 150)
+    private String issuedByUsername;
+
     @Column(name = "last_seen")
     private Instant lastSeen;
 

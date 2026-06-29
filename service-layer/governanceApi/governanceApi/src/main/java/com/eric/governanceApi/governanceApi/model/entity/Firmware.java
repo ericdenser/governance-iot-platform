@@ -17,7 +17,7 @@ import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Firmware {
+public class Firmware extends AuthoredEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

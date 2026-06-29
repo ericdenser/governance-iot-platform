@@ -31,11 +31,23 @@
   },
 
   "/commands": {
+    "GET":  ["ROLE_ADMIN", "ROLE_USER"],
+    "POST": ["ROLE_ADMIN"]
+  },
+  "/commands/send": {
     "POST": ["ROLE_ADMIN"]
   },
 
   "/events": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+
+  "/error": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/error/**": {
+    "GET":  ["ROLE_ADMIN", "ROLE_USER"],
+    "POST": ["ROLE_ADMIN"]
   },
 
   "/provisioning/register": {
@@ -46,5 +58,35 @@
   },
   "/provisioning/**": {
     "POST": ["ROLE_ADMIN"]
+  },
+
+  "/audit": {
+    "GET": ["ROLE_ADMIN"]
+  },
+
+  "/groups": {
+    "GET":  ["ROLE_ADMIN", "ROLE_USER"],
+    "POST": ["ROLE_ADMIN"]
+  },
+  "/groups/*/devices": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/groups/*/devices/*/membership": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/groups/*/devices/*": {
+    "PUT":    ["ROLE_ADMIN"],
+    "DELETE": ["ROLE_ADMIN"]
+  },
+  "/groups/*/users": {
+    "GET": ["ROLE_ADMIN"],
+    "PUT": ["ROLE_ADMIN"]
+  },
+  "/groups/*/users/*": {
+    "DELETE": ["ROLE_ADMIN"]
+  },
+  "/groups/*": {
+    "GET":    ["ROLE_ADMIN", "ROLE_USER"],
+    "DELETE": ["ROLE_ADMIN"]
   }
 }

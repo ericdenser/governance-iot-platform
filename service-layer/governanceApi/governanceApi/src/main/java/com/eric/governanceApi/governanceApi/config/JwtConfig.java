@@ -48,16 +48,36 @@ public class JwtConfig {
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        // Extrai roles do claim realm_access.roles do Keycloak e converte para GrantedAuthority
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            List<String> allRoles = new java.util.ArrayList<>();
+
+            // Realm roles
             Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-            if (realmAccess == null || !realmAccess.containsKey("roles")) {
-                return Collections.emptyList();
+            if (realmAccess != null && realmAccess.containsKey("roles")) {
+                @SuppressWarnings("unchecked")
+                List<String> roles = (List<String>) realmAccess.get("roles");
+                allRoles.addAll(roles);
             }
+
+            // Client roles (resource_access.<client>.roles)
             @SuppressWarnings("unchecked")
-            List<String> roles = (List<String>) realmAccess.get("roles");
-            return roles.stream()
-                    .map(role -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
+            Map<String, Object> resourceAccess = (Map<String, Object>) jwt.getClaim("resource_access");
+            if (resourceAccess != null) {
+                resourceAccess.values().forEach(v -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> clientAccess = (Map<String, Object>) v;
+                    if (clientAccess != null && clientAccess.containsKey("roles")) {
+                        @SuppressWarnings("unchecked")
+                        List<String> clientRoles = (List<String>) clientAccess.get("roles");
+                        allRoles.addAll(clientRoles);
+                    }
+                });
+            }
+
+            return allRoles.stream()
+                    .map(role -> role.toUpperCase().startsWith("ROLE_") ? role.toUpperCase() : "ROLE_" + role.toUpperCase())
+                    .distinct()
+                    .map(role -> (GrantedAuthority) new SimpleGrantedAuthority(role))
                     .toList();
         });
         return converter;

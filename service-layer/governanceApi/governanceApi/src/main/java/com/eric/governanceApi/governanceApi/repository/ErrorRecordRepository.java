@@ -27,4 +27,5 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long> 
     );
 
     Page<ErrorRecord> findByDevice_DeviceId(String deviceId, Pageable pageable);
+    Page<ErrorRecord> findAllByOrderByReportedAtDesc(Pageable pageable);
 }

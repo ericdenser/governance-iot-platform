@@ -1,5 +1,7 @@
 package com.eric.governanceApi.governanceApi.service;
 
+import com.eric.governanceApi.governanceApi.audit.Auditable;
+import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
@@ -54,6 +56,7 @@ public class FlashPackageService {
         this.firmwareRepository = firmwareRepository;
     }
 
+    @Auditable(action = AuditAction.FLASH_PACKAGE_GENERATED, targetType = "DEVICE")
     public byte[] generatePackage(GenerateFlashPackageRequest request) throws IOException {
         ProvisioningToken token = provisioningService.registerDevice(
                 new RegisterDeviceRequest(request.deviceName()), tokenTtlSeconds

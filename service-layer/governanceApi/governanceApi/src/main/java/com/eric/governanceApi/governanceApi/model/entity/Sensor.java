@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Data
 @NoArgsConstructor
-public class Sensor {
+public class Sensor extends AuthoredEntity {
     
     @Id 
     @GeneratedValue(strategy = GenerationType.IDENTITY)

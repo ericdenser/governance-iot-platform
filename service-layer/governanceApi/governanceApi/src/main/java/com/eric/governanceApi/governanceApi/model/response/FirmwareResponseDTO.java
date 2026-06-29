@@ -19,7 +19,9 @@ public record FirmwareResponseDTO(
     List<FirmwareSensorConfigResponseDTO> sensorConfigs,
     Instant uploadedAt,
     int deployCount,
-    boolean provisioningFirmware
+    boolean provisioningFirmware,
+    String createdByActorId,
+    String createdByUsername
 ) {
 
     public static FirmwareResponseDTO from(Firmware fw) {
@@ -45,7 +47,9 @@ public record FirmwareResponseDTO(
             sensors,
             fw.getUploadedAt(),
             fw.getDeployCount(),
-            fw.isProvisioningFirmware()
+            fw.isProvisioningFirmware(),
+            fw.getCreatedByActorId(),
+            fw.getCreatedByUsername()
         );
     }
 }

@@ -16,4 +16,5 @@ public interface CommandRecordRepository extends JpaRepository<CommandRecord, Lo
     Page<CommandRecord> findByTargetDevice_DeviceId(String deviceId, Pageable pageable);
 
     Optional<CommandRecord> findFirstByTargetDevice_DeviceIdAndStatus(String deviceId, CommandStatus status);
+    Page<CommandRecord> findAllByOrderBySentAtDesc(Pageable pageable);
 }

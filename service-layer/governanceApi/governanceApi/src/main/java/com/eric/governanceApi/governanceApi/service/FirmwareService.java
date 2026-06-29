@@ -1,6 +1,8 @@
 package com.eric.governanceApi.governanceApi.service;
 
+import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.config.AgentClient;
+import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
@@ -61,7 +63,7 @@ public class FirmwareService {
     }
 
 
-    //  UPLOAD FIRMWARE: valida, salva no disco, registra no banco
+    @Auditable(action = AuditAction.FIRMWARE_UPLOADED, targetType = "FIRMWARE")
     @Transactional
     public FirmwareResponseDTO upload(MultipartFile file, FirmwareUploadMetadataDTO metadataDTO) throws Exception {
 
@@ -124,12 +126,12 @@ public class FirmwareService {
         return FirmwareResponseDTO.from(fw);
     }
 
-    //  DEPLOY: seleciona firmware existente + lista de devices
+    @Auditable(action = AuditAction.FIRMWARE_DEPLOYED, targetType = "FIRMWARE", targetIdArg = 0)
     @Transactional
-    public CommandResultResponseDTO deploy(Long firmwareId, List<String> targetDevices) throws Exception {
+    public CommandResultResponseDTO deploy(String firmwareId, List<String> targetDevices) throws Exception {
 
-        Firmware fw = firmwareRepository.findById(firmwareId)
-            .orElseThrow(() -> new ResourceNotFoundException("Firmware ID " + firmwareId + " não encontrado."));
+        Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
+            .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
 
         if (fw.getStatus() == FirmwareStatus.DEPRECATED) {
             throw new IllegalArgumentException(
@@ -212,7 +214,7 @@ public class FirmwareService {
             skipped);
     }
 
-    //  DEPRECATE, impede novos deploys desse firmware
+    @Auditable(action = AuditAction.FIRMWARE_DEPRECATED, targetType = "FIRMWARE", targetIdArg = 0)
     @Transactional
     public FirmwareResponseDTO deprecate(String firmwareId) {
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
@@ -250,6 +252,7 @@ public class FirmwareService {
                 .map(FirmwareResponseDTO::from).toList();
     }
 
+    @Auditable(action = AuditAction.FIRMWARE_SET_PROVISIONING, targetType = "FIRMWARE", targetIdArg = 0)
     @Transactional
     public FirmwareResponseDTO setProvisioningFirmware(String firmwareId) {
         firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(

@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import com.eric.governanceApi.governanceApi.audit.Auditable;
+import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
@@ -44,6 +46,7 @@ public class DeviceRevokeService {
 
 
 
+    @Auditable(action = AuditAction.DEVICE_REVOKED, targetType = "DEVICE", targetIdArg = 0)
     @Transactional
     public String revokeDevice(String deviceId) throws Exception {
 

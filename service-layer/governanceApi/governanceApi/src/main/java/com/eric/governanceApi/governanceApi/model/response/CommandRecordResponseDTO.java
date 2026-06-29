@@ -13,11 +13,13 @@ public record CommandRecordResponseDTO(
     Instant sentAt,
     String payload,
     Instant completedAt,
-    String errorMessage
+    String errorMessage,
+    String createdByActorId,
+    String createdByUsername
 ) {
 
     public static CommandRecordResponseDTO from(CommandRecord command) {
-        
+
         return new CommandRecordResponseDTO(
             command.getCommandId(),
             command.getCommandType(),
@@ -25,8 +27,10 @@ public record CommandRecordResponseDTO(
             command.getSentAt(),
             command.getPayload(),
             command.getCompletedAt(),
-            command.getErrorMessage()
+            command.getErrorMessage(),
+            command.getCreatedByActorId(),
+            command.getCreatedByUsername()
         );
     }
-    
+
 }

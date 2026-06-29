@@ -23,7 +23,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @Entity
-public class CommandRecord {
+public class CommandRecord extends AuthoredEntity {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

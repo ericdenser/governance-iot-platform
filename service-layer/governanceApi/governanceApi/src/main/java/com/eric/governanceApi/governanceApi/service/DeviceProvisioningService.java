@@ -109,6 +109,10 @@ public class DeviceProvisioningService {
         device.setFirmware(firmwareRepository.findByProvisioningFirmwareTrue()
                 .orElseThrow(() -> new ResourceNotFoundException("Nenhum firmware de provisioning registrado.")));
 
+        // Propaga o autor do token para o device: quem gerou o zip que originou esse provisioning
+        device.setIssuedByActorId(token.getCreatedByActorId());
+        device.setIssuedByUsername(token.getCreatedByUsername());
+
         // Retorna o PEM do certificado para o ESP32 guardar na memória (NVS)
         return certData.pemString;
     }

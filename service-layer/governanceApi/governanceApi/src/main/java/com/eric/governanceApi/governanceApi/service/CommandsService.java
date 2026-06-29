@@ -1,6 +1,8 @@
 package com.eric.governanceApi.governanceApi.service;
 
+import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.config.AgentClient;
+import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
@@ -29,7 +31,7 @@ public class CommandsService {
         this.firmwareService = firmwareService;
     }
 
-    // Interpreta qual foi o comando
+    @Auditable(action = AuditAction.COMMAND_SENT, targetType = "COMMAND")
     @Transactional
     public CommandResultResponseDTO execute(CommandRequest request) throws Exception {
         return switch (request.command()) {
@@ -47,7 +49,7 @@ public class CommandsService {
             throw new IllegalArgumentException("UPDATE exige 'firmwareId' em params.");
         }
 
-        Long firmwareId = ((Number) request.params().get("firmwareId")).longValue();
+        String firmwareId = request.params().get("firmwareId").toString();
 
         // Delega deploy ao FirmwareService dedicado exclusivamente para OTA
         return firmwareService.deploy(firmwareId, request.targetDevices());
