@@ -84,22 +84,40 @@ public class UserService {
         try {
             String accessTokenStr = client.getAccessToken().getTokenValue();
             SignedJWT jwt = SignedJWT.parse(accessTokenStr);
+            var claims = jwt.getJWTClaimsSet();
 
+            List<String> allRoles = new java.util.ArrayList<>();
+
+            // Realm roles
             @SuppressWarnings("unchecked")
-            Map<String, Object> realmAccess = (Map<String, Object>) jwt.getJWTClaimsSet().getClaim("realm_access");
-
+            Map<String, Object> realmAccess = (Map<String, Object>) claims.getClaim("realm_access");
             if (realmAccess != null && realmAccess.containsKey("roles")) {
-                @SuppressWarnings("unchecked")
-                List<String> roles = (List<String>) realmAccess.get("roles");
-
-                List<String> formattedRoles = roles.stream()
-                        .map(role -> "ROLE_" + role.toUpperCase())
-                        .toList();
-
-                logger.info("Roles do token: {} | Roles exigidas: {}", formattedRoles, requiredRoles);
-
-                return formattedRoles.stream().anyMatch(requiredRoles::contains);
+                allRoles.addAll((List<String>) realmAccess.get("roles"));
             }
+
+            // Client roles (resource_access.<client>.roles)
+            @SuppressWarnings("unchecked")
+            Map<String, Object> resourceAccess = (Map<String, Object>) claims.getClaim("resource_access");
+            if (resourceAccess != null) {
+                resourceAccess.values().forEach(v -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> clientAccess = (Map<String, Object>) v;
+                    if (clientAccess != null && clientAccess.containsKey("roles")) {
+                        @SuppressWarnings("unchecked")
+                        List<String> clientRoles = (List<String>) clientAccess.get("roles");
+                        allRoles.addAll(clientRoles);
+                    }
+                });
+            }
+
+            List<String> formattedRoles = allRoles.stream()
+                    .map(role -> role.toUpperCase().startsWith("ROLE_") ? role.toUpperCase() : "ROLE_" + role.toUpperCase())
+                    .distinct()
+                    .toList();
+
+            logger.info("Roles do token: {} | Roles exigidas: {}", formattedRoles, requiredRoles);
+
+            return formattedRoles.stream().anyMatch(requiredRoles::contains);
         } catch (Exception e) {
             logger.error("Erro ao verificar roles no JWT: {}", e.getMessage());
         }

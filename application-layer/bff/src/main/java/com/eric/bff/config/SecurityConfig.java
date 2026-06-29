@@ -58,7 +58,7 @@ public class SecurityConfig {
             )
             .oauth2Login(auth -> auth
                 .loginPage("/login")
-                .defaultSuccessUrl(frontendUrl + "/tarefas", true)
+                .defaultSuccessUrl(frontendUrl + "/home", true)
                 .failureHandler((request, response, exception) -> {
                     logger.info("OAuth2 flow failure — cleaning up session and redirecting to frontend");
                     if (request.getSession(false) != null) {

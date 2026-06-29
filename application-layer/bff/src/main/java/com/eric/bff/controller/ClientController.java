@@ -19,13 +19,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
-public class BffController {
+public class ClientController {
 
-    private static final Logger logger = LoggerFactory.getLogger(BffController.class);
+    private static final Logger logger = LoggerFactory.getLogger(ClientController.class);
 
     private final UserService userService;
 
-    public BffController(UserService userService) {
+    public ClientController(UserService userService) {
         this.userService = userService;
     }
 
