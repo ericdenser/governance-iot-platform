@@ -34,8 +34,9 @@ server:
   tomcat:
     max-http-form-post-size: 10MB
 app:
-  frontend-url: ${FRONTEND_URL:http://localhost:5173}
-  gov-api-url: ${GOV_API_URL:http://localhost:8082}
+  frontend-url: ${FRONTEND_URL}
+  gov-api-url: ${GOV_API_URL}
+  keycloak-admin-url: ${KEYCLOAK_ADMIN_URL}
 
 logging:
   level:
