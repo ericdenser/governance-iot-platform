@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -60,7 +61,7 @@ public class DeviceController {
     @GetMapping("/{deviceId}/events")
     public ResponseEntity<ApiResponse<Page<EventRegistryResponseDTO>>> getEvents(
             @PathVariable String deviceId,
-            @PageableDefault(size = 20) Pageable pageable,
+            @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable,
             HttpServletRequest httpRequest) {
         return ResponseEntity.ok(ApiResponse.success(deviceService.getEvents(deviceId, pageable), httpRequest.getRequestURI()));
     }

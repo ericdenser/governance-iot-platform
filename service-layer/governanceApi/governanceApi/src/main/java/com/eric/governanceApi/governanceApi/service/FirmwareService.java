@@ -202,11 +202,6 @@ public class FirmwareService {
 
         AgentBroadcastResultDTO agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeDevs);
 
-        // Atualiza status do firmware (deploy_count é atualizado pelo DeviceUpdatedHandler
-        // quando o device confirma que está rodando o firmware)
-        fw.setStatus(FirmwareStatus.DEPLOYED);
-        firmwareRepository.save(fw);
-
         return new CommandResultResponseDTO(
             DeviceCommands.UPDATE.toString(),
             agentResult.publishedTo(),

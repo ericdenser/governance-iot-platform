@@ -9,6 +9,7 @@ import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
 public record ErrorRecordResponseDTO(
     Long id,
     String deviceId,
+    String deviceName,
     DeviceError error,
     ErrorStatus status,
     Instant reportedAt,
@@ -19,7 +20,8 @@ public record ErrorRecordResponseDTO(
     public static ErrorRecordResponseDTO from(ErrorRecord e) {
         return new ErrorRecordResponseDTO(
             e.getId(),
-            e.getDevice().getDeviceId(),
+            e.getDevice() != null ? e.getDevice().getDeviceId() : null,
+            e.getDevice() != null ? e.getDevice().getName() : null,
             e.getError(),
             e.getStatus(),
             e.getReportedAt(),

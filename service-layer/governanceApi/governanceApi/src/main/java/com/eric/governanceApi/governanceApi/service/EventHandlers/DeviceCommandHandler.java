@@ -8,6 +8,7 @@ import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
@@ -92,15 +93,22 @@ public class DeviceCommandHandler implements DeviceEventHandler{
 
             Firmware currentFirmware = device.getFirmware();
             currentFirmware.decrementDeployCount();
+            if (currentFirmware.getDeployCount() <= 0 && currentFirmware.getStatus() != FirmwareStatus.DEPRECATED) {
+                currentFirmware.setStatus(FirmwareStatus.STAGED);
+            }
 
             String reportedVersion = event.deviceInfo().firmware_version();
             Optional<Firmware> firmwareOpt = firmwareRepository.findByVersion(reportedVersion);
             if (firmwareOpt.isPresent()) {
-                device.setFirmware(firmwareOpt.get());
-                firmwareOpt.get().incrementDeployCount();
-                log.info("Rollback forçado confirmado. Device {} atualizado para firmware v{}.", device.getDeviceId(), reportedVersion);
+                Firmware rolledBackFirmware = firmwareOpt.get();
+                device.setFirmware(rolledBackFirmware);
+                rolledBackFirmware.incrementDeployCount();
+                if (rolledBackFirmware.getDeployCount() >= 1 && rolledBackFirmware.getStatus() != FirmwareStatus.DEPRECATED) {
+                    rolledBackFirmware.setStatus(FirmwareStatus.DEPLOYED);
+                }
+                log.info("Rollback confirmado. Device {} revertido para firmware v{}.", device.getDeviceId(), reportedVersion);
             } else {
-                log.warn("Rollback forçado confirmado, mas firmware v{} não está registrado no CMDB.", reportedVersion);
+                log.warn("Rollback confirmado, mas firmware v{} não está registrado no CMDB.", reportedVersion);
                 device.setFirmware(null);
             }
         }

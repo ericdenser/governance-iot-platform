@@ -7,8 +7,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
+import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
@@ -69,7 +71,11 @@ public class DeviceProvisionedHandler implements DeviceEventHandler {
 
         // Contabiliza que este device está rodando o provisioning firmware
         if (device.getFirmware() != null) {
-            device.getFirmware().setDeployCount(device.getFirmware().getDeployCount() + 1);
+            Firmware fw = device.getFirmware();
+            fw.setDeployCount(fw.getDeployCount() + 1);
+            if (fw.getDeployCount() >= 1 && fw.getStatus() != FirmwareStatus.DEPRECATED) {
+                fw.setStatus(FirmwareStatus.DEPLOYED);
+            }
         }
 
         eventRegistry.setCompleted(true);

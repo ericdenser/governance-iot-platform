@@ -8,6 +8,7 @@ public record EventRegistryResponseDTO(
     String eventId,
     String eventType,
     String deviceId,
+    String deviceName,
     String previousStatus,
     String newStatus,
     boolean completed,
@@ -17,8 +18,9 @@ public record EventRegistryResponseDTO(
     public static EventRegistryResponseDTO from(EventRegistry e) {
         return new EventRegistryResponseDTO(
             e.getEventId(),
-            e.getEventName(), // campo DB continua "eventName", só o JSON muda
+            e.getEventName(),
             e.getDevice() != null ? e.getDevice().getDeviceId() : null,
+            e.getDevice() != null ? e.getDevice().getName() : null,
             e.getPreviousStatus(),
             e.getNewStatus(),
             e.isCompleted(),

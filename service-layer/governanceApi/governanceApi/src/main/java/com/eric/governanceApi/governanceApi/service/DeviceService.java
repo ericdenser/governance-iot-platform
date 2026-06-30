@@ -100,7 +100,7 @@ public class DeviceService {
         if (!isAdmin() && !canAccessDevice(device)) {
             throw new ResourceNotFoundException("Device " + deviceId + " não encontrado.");
         }
-        return eventRegistryRepository.findByDevice_DeviceId(deviceId, pageable)
+        return eventRegistryRepository.findByDevice_DeviceIdOrderByUploadedAtDesc(deviceId, pageable)
                 .map(EventRegistryResponseDTO::from);
     }
 

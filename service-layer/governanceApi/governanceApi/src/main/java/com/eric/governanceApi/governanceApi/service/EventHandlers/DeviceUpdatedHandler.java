@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.EventType;
+import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
@@ -80,6 +81,9 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         Firmware previous_firmware = device.getFirmware();
         if (previous_firmware != null) {
             previous_firmware.setDeployCount(previous_firmware.getDeployCount() - 1);
+            if (previous_firmware.getDeployCount() <= 0 && previous_firmware.getStatus() != FirmwareStatus.DEPRECATED) {
+                previous_firmware.setStatus(FirmwareStatus.STAGED);
+            }
         }
 
         // VALIDA FIRMWARE ATUAL
@@ -98,6 +102,9 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         // atualiza firmware atual
         current_firmware = current_firmwareOptional.get();
         current_firmware.setDeployCount(current_firmware.getDeployCount() + 1);
+        if (current_firmware.getDeployCount() >= 1) {
+            current_firmware.setStatus(FirmwareStatus.DEPLOYED);
+        }
         device.setFirmware(current_firmware);
         device.setStatus(DeviceStatus.ACTIVE);
         
