@@ -39,9 +39,9 @@ onMounted(async () => {
   <AppLayout>
     <AppCard title="Dispositivos">
       <template #actions>
-        <AppButton v-if="authStore.isAdmin" variant="primary" size="sm"
+        <AppButton v-if="authStore.isAdmin" variant="primary" size="lg"
                    @click="$router.push('/firmware')">
-          + Provisionar
+          Provisionar 
         </AppButton>
       </template>
 

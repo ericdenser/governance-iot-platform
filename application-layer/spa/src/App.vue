@@ -9,5 +9,5 @@ import { RouterView } from 'vue-router'
 </template>
 
 <style scoped>
-/* Pode deixar vazio por enquanto */
+
 </style>

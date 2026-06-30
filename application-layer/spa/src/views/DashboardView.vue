@@ -19,15 +19,17 @@ const totalDevices = computed(() => devices.value.length)
 const activeDevices = computed(() => devices.value.filter(d => d.status === 'ACTIVE').length)
 const pendingDevices = computed(() => devices.value.filter(d => ['PENDING', 'PROVISIONING'].includes(d.status)).length)
 
-const statusVariant = (s: string) => {
-  const map: Record<string, string> = {
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
+
+const statusVariant = (s: string): BadgeVariant => {
+  const map: Record<string, BadgeVariant> = {
     ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info',
     COMMAND_PENDING: 'info', REVOKED: 'danger', ERROR: 'danger',
   }
   return map[s] ?? 'muted'
 }
 
-const eventVariant = (t: string) => {
+const eventVariant = (t: string): BadgeVariant => {
   if (t?.includes('ERROR') || t?.includes('FAIL')) return 'danger'
   if (t?.includes('OTA') || t?.includes('UPDATE')) return 'info'
   return 'muted'

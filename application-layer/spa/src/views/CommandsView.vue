@@ -153,8 +153,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
   <AppLayout>
     <AppCard title="Comandos">
       <template #actions>
-        <AppButton v-if="authStore.isAdmin" size="sm" variant="primary" @click="openWizard">
-          + Enviar Comando
+        <AppButton v-if="authStore.isAdmin" size="lg" variant="primary" @click="openWizard">
+          Enviar Comando
         </AppButton>
       </template>
 
@@ -170,7 +170,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           <tr v-for="c in commands" :key="c.commandId">
             <td class="mono text-sm">{{ c.commandType }}</td>
             <td><AppBadge :variant="statusVariant(c.status)">{{ c.status }}</AppBadge></td>
-            <td class="mono text-sm text-muted">{{ c.deviceId ?? '—' }}</td>
+            <td class="text-sm">{{ c.deviceName ?? c.deviceId ?? '—' }}</td>
             <td class="text-sm">{{ c.createdByUsername ?? '—' }}</td>
             <td class="text-muted text-sm">{{ fmt(c.sentAt) }}</td>
             <td class="text-muted text-sm">{{ fmt(c.completedAt) }}</td>
@@ -204,7 +204,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
               <span class="cmd-desc">{{ cmd.desc }}</span>
             </button>
           </div>
-          <div class="modal-footer">
+          <div class="modal-footer" style="justify-content: flex-end;">
             <AppButton variant="ghost" @click="showWizard = false">Cancelar</AppButton>
           </div>
         </template>
