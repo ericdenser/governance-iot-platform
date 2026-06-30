@@ -6,6 +6,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record AssignUserRequest(
-        @NotBlank String keycloakUserId,
-        @NotNull GroupRole role
+
+        @NotBlank 
+        String keycloakUserId,
+
+        @NotNull 
+        GroupRole role
 ) {}

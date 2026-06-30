@@ -57,6 +57,7 @@ public class RoleManager implements AuthorizationManager<RequestAuthorizationCon
 
         // Busca o padrão mais específico que casa com a URI.
         // Prioridade: padrões sem wildcard > padrões com wildcard; mais longo > mais curto.
+        @SuppressWarnings("null")
         Optional<Map<String, List<String>>> matched = rules.entrySet().stream()
             .filter(e -> PATH_MATCHER.match(e.getKey(), uri))
             .min(Comparator

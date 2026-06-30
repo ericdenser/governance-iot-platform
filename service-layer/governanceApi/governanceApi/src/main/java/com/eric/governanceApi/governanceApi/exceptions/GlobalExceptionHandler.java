@@ -43,11 +43,13 @@ public class GlobalExceptionHandler {
                         .body(ApiResponse.error("PARAM_400", ex.getMessage(), request.getRequestURI()));
         }
 
+        @SuppressWarnings("null")
         @ExceptionHandler(MethodArgumentNotValidException.class)
         public ResponseEntity<ApiResponse<Void>> handleValidationException(
                 MethodArgumentNotValidException ex,
                 HttpServletRequest request) {
 
+                
                 String message = ex.getBindingResult()
                         .getFieldErrors()
                         .stream()

@@ -14,12 +14,13 @@ public record CommandRecordResponseDTO(
     String payload,
     Instant completedAt,
     String errorMessage,
+    String deviceId,
+    String deviceName,
     String createdByActorId,
     String createdByUsername
 ) {
 
     public static CommandRecordResponseDTO from(CommandRecord command) {
-
         return new CommandRecordResponseDTO(
             command.getCommandId(),
             command.getCommandType(),
@@ -28,9 +29,10 @@ public record CommandRecordResponseDTO(
             command.getPayload(),
             command.getCompletedAt(),
             command.getErrorMessage(),
+            command.getTargetDevice() != null ? command.getTargetDevice().getDeviceId() : null,
+            command.getTargetDevice() != null ? command.getTargetDevice().getName() : null,
             command.getCreatedByActorId(),
             command.getCreatedByUsername()
         );
     }
-
 }

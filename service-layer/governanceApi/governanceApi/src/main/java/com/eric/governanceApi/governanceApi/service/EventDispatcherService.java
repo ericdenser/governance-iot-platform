@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 public class EventDispatcherService {
     private final Map<EventType, DeviceEventHandler> handlers;
 
+    @SuppressWarnings("null")
     public EventDispatcherService(List<DeviceEventHandler> allHandlers) {
         this.handlers = allHandlers.stream()
         .collect(Collectors.toMap(DeviceEventHandler::handles, h -> h));   

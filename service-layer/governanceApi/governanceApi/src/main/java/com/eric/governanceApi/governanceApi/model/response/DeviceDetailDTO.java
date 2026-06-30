@@ -1,6 +1,7 @@
 package com.eric.governanceApi.governanceApi.model.response;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
@@ -27,7 +28,7 @@ public record DeviceDetailDTO(
             device.getCreatedAt(),
             device.getLastSeen(),
             FirmwareSummaryDTO.from(device.getFirmware()),
-            device.getSensorStatus(),
+            new HashMap<>(device.getSensorStatus()),
             device.getIssuedByActorId(),
             device.getIssuedByUsername()
         );

@@ -32,6 +32,16 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI}
+      client:
+        registration:
+          gov-api:
+            client-id: ${GOVAPI_CLIENT_ID:gov-api}
+            client-secret: ${GOVAPI_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope: openid
+        provider:
+          gov-api:
+            token-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/token
 
 infra:
   api-key: ${INFRA_API_KEY}
@@ -48,6 +58,12 @@ ota:
 
 agent:
   url: ${AGENT_URL}
+
+event:
+  url: ${EVENT_URL}
+
+govapi:
+  self-url: ${GOVAPI_SELF_URL:http://localhost:8082}
 
 provisioning:
   nvs-python-path: ${NVS_PYTHON_PATH:python3}

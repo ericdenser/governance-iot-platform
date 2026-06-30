@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
-import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;

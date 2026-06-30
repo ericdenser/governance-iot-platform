@@ -6,7 +6,7 @@ import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 
 public record EventRegistryResponseDTO(
     String eventId,
-    String eventName,
+    String eventType,
     String deviceId,
     String previousStatus,
     String newStatus,
@@ -17,7 +17,7 @@ public record EventRegistryResponseDTO(
     public static EventRegistryResponseDTO from(EventRegistry e) {
         return new EventRegistryResponseDTO(
             e.getEventId(),
-            e.getEventName(),
+            e.getEventName(), // campo DB continua "eventName", só o JSON muda
             e.getDevice() != null ? e.getDevice().getDeviceId() : null,
             e.getPreviousStatus(),
             e.getNewStatus(),

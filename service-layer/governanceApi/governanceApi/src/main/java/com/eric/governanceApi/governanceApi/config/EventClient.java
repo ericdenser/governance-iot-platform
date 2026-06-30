@@ -1,8 +1,9 @@
 package com.eric.governanceApi.governanceApi.config;
 
-import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.EventType;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
-import com.eric.governanceApi.governanceApi.model.response.AgentBroadcastResultDTO;
+
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -13,20 +14,24 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 @Slf4j
 @Component
-public class AgentClient {
+public class EventClient {
 
     private final RestClient restClient;
     private final OAuth2AuthorizedClientManager authorizedClientManager;
 
-    @Value("${agent.url}")
-    private String agentBaseUrl;
+    @Value("${event.url}")
+    private String eventBaseUrl;
 
-    public AgentClient(RestClient restClient, OAuth2AuthorizedClientManager authorizedClientManager) {
+    @Value("${govapi.self-url}")
+    private String selfUrl;
+
+    public EventClient(RestClient restClient, OAuth2AuthorizedClientManager authorizedClientManager) {
         this.restClient = restClient;
         this.authorizedClientManager = authorizedClientManager;
     }
@@ -38,39 +43,41 @@ public class AgentClient {
                 .build();
         OAuth2AuthorizedClient authorizedClient = authorizedClientManager.authorize(authorizeRequest);
         if (authorizedClient == null || authorizedClient.getAccessToken() == null) {
-            throw new InfrastructureException("Não foi possível obter token OAuth2 para o agent-mqtt");
+            throw new InfrastructureException("Não foi possível obter token OAuth2 para o event-handler");
         }
         return authorizedClient.getAccessToken().getTokenValue();
     }
 
-    public AgentBroadcastResultDTO broadcastCommands(DeviceCommands command, Map<String, Object> payload, List<String> targetDevices) {
+    @PostConstruct
+    public void subscribeToEvents() {
+        List<EventType> allEvents = Arrays.asList(EventType.values());
+
         Map<String, Object> request = Map.of(
-            "command",       command,
-            "payload",       payload,
-            "targetDevices", targetDevices
+            "subscriberName", "govApi",
+            "eventType",      allEvents,
+            "webhookUrl",     selfUrl + "/events/ingest"
         );
 
-        log.info("Enviando payload {} para os devices {}", payload, targetDevices);
+        log.info("Inscrevendo-se nos eventos: {}", allEvents);
 
         try {
-            AgentBroadcastResultDTO response = restClient.post()
-                    .uri(agentBaseUrl + "/agent/broadcast")
+            String response = restClient.post()
+                    .uri(eventBaseUrl + "/subscribe")
                     .header("Authorization", "Bearer " + fetchToken())
                     .body(request)
                     .retrieve()
-                    .body(AgentBroadcastResultDTO.class);
+                    .body(String.class);
 
-            log.info("Agent respondeu: {}", response);
-            return response;
+            log.info("EventHandler respondeu: {}", response);
 
         } catch (ResourceAccessException e) {
-            log.error("Agent offline: {}", e.getMessage());
-            throw new InfrastructureException("Agent offline. Comando cancelado.");
+            log.error("EventHandler offline: {}", e.getMessage());
+            throw new InfrastructureException("EventHandler offline. Subscrição cancelada.");
         } catch (InfrastructureException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Falha ao comunicar com Agent: {}", e.getMessage());
-            throw new InfrastructureException("Falha na comunicação com o Agent: " + e.getMessage());
+            log.error("Falha ao comunicar com EventHandler: {}", e.getMessage());
+            throw new InfrastructureException("Falha na comunicação com o EventHandler: " + e.getMessage());
         }
     }
 }

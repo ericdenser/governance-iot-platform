@@ -24,13 +24,13 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
-                // ESP32  usa provisioning token no body
+                // ESP32 envia provisioning token no body (qualquer outra requisição é 404)
                 .requestMatchers("/provisioning/activate").permitAll()
 
-                // apenas event-handler (service account com ROLE_EVENT_HANDLER) pode ingerir eventos
-                .requestMatchers("/event/ingest").hasRole("EVENT_HANDLER")
+                // apenas event-handler (service account com ROLE_EVENT_HANDLER) pode alimentar eventos
+                .requestMatchers("/events/ingest").hasRole("EVENT_HANDLER")
 
-                // apenas agent-mqtt (service account com ROLE_AGENT_MQTT) pode ingerir erros
+                // apenas agent-mqtt (service account com ROLE_AGENT_MQTT) pode alimentar erros
                 .requestMatchers("/error/ingest").hasRole("AGENT_MQTT")
 
                 // Download de firmware pelo ESP32 via OTA — sem autenticação

@@ -24,6 +24,7 @@ public class ErrorDispatcherService {
     private final DeviceRepository deviceRepository;
     private final ErrorRecordRepository errorRecordRepository;
 
+    @SuppressWarnings("null")
     public ErrorDispatcherService(List<ErrorHandlerInterface> allHandlers, DeviceRepository deviceRepository, ErrorRecordRepository errorRecordRepository) {
         this.handlers = allHandlers.stream()
         .collect(Collectors.toMap(ErrorHandlerInterface::handles, h -> h));   
