@@ -57,6 +57,7 @@ onMounted(async () => {
             <th>Nome</th>
             <th>Device ID</th>
             <th>Status</th>
+            <th>Firmware</th>
             <th>MAC</th>
             <th>Provisionado por</th>
             <th>Última vez visto</th>
@@ -68,6 +69,7 @@ onMounted(async () => {
             <td class="font-medium">{{ d.name }}</td>
             <td class="mono text-sm">{{ d.deviceId }}</td>
             <td><AppBadge :variant="statusVariant(d.status)" dot>{{ d.status }}</AppBadge></td>
+            <td class="mono text-sm">{{ d.firmwareVersion ? `v${d.firmwareVersion}` : '—' }}</td>
             <td class="mono text-sm">{{ d.macAddress ?? '—' }}</td>
             <td class="text-sm">
               <span v-if="d.issuedByUsername" class="issued">{{ d.issuedByUsername }}</span>
@@ -76,7 +78,7 @@ onMounted(async () => {
             <td class="text-sm text-muted">{{ fmt(d.lastSeen) }}</td>
           </tr>
           <tr v-if="!filtered().length">
-            <td colspan="6" class="empty">Nenhum dispositivo encontrado</td>
+            <td colspan="7" class="empty">Nenhum dispositivo encontrado</td>
           </tr>
         </tbody>
       </table>

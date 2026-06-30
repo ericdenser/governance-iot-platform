@@ -5,6 +5,8 @@ import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppPagination from '@/components/AppPagination.vue'
+import EventList from '@/components/EventList.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
 
@@ -30,8 +32,16 @@ const statusVariant = (s: string): any => {
   const m: Record<string, string> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
   return m[s] ?? 'muted'
 }
-const cmdVariant = (s: string): any => ({ PENDING: 'warning', COMPLETED: 'success', FAILED: 'danger', TIMEOUT: 'danger' }[s] ?? 'muted')
+const cmdVariant = (s: string): any => ({ PENDING: 'warning', COMPLETED: 'success', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' }[s] ?? 'muted')
+const errVariant = (s: string): any => ({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' }[s] ?? 'warning')
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+
+const errExpanded = ref<Set<number>>(new Set())
+const toggleErrExpand = (id: number) => {
+  const next = new Set(errExpanded.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  errExpanded.value = next
+}
 
 const loadCommands = async () => {
   const r = await devicesApi.getCommands(deviceId, cmdPage.value)
@@ -45,6 +55,9 @@ const loadErrors = async () => {
   const r = await devicesApi.getErrors(deviceId, errPage.value)
   errors.value = r.data.content ?? []; errTotal.value = r.data.page?.totalPages ?? 1
 }
+const changeCmdPage  = (p: number) => { cmdPage.value  = p; loadCommands() }
+const changeEvPage   = (p: number) => { evPage.value   = p; loadEvents()   }
+const changeErrPage  = (p: number) => { errPage.value  = p; loadErrors()   }
 
 const switchTab = async (t: typeof tab.value) => {
   tab.value = t
@@ -112,6 +125,15 @@ onMounted(async () => {
             </span>
             <span v-else class="text-muted">—</span>
           </div>
+          <div v-if="device.sensorStatus && Object.keys(device.sensorStatus).length" class="info-row info-row-sensors">
+            <span class="info-label">Sensores</span>
+            <div class="sensor-chips">
+              <span v-for="(active, name) in device.sensorStatus" :key="name" class="sensor-chip">
+                <span class="sensor-name">{{ name }}</span>
+                <AppBadge :variant="active ? 'success' : 'muted'" dot>{{ active ? 'Ativo' : 'Inativo' }}</AppBadge>
+              </span>
+            </div>
+          </div>
         </div>
       </AppCard>
 
@@ -129,50 +151,46 @@ onMounted(async () => {
             <tr v-if="!commands.length"><td colspan="4" class="empty">Nenhum comando</td></tr>
           </tbody>
         </table>
-        <div class="pagination">
-          <AppButton size="sm" variant="secondary" :disabled="cmdPage === 0" @click="cmdPage--; loadCommands()">Anterior</AppButton>
-          <span class="text-muted text-sm">Página {{ cmdPage + 1 }}</span>
-          <AppButton size="sm" variant="secondary" :disabled="cmdPage + 1 >= cmdTotal" @click="cmdPage++; loadCommands()">Próxima</AppButton>
-        </div>
+        <AppPagination :page="cmdPage" :total-pages="cmdTotal" @change="changeCmdPage" />
       </AppCard>
 
       <!-- EVENTS -->
       <AppCard v-if="tab === 'events'" title="Eventos">
-        <table class="tbl">
-          <thead><tr><th>Tipo</th><th>Data</th></tr></thead>
-          <tbody>
-            <tr v-for="e in events" :key="e.id">
-              <td><AppBadge variant="info">{{ e.eventType }}</AppBadge></td>
-              <td class="text-muted text-sm">{{ fmt(e.uploadedAt) }}</td>
-            </tr>
-            <tr v-if="!events.length"><td colspan="2" class="empty">Nenhum evento</td></tr>
-          </tbody>
-        </table>
-        <div class="pagination">
-          <AppButton size="sm" variant="secondary" :disabled="evPage === 0" @click="evPage--; loadEvents()">Anterior</AppButton>
-          <span class="text-muted text-sm">Página {{ evPage + 1 }}</span>
-          <AppButton size="sm" variant="secondary" :disabled="evPage + 1 >= evTotal" @click="evPage++; loadEvents()">Próxima</AppButton>
-        </div>
+        <EventList :events="events" :show-device="false" />
+        <AppPagination :page="evPage" :total-pages="evTotal" @change="changeEvPage" />
       </AppCard>
 
       <!-- ERRORS -->
       <AppCard v-if="tab === 'errors'" title="Erros">
         <table class="tbl">
-          <thead><tr><th>Código</th><th>Mensagem</th><th>Data</th></tr></thead>
+          <thead><tr><th>Código</th><th>Status</th><th>Reportado em</th><th>Fixado em</th><th>Detalhes</th></tr></thead>
           <tbody>
-            <tr v-for="e in errors" :key="e.id">
-              <td><AppBadge variant="danger">{{ e.errorCode }}</AppBadge></td>
-              <td class="text-sm">{{ e.message ?? '—' }}</td>
-              <td class="text-muted text-sm">{{ fmt(e.timestamp) }}</td>
-            </tr>
-            <tr v-if="!errors.length"><td colspan="3" class="empty">Nenhum erro</td></tr>
+            <template v-for="e in errors" :key="e.id">
+              <tr>
+                <td><AppBadge variant="danger">{{ e.error }}</AppBadge></td>
+                <td><AppBadge :variant="errVariant(e.status)">{{ e.status }}</AppBadge></td>
+                <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
+                <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
+                <td>
+                  <button v-if="e.details || e.message" class="expand-btn" :class="{ open: errExpanded.has(e.id) }" @click="toggleErrExpand(e.id)">
+                    <span>{{ errExpanded.has(e.id) ? '▴' : '▾' }}</span>
+                  </button>
+                  <span v-else class="text-muted text-sm">—</span>
+                </td>
+              </tr>
+              <tr v-if="errExpanded.has(e.id)" class="detail-row">
+                <td colspan="5">
+                  <div class="detail-box">
+                    <p v-if="e.message" class="detail-message">{{ e.message }}</p>
+                    <pre v-if="e.details" class="detail-pre">{{ e.details }}</pre>
+                  </div>
+                </td>
+              </tr>
+            </template>
+            <tr v-if="!errors.length"><td colspan="5" class="empty">Nenhum erro</td></tr>
           </tbody>
         </table>
-        <div class="pagination">
-          <AppButton size="sm" variant="secondary" :disabled="errPage === 0" @click="errPage--; loadErrors()">Anterior</AppButton>
-          <span class="text-muted text-sm">Página {{ errPage + 1 }}</span>
-          <AppButton size="sm" variant="secondary" :disabled="errPage + 1 >= errTotal" @click="errPage++; loadErrors()">Próxima</AppButton>
-        </div>
+        <AppPagination :page="errPage" :total-pages="errTotal" @change="changeErrPage" />
       </AppCard>
     </div>
   </AppLayout>
@@ -196,6 +214,10 @@ onMounted(async () => {
 .info-row { display: flex; align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--border); gap: var(--space-4); }
 .info-row:last-child { border-bottom: none; }
 .info-label { width: 180px; font-size: var(--text-sm); color: var(--text-muted); flex-shrink: 0; }
+.info-row-sensors { align-items: flex-start; }
+.sensor-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.sensor-chip { display: flex; align-items: center; gap: var(--space-2); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 3px var(--space-2); font-size: var(--text-xs); }
+.sensor-name { color: var(--text); font-weight: 500; }
 
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 0 var(--space-3); text-align: left; }
@@ -205,5 +227,11 @@ onMounted(async () => {
 .text-xs { font-size: var(--text-xs); }
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; }
-.pagination { display: flex; align-items: center; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); }
+
+.expand-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 6px; cursor: pointer; color: var(--text-muted); font-size: var(--text-xs); transition: border-color var(--transition), color var(--transition); }
+.expand-btn:hover, .expand-btn.open { border-color: var(--primary); color: var(--primary); }
+.detail-row td { background: var(--panel); border-top: none; padding: 0; }
+.detail-box { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border-left: 2px solid var(--danger); margin: var(--space-1) 0 var(--space-2); }
+.detail-message { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
+.detail-pre { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); white-space: pre-wrap; word-break: break-all; margin: 0; line-height: 1.5; }
 </style>

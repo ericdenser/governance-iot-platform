@@ -3,21 +3,33 @@ import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
-import AppButton from '@/components/AppButton.vue'
+import AppPagination from '@/components/AppPagination.vue'
 import { errorsApi } from '@/services/errors'
 
 const errors = ref<any[]>([])
 const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
+const expanded = ref<Set<number>>(new Set())
+
+const statusVariant = (s: string): any =>
+  ({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' }[s] ?? 'warning')
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
+const toggleExpand = (id: number) => {
+  const next = new Set(expanded.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  expanded.value = next
+}
+
 const load = async () => {
+  expanded.value = new Set()
   const r = await errorsApi.list(page.value)
   errors.value = r.data.content ?? []
   totalPages.value = r.data.page?.totalPages ?? 1
 }
+const changePage = (p: number) => { page.value = p; load() }
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })
 </script>
@@ -29,25 +41,49 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <table v-else class="tbl">
         <thead>
           <tr>
-            <th>Código</th><th>Mensagem</th><th>Device ID</th><th>Data</th>
+            <th>Código</th>
+            <th>Status</th>
+            <th>Dispositivo</th>
+            <th>Reportado em</th>
+            <th>Fixado em</th>
+            <th>Detalhes</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="e in errors" :key="e.id">
-            <td><AppBadge variant="danger">{{ e.errorCode }}</AppBadge></td>
-            <td class="text-sm">{{ e.message ?? '—' }}</td>
-            <td class="mono text-sm text-muted">{{ e.deviceId ?? '—' }}</td>
-            <td class="text-muted text-sm">{{ fmt(e.timestamp) }}</td>
-          </tr>
-          <tr v-if="!errors.length"><td colspan="4" class="empty">Nenhum erro encontrado</td></tr>
+          <template v-for="e in errors" :key="e.id">
+            <tr>
+              <td><AppBadge variant="danger">{{ e.error }}</AppBadge></td>
+              <td><AppBadge :variant="statusVariant(e.status)">{{ e.status }}</AppBadge></td>
+              <td class="text-sm">{{ e.deviceName ?? e.deviceId ?? '—' }}</td>
+              <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
+              <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
+              <td>
+                <button
+                  v-if="e.details || e.message"
+                  class="expand-btn"
+                  :class="{ open: expanded.has(e.id) }"
+                  @click="toggleExpand(e.id)"
+                  :title="expanded.has(e.id) ? 'Fechar detalhes' : 'Ver detalhes'"
+                >
+                  <span class="expand-icon">{{ expanded.has(e.id) ? '▴' : '▾' }}</span>
+                </button>
+                <span v-else class="text-muted text-sm">—</span>
+              </td>
+            </tr>
+            <tr v-if="expanded.has(e.id)" class="detail-row">
+              <td colspan="6">
+                <div class="detail-box">
+                  <p v-if="e.message" class="detail-message">{{ e.message }}</p>
+                  <pre v-if="e.details" class="detail-pre">{{ e.details }}</pre>
+                </div>
+              </td>
+            </tr>
+          </template>
+          <tr v-if="!errors.length"><td colspan="6" class="empty">Nenhum erro encontrado</td></tr>
         </tbody>
       </table>
 
-      <div class="pagination">
-        <AppButton size="sm" variant="secondary" :disabled="page === 0" @click="page--; load()">Anterior</AppButton>
-        <span class="text-muted text-sm">Página {{ page + 1 }} de {{ totalPages }}</span>
-        <AppButton size="sm" variant="secondary" :disabled="page + 1 >= totalPages" @click="page++; load()">Próxima</AppButton>
-      </div>
+      <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />
     </AppCard>
   </AppLayout>
 </template>
@@ -55,10 +91,17 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 <style scoped>
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
-.tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); }
-.mono { font-family: var(--font-mono); }
+.tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); vertical-align: middle; }
 .text-sm { font-size: var(--text-sm); }
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
-.pagination { display: flex; align-items: center; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); }
+
+.expand-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 6px; cursor: pointer; color: var(--text-muted); font-size: var(--text-xs); transition: border-color var(--transition), color var(--transition); }
+.expand-btn:hover, .expand-btn.open { border-color: var(--primary); color: var(--primary); }
+.expand-icon { display: inline-block; }
+
+.detail-row td { background: var(--panel); border-top: none; padding: 0; }
+.detail-box { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border-left: 2px solid var(--danger); margin: var(--space-1) 0 var(--space-2); }
+.detail-message { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
+.detail-pre { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); white-space: pre-wrap; word-break: break-all; margin: 0; line-height: 1.5; }
 </style>

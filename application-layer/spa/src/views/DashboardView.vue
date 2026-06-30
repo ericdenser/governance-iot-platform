@@ -4,6 +4,8 @@ import AppLayout from '@/components/AppLayout.vue'
 import StatCard from '@/components/StatCard.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
+import EventActivityList from '@/components/EventActivityList.vue'
+import ErrorActivityList from '@/components/ErrorActivityList.vue'
 import { devicesApi } from '@/services/devices'
 import { eventsApi } from '@/services/events'
 import { errorsApi } from '@/services/errors'
@@ -20,19 +22,12 @@ const activeDevices = computed(() => devices.value.filter(d => d.status === 'ACT
 const pendingDevices = computed(() => devices.value.filter(d => ['PENDING', 'PROVISIONING'].includes(d.status)).length)
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
-
 const statusVariant = (s: string): BadgeVariant => {
   const map: Record<string, BadgeVariant> = {
     ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info',
     COMMAND_PENDING: 'info', REVOKED: 'danger', ERROR: 'danger',
   }
   return map[s] ?? 'muted'
-}
-
-const eventVariant = (t: string): BadgeVariant => {
-  if (t?.includes('ERROR') || t?.includes('FAIL')) return 'danger'
-  if (t?.includes('OTA') || t?.includes('UPDATE')) return 'info'
-  return 'muted'
 }
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
@@ -70,40 +65,27 @@ onMounted(async () => {
       <div class="panels">
         <AppCard title="Dispositivos Recentes" class="panel">
           <table class="tbl">
-            <thead><tr><th>Nome</th><th>Status</th><th>Última vez visto</th></tr></thead>
+            <thead><tr><th>Nome</th><th>Status</th><th>Firmware</th><th>Última vez visto</th></tr></thead>
             <tbody>
               <tr v-for="d in devices.slice(0, 8)" :key="d.deviceId" class="tbl-row"
                   @click="$router.push(`/devices/${d.deviceId}`)">
                 <td class="mono">{{ d.name }}</td>
                 <td><AppBadge :variant="statusVariant(d.status)" dot>{{ d.status }}</AppBadge></td>
+                <td class="mono muted">{{ d.firmwareVersion ? `v${d.firmwareVersion}` : '—' }}</td>
                 <td class="muted">{{ fmt(d.lastSeen) }}</td>
               </tr>
-              <tr v-if="!devices.length"><td colspan="3" class="empty">Nenhum dispositivo</td></tr>
+              <tr v-if="!devices.length"><td colspan="4" class="empty">Nenhum dispositivo</td></tr>
             </tbody>
           </table>
         </AppCard>
 
         <div class="side-panels">
           <AppCard title="Eventos Recentes" class="panel">
-            <ul class="activity-list">
-              <li v-for="e in recentEvents" :key="e.id" class="activity-item">
-                <AppBadge :variant="eventVariant(e.eventType)" class="ev-badge">{{ e.eventType }}</AppBadge>
-                <span class="mono text-sm">{{ e.deviceId }}</span>
-                <span class="muted text-xs">{{ fmt(e.uploadedAt) }}</span>
-              </li>
-              <li v-if="!recentEvents.length" class="empty">Sem eventos recentes</li>
-            </ul>
+            <EventActivityList :events="recentEvents" />
           </AppCard>
 
           <AppCard title="Erros Recentes" class="panel">
-            <ul class="activity-list">
-              <li v-for="e in recentErrors" :key="e.id" class="activity-item">
-                <AppBadge variant="danger" class="ev-badge">{{ e.errorCode }}</AppBadge>
-                <span class="mono text-sm">{{ e.deviceId }}</span>
-                <span class="muted text-xs">{{ fmt(e.timestamp) }}</span>
-              </li>
-              <li v-if="!recentErrors.length" class="empty">Sem erros recentes</li>
-            </ul>
+            <ErrorActivityList :errors="recentErrors" />
           </AppCard>
         </div>
       </div>
@@ -125,9 +107,6 @@ onMounted(async () => {
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
 
-.activity-list { list-style: none; display: flex; flex-direction: column; gap: var(--space-3); }
-.activity-item { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.ev-badge { flex-shrink: 0; }
 .empty { color: var(--text-muted); font-size: var(--text-sm); }
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--text-muted); }

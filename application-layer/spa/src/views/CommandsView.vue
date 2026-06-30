@@ -4,6 +4,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppPagination from '@/components/AppPagination.vue'
 import { commandsApi } from '@/services/commands'
 import { devicesApi } from '@/services/devices'
 import { firmwareApi } from '@/services/firmware'
@@ -132,7 +133,7 @@ const doSend = async () => {
 // ── History table ─────────────────────────────────────────────────────────────
 
 const statusVariant = (s: string): any =>
-  ({ PENDING: 'warning', COMPLETED: 'success', FAILED: 'danger', TIMEOUT: 'danger' }[s] ?? 'muted')
+  ({ PENDING: 'warning', COMPLETED: 'success', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' }[s] ?? 'muted')
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
@@ -141,10 +142,20 @@ const load = async () => {
   commands.value = r.data.content ?? []
   totalPages.value = r.data.page?.totalPages ?? 1
 }
+const changePage = (p: number) => { page.value = p; load() }
 
 const deployableList = computed(() =>
   allFirmwares.value.filter(fw => fw.status !== 'DEPRECATED')
 )
+
+const deviceNameById = computed(() => {
+  const m: Record<string, string> = {}
+  for (const d of allDevices.value) m[d.deviceId] = d.name
+  return m
+})
+
+const isSameVersion = (d: any) =>
+  selectedCommand.value === 'UPDATE' && !!selectedFirmware.value && d.firmwareVersion === selectedFirmware.value.version
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })
 </script>
@@ -179,11 +190,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         </tbody>
       </table>
 
-      <div class="pagination">
-        <AppButton size="sm" variant="secondary" :disabled="page === 0" @click="page--; load()">Anterior</AppButton>
-        <span class="text-muted text-sm">Página {{ page + 1 }} de {{ totalPages }}</span>
-        <AppButton size="sm" variant="secondary" :disabled="page + 1 >= totalPages" @click="page++; load()">Próxima</AppButton>
-      </div>
+      <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />
     </AppCard>
 
     <!-- ── Wizard ───────────────────────────────────────────────────────────── -->
@@ -246,11 +253,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
               :key="d.deviceId"
               class="device-chip"
               :class="{ selected: selectedDeviceIds.has(d.deviceId) }"
+              :disabled="isSameVersion(d)"
               @click="toggleDevice(d.deviceId)"
             >
               <span class="chip-name">{{ d.name }}</span>
-              <span v-if="d.firmwareVersion" class="chip-ver">v{{ d.firmwareVersion }}</span>
-              <span v-else class="chip-ver text-muted">—</span>
+              <span class="chip-ver">{{ d.firmwareVersion ? 'v' + d.firmwareVersion : '—' }}</span>
+              <span v-if="isSameVersion(d)" class="chip-cur-label">já instalado</span>
             </button>
           </div>
           <p v-if="sendError" class="field-error">{{ sendError }}</p>
@@ -292,15 +300,15 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           <h3 class="modal-title">Resultado — {{ sendResult.command }}</h3>
           <div class="result-section" v-if="sendResult.publishedTo.length">
             <p class="result-label success-label">Publicado ({{ sendResult.publishedTo.length }})</p>
-            <p v-for="id in sendResult.publishedTo" :key="id" class="mono text-sm">{{ id }}</p>
+            <p v-for="id in sendResult.publishedTo" :key="id" class="text-sm">{{ deviceNameById[id] ?? id }}</p>
           </div>
           <div class="result-section" v-if="sendResult.failed.length">
             <p class="result-label danger-label">Falhou no broker ({{ sendResult.failed.length }})</p>
-            <p v-for="id in sendResult.failed" :key="id" class="mono text-sm text-muted">{{ id }}</p>
+            <p v-for="id in sendResult.failed" :key="id" class="text-sm text-muted">{{ deviceNameById[id] ?? id }}</p>
           </div>
           <div class="result-section" v-if="sendResult.skipped.length">
             <p class="result-label warn-label">Ignorado — inativo, inexistente ou comando pendente ({{ sendResult.skipped.length }})</p>
-            <p v-for="id in sendResult.skipped" :key="id" class="mono text-sm text-muted">{{ id }}</p>
+            <p v-for="id in sendResult.skipped" :key="id" class="text-sm text-muted">{{ deviceNameById[id] ?? id }}</p>
           </div>
           <div v-if="!sendResult.publishedTo.length && !sendResult.failed.length && !sendResult.skipped.length">
             <p class="text-muted text-sm">Nenhum device processado.</p>
@@ -324,7 +332,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .text-sm { font-size: var(--text-sm); }
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
-.pagination { display: flex; align-items: center; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); }
 
 /* ── Modal shell ─────────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
@@ -356,6 +363,9 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .device-chip.selected { border-color: var(--primary); background: var(--primary-dim); }
 .chip-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 .chip-ver { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+.chip-cur-label { font-size: 10px; color: var(--text-muted); font-style: italic; }
+.device-chip:disabled { opacity: 0.35; cursor: not-allowed; }
+.device-chip:disabled:hover { border-color: var(--border); background: var(--panel); }
 
 /* ── Step: params ────────────────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }

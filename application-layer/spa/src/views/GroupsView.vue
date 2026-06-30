@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppModal from '@/components/AppModal.vue'
 import { groupsApi } from '@/services/groups'
 
 const groups = ref<any[]>([])
@@ -117,7 +118,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <template>
   <AppLayout>
-    <div class="layout">
+    <div class="groups-grid">
       <!-- Group list -->
       <AppCard title="Grupos">
         <template #actions>
@@ -195,74 +196,66 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           </div>
         </AppCard>
       </div>
-      <div v-else class="detail-col placeholder">
-        <div class="placeholder-inner">Selecione um grupo para ver detalhes</div>
+      <div v-else class="detail-col">
+        <AppCard>
+          <div class="placeholder">
+            <span class="placeholder-inner">Selecione um grupo para ver detalhes</span>
+          </div>
+        </AppCard>
       </div>
     </div>
 
-    <!-- Create group modal -->
-    <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
-      <div class="modal">
-        <h3 class="modal-title">Novo Grupo</h3>
-        <div class="form-group">
-          <label>Nome</label>
-          <input v-model="createForm.name" class="field" placeholder="ex: Armazém Norte" @keydown.enter="doCreate" />
-        </div>
-        <div class="form-group">
-          <label>Descrição <span class="text-muted">(opcional)</span></label>
-          <input v-model="createForm.description" class="field" placeholder="Descrição do grupo..." />
-        </div>
-        <p v-if="createError" class="error">{{ createError }}</p>
-        <div class="modal-footer">
-          <AppButton variant="ghost" @click="showCreate = false">Cancelar</AppButton>
-          <AppButton variant="primary" :loading="creating" @click="doCreate">Criar</AppButton>
-        </div>
+    <AppModal title="Novo Grupo" :show="showCreate" @close="showCreate = false">
+      <div class="form-group">
+        <label>Nome</label>
+        <input v-model="createForm.name" class="field" placeholder="ex: Armazém Norte" @keydown.enter="doCreate" />
       </div>
-    </div>
+      <div class="form-group">
+        <label>Descrição <span class="text-muted">(opcional)</span></label>
+        <input v-model="createForm.description" class="field" placeholder="Descrição do grupo..." />
+      </div>
+      <p v-if="createError" class="error">{{ createError }}</p>
+      <template #footer>
+        <AppButton variant="ghost" @click="showCreate = false">Cancelar</AppButton>
+        <AppButton variant="primary" :loading="creating" @click="doCreate">Criar</AppButton>
+      </template>
+    </AppModal>
 
-    <!-- Add device modal -->
-    <div v-if="showAddDevice" class="modal-overlay" @click.self="showAddDevice = false">
-      <div class="modal">
-        <h3 class="modal-title">Adicionar Dispositivo</h3>
-        <div class="form-group">
-          <label>Device ID</label>
-          <input v-model="addDeviceId" class="field" placeholder="UUID do dispositivo" @keydown.enter="doAddDevice" />
-        </div>
-        <p v-if="addDeviceError" class="error">{{ addDeviceError }}</p>
-        <div class="modal-footer">
-          <AppButton variant="ghost" @click="showAddDevice = false">Cancelar</AppButton>
-          <AppButton variant="primary" :loading="addingDevice" @click="doAddDevice">Adicionar</AppButton>
-        </div>
+    <AppModal title="Adicionar Dispositivo" :show="showAddDevice" @close="showAddDevice = false">
+      <div class="form-group">
+        <label>Device ID</label>
+        <input v-model="addDeviceId" class="field" placeholder="UUID do dispositivo" @keydown.enter="doAddDevice" />
       </div>
-    </div>
+      <p v-if="addDeviceError" class="error">{{ addDeviceError }}</p>
+      <template #footer>
+        <AppButton variant="ghost" @click="showAddDevice = false">Cancelar</AppButton>
+        <AppButton variant="primary" :loading="addingDevice" @click="doAddDevice">Adicionar</AppButton>
+      </template>
+    </AppModal>
 
-    <!-- Assign user modal -->
-    <div v-if="showAssignUser" class="modal-overlay" @click.self="showAssignUser = false">
-      <div class="modal">
-        <h3 class="modal-title">Atribuir Usuário</h3>
-        <div class="form-group">
-          <label>Keycloak User ID (UUID)</label>
-          <input v-model="assignForm.keycloakUserId" class="field" placeholder="UUID do usuário no Keycloak" />
-        </div>
-        <div class="form-group">
-          <label>Papel</label>
-          <select v-model="assignForm.role" class="field">
-            <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
-          </select>
-        </div>
-        <p v-if="assignError" class="error">{{ assignError }}</p>
-        <div class="modal-footer">
-          <AppButton variant="ghost" @click="showAssignUser = false">Cancelar</AppButton>
-          <AppButton variant="primary" :loading="assigningUser" @click="doAssignUser">Atribuir</AppButton>
-        </div>
+    <AppModal title="Atribuir Usuário" :show="showAssignUser" @close="showAssignUser = false">
+      <div class="form-group">
+        <label>Keycloak User ID (UUID)</label>
+        <input v-model="assignForm.keycloakUserId" class="field" placeholder="UUID do usuário no Keycloak" />
       </div>
-    </div>
+      <div class="form-group">
+        <label>Papel</label>
+        <select v-model="assignForm.role" class="field">
+          <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
+        </select>
+      </div>
+      <p v-if="assignError" class="error">{{ assignError }}</p>
+      <template #footer>
+        <AppButton variant="ghost" @click="showAssignUser = false">Cancelar</AppButton>
+        <AppButton variant="primary" :loading="assigningUser" @click="doAssignUser">Atribuir</AppButton>
+      </template>
+    </AppModal>
   </AppLayout>
 </template>
 
 <style scoped>
-.layout { display: grid; grid-template-columns: 320px 1fr; gap: var(--space-4); align-items: start; }
-@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+.groups-grid { display: grid; grid-template-columns: 320px 1fr; width: 100%; gap: var(--space-4); align-items: start; }
+@media (max-width: 900px) { .groups-grid { grid-template-columns: 1fr; } }
 
 .group-list { list-style: none; display: flex; flex-direction: column; gap: 0; }
 .group-item { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--border); cursor: pointer; border-radius: var(--radius-md); transition: background var(--transition); gap: var(--space-2); }
@@ -274,7 +267,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .group-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .detail-col { min-width: 0; }
-.placeholder { display: flex; align-items: center; justify-content: center; min-height: 200px; }
+.placeholder { display: flex; align-items: center; justify-content: center; min-height: 160px; }
 .placeholder-inner { color: var(--text-muted); font-size: var(--text-sm); }
 
 .detail-sections { display: flex; flex-direction: column; gap: var(--space-6); }
@@ -291,13 +284,9 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; font-size: var(--text-sm); }
 
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
-.modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); width: 440px; max-width: 90vw; display: flex; flex-direction: column; gap: var(--space-4); }
-.modal-title { font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0; }
-.modal-footer { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; }
+.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; width: 100%; box-sizing: border-box; }
 .field:focus { border-color: var(--primary); }
 .error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 </style>

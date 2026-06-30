@@ -297,8 +297,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         <div v-if="detailFw.sensorConfigs?.length" class="detail-section">
           <p class="section-title">Sensores configurados</p>
           <div class="sensor-chips">
-            <div v-for="s in detailFw.sensorConfigs" :key="s.name" class="sensor-chip">
-              <span class="chip-name">{{ s.name }}</span>
+            <div v-for="s in detailFw.sensorConfigs" :key="s.sensorName" class="sensor-chip">
+              <span class="chip-name">{{ s.sensorName }}</span>
               <span class="chip-pin">pino {{ s.pin }}</span>
             </div>
           </div>

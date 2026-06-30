@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
-import AppButton from '@/components/AppButton.vue'
+import AppPagination from '@/components/AppPagination.vue'
 import { auditApi } from '@/services/audit'
 
 const entries = ref<any[]>([])
@@ -20,6 +20,7 @@ const load = async () => {
   entries.value = r.data.content ?? []
   totalPages.value = r.data.page?.totalPages ?? 1
 }
+const changePage = (p: number) => { page.value = p; load() }
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })
 </script>
@@ -55,11 +56,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         </tbody>
       </table>
 
-      <div class="pagination">
-        <AppButton size="sm" variant="secondary" :disabled="page === 0" @click="page--; load()">Anterior</AppButton>
-        <span class="text-muted text-sm">Página {{ page + 1 }} de {{ totalPages }}</span>
-        <AppButton size="sm" variant="secondary" :disabled="page + 1 >= totalPages" @click="page++; load()">Próxima</AppButton>
-      </div>
+      <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />
     </AppCard>
   </AppLayout>
 </template>
@@ -73,7 +70,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .text-xs { font-size: var(--text-xs); }
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
-.pagination { display: flex; align-items: center; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); }
 .action-cell { white-space: nowrap; }
 .actor-id { display: block; }
 .error-msg { display: block; cursor: help; }
