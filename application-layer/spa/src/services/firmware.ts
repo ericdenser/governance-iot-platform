@@ -13,6 +13,6 @@ export const firmwareApi = {
     api.post('/commands/send', { command: 'UPDATE', targetDevices, params: { firmwareId } }),
   deprecate: (id: string) => api.patch(`/firmware/${id}/deprecate`),
   setProvisioning: (id: string) => api.put(`/firmware/${id}/provisioning`),
-  generatePackage: (payload: { deviceName: string; wifiSsid: string; wifiPass: string }) =>
+  generatePackage: (payload: { deviceName: string; wifiSsid: string; wifiPass: string; groupId?: string }) =>
     api.post('/devices/generate-package', payload, { responseType: 'blob' }),
 }

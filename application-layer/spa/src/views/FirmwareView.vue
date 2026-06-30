@@ -7,6 +7,7 @@ import AppButton from '@/components/AppButton.vue'
 import { firmwareApi } from '@/services/firmware'
 import { devicesApi } from '@/services/devices'
 import { sensorsApi } from '@/services/sensors'
+import { groupsApi } from '@/services/groups'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -99,31 +100,33 @@ const doUpload = async () => {
 
 // ── Generate package modal ────────────────────────────────────────────────────
 const showPackage = ref(false)
-const packageForm = ref({ deviceName: '', wifiSsid: '', wifiPass: '' })
+const packageForm = ref({ deviceName: '', wifiSsid: '', wifiPass: '', groupId: '' })
 const showWifiPass = ref(false)
 const generating = ref(false)
 const generateError = ref('')
+const groups = ref<any[]>([])
 
-const openPackage = () => {
-  packageForm.value = { deviceName: '', wifiSsid: '', wifiPass: '' }
+const openPackage = async () => {
+  packageForm.value = { deviceName: '', wifiSsid: '', wifiPass: '', groupId: '' }
   showWifiPass.value = false
   generateError.value = ''
   showPackage.value = true
+  if (!groups.value.length) {
+    try { groups.value = (await groupsApi.list()).data ?? [] } catch { /* grupos são opcionais */ }
+  }
 }
 
 const doGenerate = async () => {
-  const { deviceName, wifiSsid, wifiPass } = packageForm.value
+  const { deviceName, wifiSsid, wifiPass, groupId } = packageForm.value
   if (!deviceName.trim() || !wifiSsid.trim() || !wifiPass.trim()) {
     generateError.value = 'Todos os campos são obrigatórios.'
     return
   }
   generating.value = true; generateError.value = ''
   try {
-    const r = await firmwareApi.generatePackage({
-      deviceName: deviceName.trim(),
-      wifiSsid: wifiSsid.trim(),
-      wifiPass: wifiPass.trim(),
-    })
+    const payload: any = { deviceName: deviceName.trim(), wifiSsid: wifiSsid.trim(), wifiPass: wifiPass.trim() }
+    if (groupId) payload.groupId = groupId
+    const r = await firmwareApi.generatePackage(payload)
     const url = URL.createObjectURL(r.data)
     const a = document.createElement('a')
     a.href = url
@@ -419,6 +422,13 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
                 {{ showWifiPass ? 'Ocultar' : 'Mostrar' }}
               </button>
             </div>
+          </div>
+          <div class="form-group">
+            <label>Grupo <span class="text-muted">(opcional)</span></label>
+            <select v-model="packageForm.groupId" class="field">
+              <option value="">— Nenhum —</option>
+              <option v-for="g in groups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
+            </select>
           </div>
         </template>
 

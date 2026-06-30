@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
+import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppModal from '@/components/AppModal.vue'
 import { groupsApi } from '@/services/groups'
+import { devicesApi } from '@/services/devices'
+import { usersApi } from '@/services/users'
 
 const groups = ref<any[]>([])
 const loading = ref(true)
@@ -23,17 +26,78 @@ const createError = ref('')
 
 // Add device modal
 const showAddDevice = ref(false)
-const addDeviceId = ref('')
 const addingDevice = ref(false)
 const addDeviceError = ref('')
+const allDevices = ref<any[]>([])
+const loadingAllDevices = ref(false)
+const deviceSearch = ref('')
+const selectedDeviceId = ref('')
+
+const statusVariant = (s: string): any =>
+  ({ ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }[s] ?? 'muted')
+
+const alreadyInGroup = computed(() => new Set(groupDevices.value.map((d: any) => d.deviceId)))
+
+const pickableDevices = computed(() => {
+  const inGroup = alreadyInGroup.value
+  const q = deviceSearch.value.toLowerCase()
+  return allDevices.value
+    .filter(d => d.status !== 'REVOKED' && !inGroup.has(d.deviceId))
+    .filter(d => !q || d.name?.toLowerCase().includes(q) || d.deviceId?.toLowerCase().includes(q))
+})
+
+const openAddDevice = async () => {
+  selectedDeviceId.value = ''
+  deviceSearch.value = ''
+  addDeviceError.value = ''
+  showAddDevice.value = true
+  if (!allDevices.value.length) {
+    loadingAllDevices.value = true
+    try {
+      const r = await devicesApi.list()
+      allDevices.value = Array.isArray(r.data) ? r.data : (r.data?.content ?? [])
+    } finally { loadingAllDevices.value = false }
+  }
+}
 
 // Assign user modal
 const showAssignUser = ref(false)
-const assignForm = ref({ keycloakUserId: '', role: 'MEMBER' })
 const assigningUser = ref(false)
 const assignError = ref('')
+const allUsers = ref<any[]>([])
+const loadingAllUsers = ref(false)
+const userSearch = ref('')
+const selectedUserId = ref('')
+const selectedRole = ref('MEMBER')
 
 const ROLES = ['OWNER', 'MEMBER', 'VIEWER']
+
+const alreadyAssigned = computed(() => new Set(groupUsers.value.map((u: any) => u.keycloakUserId)))
+
+const pickableUsers = computed(() => {
+  const assigned = alreadyAssigned.value
+  const q = userSearch.value.toLowerCase()
+  return allUsers.value
+    .filter(u => !assigned.has(u.keycloakUserId))
+    .filter(u => !q || u.username?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))
+})
+
+const usernameFor = (id: string) =>
+  allUsers.value.find(u => u.keycloakUserId === id)?.username ?? null
+
+const openAssignUser = async () => {
+  selectedUserId.value = ''
+  userSearch.value = ''
+  selectedRole.value = 'MEMBER'
+  assignError.value = ''
+  showAssignUser.value = true
+  if (!allUsers.value.length) {
+    loadingAllUsers.value = true
+    try {
+      allUsers.value = (await usersApi.list()).data ?? []
+    } finally { loadingAllUsers.value = false }
+  }
+}
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
@@ -75,11 +139,11 @@ const doDelete = async (g: any) => {
 }
 
 const doAddDevice = async () => {
-  if (!addDeviceId.value.trim()) { addDeviceError.value = 'Informe o Device ID.'; return }
+  if (!selectedDeviceId.value) { addDeviceError.value = 'Selecione um dispositivo.'; return }
   addingDevice.value = true; addDeviceError.value = ''
   try {
-    await groupsApi.addDevice(selectedGroup.value.groupId, addDeviceId.value.trim())
-    showAddDevice.value = false; addDeviceId.value = ''
+    await groupsApi.addDevice(selectedGroup.value.groupId, selectedDeviceId.value)
+    showAddDevice.value = false; selectedDeviceId.value = ''
     await selectGroup(selectedGroup.value)
   } catch (e: any) {
     addDeviceError.value = e.response?.data?.message ?? 'Erro ao adicionar dispositivo.'
@@ -93,14 +157,14 @@ const doRemoveDevice = async (deviceId: string) => {
 }
 
 const doAssignUser = async () => {
-  if (!assignForm.value.keycloakUserId.trim()) { assignError.value = 'Informe o ID do usuário.'; return }
+  if (!selectedUserId.value) { assignError.value = 'Selecione um usuário.'; return }
   assigningUser.value = true; assignError.value = ''
   try {
     await groupsApi.assignUser(selectedGroup.value.groupId, {
-      keycloakUserId: assignForm.value.keycloakUserId.trim(),
-      role: assignForm.value.role,
+      keycloakUserId: selectedUserId.value,
+      role: selectedRole.value,
     })
-    showAssignUser.value = false; assignForm.value = { keycloakUserId: '', role: 'MEMBER' }
+    showAssignUser.value = false; selectedUserId.value = ''
     await selectGroup(selectedGroup.value)
   } catch (e: any) {
     assignError.value = e.response?.data?.message ?? 'Erro ao atribuir usuário.'
@@ -150,8 +214,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <div v-if="selectedGroup" class="detail-col">
         <AppCard :title="selectedGroup.name">
           <template #actions>
-            <AppButton size="sm" variant="secondary" @click="showAddDevice = true">+ Dispositivo</AppButton>
-            <AppButton size="sm" variant="secondary" @click="showAssignUser = true">+ Usuário</AppButton>
+            <AppButton size="sm" variant="secondary" @click="openAddDevice">+ Dispositivo</AppButton>
+            <AppButton size="sm" variant="secondary" @click="openAssignUser">+ Usuário</AppButton>
           </template>
 
           <div v-if="loadingDetail" class="empty">Carregando...</div>
@@ -179,10 +243,13 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <div class="section">
               <h4 class="section-title">Usuários ({{ groupUsers.length }})</h4>
               <table class="tbl">
-                <thead><tr><th>Keycloak ID</th><th>Papel</th><th>Atribuído por</th><th></th></tr></thead>
+                <thead><tr><th>Usuário</th><th>Papel</th><th>Atribuído por</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="u in groupUsers" :key="u.keycloakUserId ?? u.id">
-                    <td class="mono text-xs">{{ u.keycloakUserId }}</td>
+                    <td>
+                      <span v-if="usernameFor(u.keycloakUserId)" class="text-sm font-medium">{{ usernameFor(u.keycloakUserId) }}</span>
+                      <span v-else class="mono text-xs text-muted">{{ u.keycloakUserId }}</span>
+                    </td>
                     <td class="text-sm">{{ u.role }}</td>
                     <td class="text-xs text-muted">{{ u.assignedByUsername ?? '—' }}</td>
                     <td>
@@ -222,32 +289,55 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
     </AppModal>
 
     <AppModal title="Adicionar Dispositivo" :show="showAddDevice" @close="showAddDevice = false">
-      <div class="form-group">
-        <label>Device ID</label>
-        <input v-model="addDeviceId" class="field" placeholder="UUID do dispositivo" @keydown.enter="doAddDevice" />
+      <input v-model="deviceSearch" class="field" placeholder="Buscar por nome ou ID..." />
+      <div v-if="loadingAllDevices" class="picker-empty">Carregando dispositivos...</div>
+      <div v-else-if="!pickableDevices.length" class="picker-empty text-muted">
+        {{ allDevices.length ? 'Nenhum dispositivo disponível para adicionar.' : 'Nenhum dispositivo cadastrado.' }}
+      </div>
+      <div v-else class="device-picker">
+        <button
+          v-for="d in pickableDevices" :key="d.deviceId"
+          class="picker-chip" :class="{ selected: selectedDeviceId === d.deviceId }"
+          @click="selectedDeviceId = d.deviceId"
+        >
+          <span class="picker-name">{{ d.name }}</span>
+          <span class="picker-id">{{ d.deviceId.slice(0, 8) }}…</span>
+          <AppBadge :variant="statusVariant(d.status)" dot />
+        </button>
       </div>
       <p v-if="addDeviceError" class="error">{{ addDeviceError }}</p>
       <template #footer>
         <AppButton variant="ghost" @click="showAddDevice = false">Cancelar</AppButton>
-        <AppButton variant="primary" :loading="addingDevice" @click="doAddDevice">Adicionar</AppButton>
+        <AppButton variant="primary" :loading="addingDevice" :disabled="!selectedDeviceId" @click="doAddDevice">Adicionar</AppButton>
       </template>
     </AppModal>
 
     <AppModal title="Atribuir Usuário" :show="showAssignUser" @close="showAssignUser = false">
-      <div class="form-group">
-        <label>Keycloak User ID (UUID)</label>
-        <input v-model="assignForm.keycloakUserId" class="field" placeholder="UUID do usuário no Keycloak" />
+      <input v-model="userSearch" class="field" placeholder="Buscar por nome ou e-mail..." />
+      <div v-if="loadingAllUsers" class="picker-empty">Carregando usuários...</div>
+      <div v-else-if="!pickableUsers.length" class="picker-empty text-muted">
+        {{ allUsers.length ? 'Todos os usuários já estão no grupo.' : 'Nenhum usuário encontrado.' }}
+      </div>
+      <div v-else class="device-picker">
+        <button
+          v-for="u in pickableUsers" :key="u.keycloakUserId"
+          class="picker-chip" :class="{ selected: selectedUserId === u.keycloakUserId }"
+          @click="selectedUserId = u.keycloakUserId"
+        >
+          <span class="picker-name">{{ u.username }}</span>
+          <span class="picker-id">{{ u.email }}</span>
+        </button>
       </div>
       <div class="form-group">
         <label>Papel</label>
-        <select v-model="assignForm.role" class="field">
+        <select v-model="selectedRole" class="field">
           <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
         </select>
       </div>
       <p v-if="assignError" class="error">{{ assignError }}</p>
       <template #footer>
         <AppButton variant="ghost" @click="showAssignUser = false">Cancelar</AppButton>
-        <AppButton variant="primary" :loading="assigningUser" @click="doAssignUser">Atribuir</AppButton>
+        <AppButton variant="primary" :loading="assigningUser" :disabled="!selectedUserId" @click="doAssignUser">Atribuir</AppButton>
       </template>
     </AppModal>
   </AppLayout>
@@ -289,4 +379,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; width: 100%; box-sizing: border-box; }
 .field:focus { border-color: var(--primary); }
 .error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
+
+.device-picker { display: flex; flex-direction: column; gap: var(--space-1); max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1); }
+.picker-chip { display: flex; align-items: center; gap: var(--space-2); background: none; border: none; border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); cursor: pointer; text-align: left; transition: background var(--transition); width: 100%; }
+.picker-chip:hover { background: var(--panel); }
+.picker-chip.selected { background: var(--primary-dim); outline: 1px solid var(--primary); outline-offset: -1px; }
+.picker-name { font-size: var(--text-sm); font-weight: 500; color: var(--text); flex: 1; }
+.picker-id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); flex-shrink: 0; }
+.picker-empty { font-size: var(--text-sm); color: var(--text-muted); padding: var(--space-4); text-align: center; }
 </style>
