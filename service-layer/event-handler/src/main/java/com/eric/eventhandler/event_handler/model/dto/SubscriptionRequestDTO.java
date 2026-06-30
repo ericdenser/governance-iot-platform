@@ -1,5 +1,7 @@
 package com.eric.eventhandler.event_handler.model.dto;
 
+import java.util.List;
+
 import com.eric.eventhandler.event_handler.enums.EventType;
 
 import jakarta.validation.constraints.NotNull;
@@ -12,7 +14,7 @@ public record SubscriptionRequestDTO(
     String subscriberName,
 
     @NotNull(message = "Event is required")
-    EventType eventType,
+    List<EventType> eventType,
 
     @NotNull(message = "Webhook is required")
     @Size(min = 10, max = 50, message = "URL invalida (min 20 max 50 caracteres)")

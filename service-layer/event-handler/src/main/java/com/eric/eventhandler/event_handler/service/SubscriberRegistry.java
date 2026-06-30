@@ -1,5 +1,6 @@
 package com.eric.eventhandler.event_handler.service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -9,12 +10,14 @@ import org.springframework.stereotype.Service;
 
 import com.eric.eventhandler.event_handler.enums.EventType;
 import com.eric.eventhandler.event_handler.exception.ResourceNotFoundException;
+import com.eric.eventhandler.event_handler.model.dto.SubscriptionResultDTO;
 import com.eric.eventhandler.event_handler.model.entity.EventSubscription;
 import com.eric.eventhandler.event_handler.repository.EventSubscriptionRepository;
 import com.eric.eventhandler.event_handler.repository.SubscriberRepository;
 import com.eric.eventhandler.event_handler.model.entity.Subscriber;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -46,7 +49,10 @@ public class SubscriberRegistry {
         );
     }
 
-    public String subscribe (String subscriberName, EventType eventType, String webhookUrl) {
+    @Transactional
+    public  List<SubscriptionResultDTO> subscribe (String subscriberName, List<EventType> eventsType, String webhookUrl) {
+
+        List<SubscriptionResultDTO> result = new ArrayList<>();
 
         // Verificamos se existe quem fez a requisicao é um subscriber registrado
         Optional<Subscriber> subscriberOptional = subRepository.findBySubscriberName(subscriberName);
@@ -67,45 +73,52 @@ public class SubscriberRegistry {
             subscriber = subscriberOptional.get();
         }
 
-        // Procuramos se ja há alguma inscricao deste subscriber no evento da requisição.
-        Optional<EventSubscription> existing = eventSubRepository.findBySubscriber_SubscriberNameAndEventType(subscriberName, eventType);
+        for (EventType event : eventsType) {
 
-        EventSubscription sub;
-        String result;
+            // Procuramos se ja há alguma inscricao deste subscriber no evento da requisição.
+            Optional<EventSubscription> existing = eventSubRepository.findBySubscriber_SubscriberNameAndEventType(subscriberName, event);
 
-        // Subscriber ja esta inscrito neste evento
-        if (existing.isPresent()) {
-            sub = existing.get();
-
-            // Se a url da requisição for a mesma salva
-            if (sub.getWebhookUrl().equals(webhookUrl) && sub.isActive()) {
-                log.info("Subscription: {} -> {} in {} already exists, ignoring.", subscriberName, eventType, webhookUrl);
-                result = "Subscription: " + subscriberName + " -> " + eventType + " in " + webhookUrl + " already exists";
-                return result;
-            }
-
-            // Se for uma url diferente, atualizamos a inscrição
-            sub.setWebhookUrl(webhookUrl);
-            sub.setActive(true);
-            log.info("Subscription updated: {} -> {} in {}", subscriberName, eventType, webhookUrl);
-            result = "Subscription updated: " +  subscriberName + " -> " + eventType + " in " + webhookUrl;
-
-        // Subscriber nao estava inscrito neste evento ainda
-        } else {
-
-        
-            sub = new EventSubscription();
-            sub.setSubscriber(subscriber);
-            sub.setEventType(eventType);
-            sub.setWebhookUrl(webhookUrl);
-
-            subscriber.getEventsSubscribed().add(sub);
             
-            log.info("New signature: {} → {} in {}", subscriberName, eventType, webhookUrl);
-            result = "New sub: " + subscriberName + " signed to -> " + eventType +  " with the webhookUrl: " + webhookUrl + " successfully";
-        }
+            EventSubscription sub;
 
-        eventSubRepository.save(sub);
+            // Subscriber ja esta inscrito neste evento
+            if (existing.isPresent()) {
+                sub = existing.get();
+
+                // Se a url da requisição for a mesma salva
+                if (sub.getWebhookUrl().equals(webhookUrl) && sub.isActive()) {
+                    log.info("Subscription: {} -> {} in {} already exists, ignoring.", subscriberName, event, webhookUrl);
+
+
+                    result.add(new SubscriptionResultDTO(event.toString(), false,  "This subscription is already registered."));
+                    continue;
+                }
+
+                // Se for uma url diferente, atualizamos a inscrição
+                sub.setWebhookUrl(webhookUrl);
+                sub.setActive(true);
+                log.info("Subscription updated: {} -> {} in {}", subscriberName, event, webhookUrl);
+
+                result.add(new SubscriptionResultDTO(event.toString(), true, "Subscription webhook successfully updated."));
+
+            // Subscriber nao estava inscrito neste evento ainda
+            } else {
+
+            
+                sub = new EventSubscription();
+                sub.setSubscriber(subscriber);
+                sub.setEventType(event);
+                sub.setWebhookUrl(webhookUrl);
+
+                subscriber.getEventsSubscribed().add(sub);
+                
+                log.info("New signature: {} → {} in {}", subscriberName, event, webhookUrl);
+                eventSubRepository.save(sub);
+
+                result.add(new SubscriptionResultDTO(event.toString(), true, "Subscription successfully registered."));
+            }
+        }
+    
         refreshCache();
         return result;
     }

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.eric.eventhandler.event_handler.enums.EventType;
 import com.eric.eventhandler.event_handler.model.dto.SubscriptionRequestDTO;
+import com.eric.eventhandler.event_handler.model.dto.SubscriptionResultDTO;
 import com.eric.eventhandler.event_handler.model.response.ApiResponse;
 import com.eric.eventhandler.event_handler.service.SubscriberRegistry;
 
@@ -32,9 +33,9 @@ public class SubscriptionController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<String>> subscribeEvent(@Valid @RequestBody SubscriptionRequestDTO subscriptionRequestDTO, HttpServletRequest httpRequest) {
+    public ResponseEntity<ApiResponse<List<SubscriptionResultDTO>>> subscribeEvent(@Valid @RequestBody SubscriptionRequestDTO subscriptionRequestDTO, HttpServletRequest httpRequest) {
 
-        String result = subscriberRegistry.subscribe(
+        List<SubscriptionResultDTO> result = subscriberRegistry.subscribe(
             subscriptionRequestDTO.subscriberName(), subscriptionRequestDTO.eventType(), subscriptionRequestDTO.webhookUrl());
 
         return ResponseEntity.ok(ApiResponse.success(result, httpRequest.getRequestURI()));

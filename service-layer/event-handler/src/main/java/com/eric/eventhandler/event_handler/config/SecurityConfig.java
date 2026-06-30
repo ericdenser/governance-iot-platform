@@ -27,8 +27,8 @@ public class SecurityConfig {
                 // apenas agent-mqtt (ROLE_AGENT_MQTT) pode entregar status
                 .requestMatchers(HttpMethod.POST, "/events/ingest").hasRole("AGENT_MQTT")
 
-                // apenas govApi ou admins (ROLE_ADMIN) podem gerenciar subscribers
-                .requestMatchers("/subscribe/**").hasRole("ADMIN")
+                // govApi (ROLE_GOV_API) ou admins (ROLE_ADMIN) podem gerenciar subscribers
+                .requestMatchers("/subscribe/**").hasAnyRole("GOV_API", "ADMIN")
 
                 .anyRequest().permitAll()
             )
