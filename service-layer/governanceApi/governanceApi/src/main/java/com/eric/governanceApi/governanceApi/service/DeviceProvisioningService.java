@@ -1,6 +1,11 @@
 package com.eric.governanceApi.governanceApi.service;
 
 import java.time.Instant;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -8,10 +13,14 @@ import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.DeviceCertificate;
+import com.eric.governanceApi.governanceApi.model.entity.DeviceGroup;
+import com.eric.governanceApi.governanceApi.model.entity.DeviceGroupMembership;
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
 import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequest;
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
 import com.eric.governanceApi.governanceApi.repository.DeviceCertificateRepository;
+import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepository;
+import com.eric.governanceApi.governanceApi.repository.DeviceGroupRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.ProvisioningTokenRepository;
@@ -28,18 +37,25 @@ public class DeviceProvisioningService {
     private final DeviceCertificateRepository deviceCertificateRepository;
     private final CryptoService cryptoService;
     private final FirmwareRepository firmwareRepository;
+    private final DeviceGroupRepository deviceGroupRepository;
+    private final DeviceGroupMembershipRepository deviceGroupMembershipRepository;
 
-    public DeviceProvisioningService(DeviceRepository deviceRepository, ProvisioningTokenRepository tokenRepository, DeviceCertificateRepository deviceCertificateRepository, CryptoService cryptoService, FirmwareRepository firmwareRepository) {
+    @Value("${provisioning.token-ttl-seconds}")
+    private int tokenttl;
+
+    public DeviceProvisioningService(DeviceRepository deviceRepository, ProvisioningTokenRepository tokenRepository, DeviceCertificateRepository deviceCertificateRepository, CryptoService cryptoService, FirmwareRepository firmwareRepository, DeviceGroupRepository deviceGroupRepository, DeviceGroupMembershipRepository deviceGroupMembershipRepository) {
         this.deviceRepository = deviceRepository;
         this.tokenRepository = tokenRepository;
         this.deviceCertificateRepository = deviceCertificateRepository;
         this.cryptoService = cryptoService; 
         this.firmwareRepository = firmwareRepository;
+        this.deviceGroupRepository = deviceGroupRepository;
+        this.deviceGroupMembershipRepository = deviceGroupMembershipRepository;
     }
 
     @Transactional
     public ProvisioningToken registerDevice(RegisterDeviceRequest request) {
-        return registerDevice(request, 600);
+        return registerDevice(request, tokenttl);
     }
 
     @Transactional
@@ -53,7 +69,19 @@ public class DeviceProvisioningService {
         Device newDevice = new Device();
         newDevice.setName(deviceName);
         newDevice.setStatus(DeviceStatus.PENDING);
+
         deviceRepository.save(newDevice);
+
+        if (request.groupId() != null && !request.groupId().isBlank()) {
+            DeviceGroup group = deviceGroupRepository.findByGroupId(request.groupId())
+                .orElseThrow(() -> new ResourceNotFoundException("Grupo " + request.groupId() + " não encontrado."));
+
+            String[] actor = currentActor();
+            deviceGroupMembershipRepository.save(new DeviceGroupMembership(newDevice, group, actor[0], actor[1]));
+            log.info("Device {} adicionado ao grupo {}", newDevice.getDeviceId(), request.groupId());
+        } else {
+            log.info("Nenhum groupId informado ao device {}.", newDevice.getDeviceId());
+        }
 
         ProvisioningToken provisioningToken = new ProvisioningToken(newDevice, ttlSeconds);
         tokenRepository.save(provisioningToken);
@@ -115,5 +143,13 @@ public class DeviceProvisioningService {
 
         // Retorna o PEM do certificado para o ESP32 guardar na memória (NVS)
         return certData.pemString;
+    }
+
+    private String[] currentActor() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            return new String[]{ jwt.getSubject(), jwt.getClaimAsString("preferred_username") };
+        }
+        return new String[]{ null, null };
     }
 }

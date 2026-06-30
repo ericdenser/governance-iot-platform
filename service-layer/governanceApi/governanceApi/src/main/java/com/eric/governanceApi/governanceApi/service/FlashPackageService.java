@@ -44,9 +44,6 @@ public class FlashPackageService {
     @Value("${ota.firmware-storage-path:}")
     private String firmwareStoragePath;
 
-    @Value("${provisioning.token-ttl-seconds:86400}")
-    private int tokenTtlSeconds;
-
     private final DeviceProvisioningService provisioningService;
     private final FirmwareRepository firmwareRepository;
 
@@ -59,7 +56,7 @@ public class FlashPackageService {
     @Auditable(action = AuditAction.FLASH_PACKAGE_GENERATED, targetType = "DEVICE")
     public byte[] generatePackage(GenerateFlashPackageRequest request) throws IOException {
         ProvisioningToken token = provisioningService.registerDevice(
-                new RegisterDeviceRequest(request.deviceName()), tokenTtlSeconds
+                new RegisterDeviceRequest(request.deviceName(), request.groupId()) 
         );
 
         String deviceId = token.getDevice().getDeviceId();
