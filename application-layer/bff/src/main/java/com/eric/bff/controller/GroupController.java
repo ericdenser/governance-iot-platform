@@ -97,6 +97,16 @@ public class GroupController {
                 .retrieve().toEntity(String.class);
     }
 
+    @PatchMapping("/{groupId}/users/{keycloakUserId}")
+    public ResponseEntity<String> updateUserRole(@PathVariable String groupId, @PathVariable String keycloakUserId,
+                                                 @RequestBody String body) {
+        return restClient.patch()
+                .uri(govApiUrl + "/groups/" + groupId + "/users/" + keycloakUserId)
+                .header("Content-Type", "application/json")
+                .body(body)
+                .retrieve().toEntity(String.class);
+    }
+
     @DeleteMapping("/{groupId}/users/{keycloakUserId}")
     public ResponseEntity<String> removeUser(@PathVariable String groupId, @PathVariable String keycloakUserId) {
         return restClient.delete()

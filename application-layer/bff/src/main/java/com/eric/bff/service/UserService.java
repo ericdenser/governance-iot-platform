@@ -61,7 +61,8 @@ public class UserService {
         return Map.of(
             "authenticated", true,
             "nome", principal.getFullName(),
-            "username", principal.getPreferredUsername()
+            "username", principal.getPreferredUsername(),
+            "keycloakUserId", principal.getSubject()
         );
     }
 
@@ -80,6 +81,7 @@ public class UserService {
         return hasRoleInJwt(client, requiredRoles);
     }
 
+    @SuppressWarnings("unchecked")
     private boolean hasRoleInJwt(OAuth2AuthorizedClient client, List<String> requiredRoles) {
         try {
             String accessTokenStr = client.getAccessToken().getTokenValue();
@@ -89,21 +91,20 @@ public class UserService {
             List<String> allRoles = new java.util.ArrayList<>();
 
             // Realm roles
-            @SuppressWarnings("unchecked")
             Map<String, Object> realmAccess = (Map<String, Object>) claims.getClaim("realm_access");
             if (realmAccess != null && realmAccess.containsKey("roles")) {
                 allRoles.addAll((List<String>) realmAccess.get("roles"));
             }
 
             // Client roles (resource_access.<client>.roles)
-            @SuppressWarnings("unchecked")
+
             Map<String, Object> resourceAccess = (Map<String, Object>) claims.getClaim("resource_access");
             if (resourceAccess != null) {
                 resourceAccess.values().forEach(v -> {
-                    @SuppressWarnings("unchecked")
+       
                     Map<String, Object> clientAccess = (Map<String, Object>) v;
                     if (clientAccess != null && clientAccess.containsKey("roles")) {
-                        @SuppressWarnings("unchecked")
+     
                         List<String> clientRoles = (List<String>) clientAccess.get("roles");
                         allRoles.addAll(clientRoles);
                     }
