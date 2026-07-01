@@ -86,10 +86,17 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
             }
         }
 
-        // VALIDA FIRMWARE ATUAL
+        // Resolve o firmware alvo pelo firmwareId gravado no CommandRecord (evita ambiguidade de versão)
         Firmware current_firmware = null;
         String current_firmware_version = event.deviceInfo().firmware_version();
-        Optional<Firmware> current_firmwareOptional = firmwareRepository.findByVersion(current_firmware_version);
+
+        Optional<CommandRecord> pendingForFirmware = commandRecordRepository
+                .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);
+
+        String targetFirmwareId = pendingForFirmware.map(CommandRecord::getTargetFirmwareId).orElse(null);
+        Optional<Firmware> current_firmwareOptional = targetFirmwareId != null
+                ? firmwareRepository.findByFirmwareId(targetFirmwareId)
+                : Optional.empty();
 
         if (!current_firmwareOptional.isPresent()) {
             log.warn("Device de ID {} atualizou para uma versão não registrada [v{}].", event.deviceId(), current_firmware_version);
@@ -124,16 +131,13 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
 
         eventRegistryRepository.save(eventRegistry);
 
-        // Atualiza no registro de comandos
-        Optional<CommandRecord> pendingCommand = commandRecordRepository
-                .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);
-        
-        if (!pendingCommand.isPresent()) {
+        // Atualiza no registro de comandos (reutiliza o Optional já carregado acima)
+        if (!pendingForFirmware.isPresent()) {
             log.warn("Device de ID {} confirmou execução, mas não há comandos PENDING no banco", device.getDeviceId());
             return;
         }
 
-        CommandRecord record = pendingCommand.get();
+        CommandRecord record = pendingForFirmware.get();
         record.setCompletedAt(event.timestamp());
         record.setStatus(CommandStatus.COMPLETED_SUCCESS);
 
@@ -145,6 +149,6 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
             });
 
 
-    }   
+    }
 
 }

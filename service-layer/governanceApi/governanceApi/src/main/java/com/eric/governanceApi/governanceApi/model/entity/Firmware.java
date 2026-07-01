@@ -26,8 +26,11 @@ public class Firmware extends AuthoredEntity {
     @Column(name = "firmware_id", unique = true, nullable = false, updatable = false)
     private String firmwareId;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String version;
+
+    // null = platform firmware (ADMIN only); non-null = group-owned firmware
+    private String ownerGroupId;
 
     @Column(nullable = false)
     private String filename;           

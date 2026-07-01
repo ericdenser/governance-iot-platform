@@ -92,13 +92,17 @@ public class DeviceCommandHandler implements DeviceEventHandler{
         if (record.getCommandType() == DeviceCommands.FIRMWARE_ROLLBACK) {
 
             Firmware currentFirmware = device.getFirmware();
-            currentFirmware.decrementDeployCount();
-            if (currentFirmware.getDeployCount() <= 0 && currentFirmware.getStatus() != FirmwareStatus.DEPRECATED) {
-                currentFirmware.setStatus(FirmwareStatus.STAGED);
+            if (currentFirmware != null) {
+                currentFirmware.decrementDeployCount();
+                if (currentFirmware.getDeployCount() <= 0 && currentFirmware.getStatus() != FirmwareStatus.DEPRECATED) {
+                    currentFirmware.setStatus(FirmwareStatus.STAGED);
+                }
             }
 
+            // Escopo = mesmo ownerGroupId do firmware atual; resolve versão sem ambiguidade
             String reportedVersion = event.deviceInfo().firmware_version();
-            Optional<Firmware> firmwareOpt = firmwareRepository.findByVersion(reportedVersion);
+            String ownerScope = currentFirmware != null ? currentFirmware.getOwnerGroupId() : null;
+            Optional<Firmware> firmwareOpt = firmwareRepository.findByVersionInScope(reportedVersion, ownerScope);
             if (firmwareOpt.isPresent()) {
                 Firmware rolledBackFirmware = firmwareOpt.get();
                 device.setFirmware(rolledBackFirmware);

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+
 import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
 import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
@@ -27,5 +28,18 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long> 
     );
 
     Page<ErrorRecord> findByDevice_DeviceId(String deviceId, Pageable pageable);
+
     Page<ErrorRecord> findAllByOrderByReportedAtDesc(Pageable pageable);
+
+    @Query("""
+        SELECT e FROM ErrorRecord e
+        WHERE e.device.id IN (
+            SELECT m.id.deviceId FROM DeviceGroupMembership m
+            WHERE m.id.groupId IN (
+                SELECT a.id.groupId FROM UserGroupAssignment a
+                WHERE a.id.keycloakUserId = :keycloakUserId
+            )
+        )
+        """)
+    Page<ErrorRecord> findAllByKeycloakUserId(@Param("keycloakUserId") String keycloakUserId, Pageable pageable);
 }

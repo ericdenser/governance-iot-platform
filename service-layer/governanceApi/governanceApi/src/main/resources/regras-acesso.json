@@ -10,14 +10,14 @@
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/upload": {
-    "POST": ["ROLE_ADMIN"]
+    "POST": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/deployable": {
-    "GET": ["ROLE_ADMIN"]
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/**": {
     "GET":   ["ROLE_ADMIN", "ROLE_USER"],
-    "PATCH": ["ROLE_ADMIN"],
+    "PATCH": ["ROLE_ADMIN", "ROLE_USER"],
     "PUT":   ["ROLE_ADMIN"]
   },
 
@@ -32,10 +32,10 @@
 
   "/commands": {
     "GET":  ["ROLE_ADMIN", "ROLE_USER"],
-    "POST": ["ROLE_ADMIN"]
+    "POST": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/commands/send": {
-    "POST": ["ROLE_ADMIN"]
+    "POST": ["ROLE_ADMIN", "ROLE_USER"]
   },
 
   "/events": {
@@ -54,7 +54,7 @@
     "POST": ["ROLE_ADMIN"]
   },
   "/provisioning/generate-package": {
-    "POST": ["ROLE_ADMIN"]
+    "POST": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/provisioning/**": {
     "POST": ["ROLE_ADMIN"]
@@ -75,15 +75,16 @@
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/groups/*/devices/*": {
-    "PUT":    ["ROLE_ADMIN"],
-    "DELETE": ["ROLE_ADMIN"]
+    "PUT":    ["ROLE_ADMIN", "ROLE_USER"],
+    "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/groups/*/users": {
-    "GET": ["ROLE_ADMIN"],
-    "PUT": ["ROLE_ADMIN"]
+    "GET": ["ROLE_ADMIN", "ROLE_USER"],
+    "PUT": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/groups/*/users/*": {
-    "DELETE": ["ROLE_ADMIN"]
+    "PATCH":  ["ROLE_ADMIN", "ROLE_USER"],
+    "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/groups/*": {
     "GET":    ["ROLE_ADMIN", "ROLE_USER"],

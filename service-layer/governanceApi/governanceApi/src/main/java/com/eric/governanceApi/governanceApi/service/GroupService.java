@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
+import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
@@ -18,8 +19,9 @@ import com.eric.governanceApi.governanceApi.model.entity.DeviceGroupMembership;
 import com.eric.governanceApi.governanceApi.model.entity.UserGroupAssignment;
 import com.eric.governanceApi.governanceApi.model.request.AssignUserRequest;
 import com.eric.governanceApi.governanceApi.model.request.CreateGroupRequest;
+import com.eric.governanceApi.governanceApi.model.request.UpdateGroupRoleRequest;
 import com.eric.governanceApi.governanceApi.model.response.DeviceGroupResponseDTO;
-import com.eric.governanceApi.governanceApi.model.response.DeviceSummaryDTO;
+import com.eric.governanceApi.governanceApi.model.response.GroupDeviceMemberDTO;
 import com.eric.governanceApi.governanceApi.model.response.GroupMemberResponseDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupRepository;
@@ -62,7 +64,7 @@ public class GroupService {
             return groupRepository.findAll().stream().map(DeviceGroupResponseDTO::from).toList();
         }
         return assignmentRepository.findByIdKeycloakUserId(actorId).stream()
-                .map(a -> DeviceGroupResponseDTO.from(a.getGroup()))
+                .map(a -> DeviceGroupResponseDTO.from(a.getGroup(), a.getRole()))
                 .toList();
     }
 
@@ -84,6 +86,8 @@ public class GroupService {
     @Auditable(action = AuditAction.DEVICE_ADDED_TO_GROUP, targetType = "DEVICE", targetIdArg = 1)
     @Transactional
     public void addDevice(String groupId, String deviceId) {
+        requireMemberOrAbove(groupId);
+
         DeviceGroup group = findGroupOrThrow(groupId);
         Device device = deviceRepository.findByDeviceId(deviceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
@@ -100,6 +104,8 @@ public class GroupService {
     @Auditable(action = AuditAction.DEVICE_REMOVED_FROM_GROUP, targetType = "DEVICE", targetIdArg = 1)
     @Transactional
     public void removeDevice(String groupId, String deviceId) {
+        requireMemberOrAbove(groupId);
+
         DeviceGroupMembership membership = membershipRepository
                 .findByDeviceDeviceIdAndGroupGroupId(deviceId, groupId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -109,7 +115,7 @@ public class GroupService {
     }
 
     @Transactional(readOnly = true)
-    public List<DeviceSummaryDTO> listDevicesInGroup(String groupId) {
+    public List<GroupDeviceMemberDTO> listDevicesInGroup(String groupId) {
         DeviceGroup group = findGroupOrThrow(groupId);
 
         if (!isAdmin()) {
@@ -120,7 +126,7 @@ public class GroupService {
         }
 
         return membershipRepository.findByGroupId(group.getId()).stream()
-                .map(m -> DeviceSummaryDTO.from(m.getDevice()))
+                .map(GroupDeviceMemberDTO::from)
                 .toList();
     }
 
@@ -135,11 +141,14 @@ public class GroupService {
     @Auditable(action = AuditAction.USER_ASSIGNED_TO_GROUP, targetType = "GROUP", targetIdArg = 0)
     @Transactional
     public GroupMemberResponseDTO assignUser(String groupId, AssignUserRequest request) {
-        DeviceGroup group = findGroupOrThrow(groupId);
+        requireOwnerOrAdmin(groupId);
+        if (request.role() == GroupRole.OWNER && !isAdmin()) {
+            throw new SecurityException("Apenas administradores podem atribuir o papel OWNER.");
+        }
 
+        DeviceGroup group = findGroupOrThrow(groupId);
         String[] actor = currentActor();
 
-        // Upsert: se já existe, atualiza o papel
         UserGroupAssignment assignment = assignmentRepository
                 .findByIdKeycloakUserIdAndGroupGroupId(request.keycloakUserId(), groupId)
                 .orElseGet(() -> new UserGroupAssignment(
@@ -154,17 +163,55 @@ public class GroupService {
     @Auditable(action = AuditAction.USER_REMOVED_FROM_GROUP, targetType = "GROUP", targetIdArg = 0)
     @Transactional
     public void removeUser(String groupId, String keycloakUserId) {
+        requireOwnerOrAdmin(groupId);
+
+        UserGroupAssignment target = assignmentRepository
+                .findByIdKeycloakUserIdAndGroupGroupId(keycloakUserId, groupId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuário " + keycloakUserId + " não pertence ao grupo " + groupId + "."));
+
+        if (target.getRole() == GroupRole.OWNER && !isAdmin()) {
+            throw new SecurityException("OWNER não pode remover outro OWNER. Contate o administrador.");
+        }
+
+        assignmentRepository.delete(target);
+        log.info("Usuário {} removido do grupo {}", keycloakUserId, groupId);
+    }
+
+    @Auditable(action = AuditAction.USER_ASSIGNED_TO_GROUP, targetType = "GROUP", targetIdArg = 0)
+    @Transactional
+    public GroupMemberResponseDTO updateUserRole(String groupId, String keycloakUserId, UpdateGroupRoleRequest request) {
+        requireOwnerOrAdmin(groupId);
+        if (request.role() == GroupRole.OWNER && !isAdmin()) {
+            throw new SecurityException("Apenas administradores podem atribuir o papel OWNER.");
+        }
+
         UserGroupAssignment assignment = assignmentRepository
                 .findByIdKeycloakUserIdAndGroupGroupId(keycloakUserId, groupId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Usuário " + keycloakUserId + " não pertence ao grupo " + groupId + "."));
-        assignmentRepository.delete(assignment);
-        log.info("Usuário {} removido do grupo {}", keycloakUserId, groupId);
+
+        if (assignment.getRole() == GroupRole.OWNER && !isAdmin()) {
+            throw new SecurityException("OWNER não pode alterar o papel de outro OWNER.");
+        }
+
+        assignment.setRole(request.role());
+        assignmentRepository.save(assignment);
+        log.info("Papel do usuário {} no grupo {} atualizado para {}", keycloakUserId, groupId, request.role());
+        return GroupMemberResponseDTO.from(assignment);
     }
 
     @Transactional(readOnly = true)
     public List<GroupMemberResponseDTO> listUsers(String groupId) {
         DeviceGroup group = findGroupOrThrow(groupId);
+
+        if (!isAdmin()) {
+            String actorId = currentActorId();
+            if (actorId == null || !assignmentRepository.existsByIdKeycloakUserIdAndGroupGroupId(actorId, groupId)) {
+                throw new ResourceNotFoundException("Grupo " + groupId + " não encontrado.");
+            }
+        }
+
         return assignmentRepository.findByGroupId(group.getId()).stream()
                 .map(GroupMemberResponseDTO::from)
                 .toList();
@@ -189,6 +236,28 @@ public class GroupService {
             return jwt.getSubject();
         }
         return null;
+    }
+
+    private void requireOwnerOrAdmin(String groupId) {
+        if (isAdmin()) return;
+        String actorId = currentActorId();
+        if (actorId == null) throw new SecurityException("Não autenticado.");
+        boolean isOwner = assignmentRepository
+                .findByIdKeycloakUserIdAndGroupGroupId(actorId, groupId)
+                .map(a -> a.getRole() == GroupRole.OWNER)
+                .orElse(false);
+        if (!isOwner) throw new SecurityException("Apenas o OWNER do grupo ou um administrador pode executar esta operação.");
+    }
+
+    private void requireMemberOrAbove(String groupId) {
+        if (isAdmin()) return;
+        String actorId = currentActorId();
+        if (actorId == null) throw new SecurityException("Não autenticado.");
+        boolean hasMemberOrAbove = assignmentRepository
+                .findByIdKeycloakUserIdAndGroupGroupId(actorId, groupId)
+                .map(a -> a.getRole() == GroupRole.MEMBER || a.getRole() == GroupRole.OWNER)
+                .orElse(false);
+        if (!hasMemberOrAbove) throw new SecurityException("Apenas MEMBER, OWNER ou administrador pode executar esta operação.");
     }
 
     /** Returns [actorId, username]. */

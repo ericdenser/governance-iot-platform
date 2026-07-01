@@ -62,21 +62,17 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         Device device = deviceOptional.get();
         device.setLastSeen(event.timestamp());
         eventRegistry.setDevice(device);
-        Firmware firmware_atual = null;
 
-        // VALIDAÇÃO 2: FIRMWARE QUE O DEVICE ATUAL ESTA RODANDO EXISTE?
+        // VALIDAÇÃO 2: O firmware que o device está rodando pós-rollback é o que já está registrado
+        // em device.getFirmware() — ele ainda não havia sido atualizado (DeviceUpdatedHandler só altera
+        // device.firmware ao confirmar sucesso). Reutilizamos diretamente sem nova query.
+        Firmware firmware_atual = device.getFirmware();
         String current_firmware_version = event.deviceInfo().firmware_version();
-        Optional<Firmware> firmware_atualOptional = firmwareRepository.findByVersion(current_firmware_version);
 
-        // se essa versão não existe
-        if (!firmware_atualOptional.isPresent()) {
+        if (firmware_atual == null) {
             log.warn("Device de ID {} está rodando uma versão não registrada: v{}.", event.deviceId(), current_firmware_version);
-            device.setFirmware(firmware_atual); // registra null como inválido
         } else {
-            firmware_atual = firmware_atualOptional.get();
-
-            device.setFirmware(firmware_atual); // substitui o antigo (que sofreu rollback) pelo atual
-            firmware_atual.setDeployCount(firmware_atual.getDeployCount() + 1); // incrementa deploy count
+            firmware_atual.setDeployCount(firmware_atual.getDeployCount() + 1);
         }
 
         if (firmware_atual != null) {
@@ -92,8 +88,11 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         Map<String, Object> params = event.deviceInfo().params();
         String rollback_version = params.get("invalid_ver") != null ? params.get("invalid_ver").toString() : null;
 
-        // busca nos firmwares registrados
-        Optional<Firmware> rollback_firmwareOptional = rollback_version != null ? firmwareRepository.findByVersion(rollback_version) : Optional.empty();
+        // Escopo do firmware que falhou = mesmo ownerGroupId do firmware atual do device
+        String ownerScope = firmware_atual != null ? firmware_atual.getOwnerGroupId() : null;
+        Optional<Firmware> rollback_firmwareOptional = rollback_version != null
+                ? firmwareRepository.findByVersionInScope(rollback_version, ownerScope)
+                : Optional.empty();
 
         boolean firmware_not_informed = rollback_version == null || rollback_version.isEmpty();
         boolean firmware_not_found = rollback_firmwareOptional.isEmpty();

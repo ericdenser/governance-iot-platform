@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
@@ -24,6 +25,7 @@ import com.eric.governanceApi.governanceApi.repository.DeviceGroupRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.ProvisioningTokenRepository;
+import com.eric.governanceApi.governanceApi.repository.UserGroupAssignmentRepository;
 import com.eric.governanceApi.governanceApi.service.CryptoService.SignedCertificateData;
 
 import lombok.extern.slf4j.Slf4j;
@@ -39,18 +41,27 @@ public class DeviceProvisioningService {
     private final FirmwareRepository firmwareRepository;
     private final DeviceGroupRepository deviceGroupRepository;
     private final DeviceGroupMembershipRepository deviceGroupMembershipRepository;
+    private final UserGroupAssignmentRepository assignmentRepository;
 
     @Value("${provisioning.token-ttl-seconds}")
     private int tokenttl;
 
-    public DeviceProvisioningService(DeviceRepository deviceRepository, ProvisioningTokenRepository tokenRepository, DeviceCertificateRepository deviceCertificateRepository, CryptoService cryptoService, FirmwareRepository firmwareRepository, DeviceGroupRepository deviceGroupRepository, DeviceGroupMembershipRepository deviceGroupMembershipRepository) {
+    public DeviceProvisioningService(DeviceRepository deviceRepository,
+                                     ProvisioningTokenRepository tokenRepository,
+                                     DeviceCertificateRepository deviceCertificateRepository,
+                                     CryptoService cryptoService,
+                                     FirmwareRepository firmwareRepository,
+                                     DeviceGroupRepository deviceGroupRepository,
+                                     DeviceGroupMembershipRepository deviceGroupMembershipRepository,
+                                     UserGroupAssignmentRepository assignmentRepository) {
         this.deviceRepository = deviceRepository;
         this.tokenRepository = tokenRepository;
         this.deviceCertificateRepository = deviceCertificateRepository;
-        this.cryptoService = cryptoService; 
+        this.cryptoService = cryptoService;
         this.firmwareRepository = firmwareRepository;
         this.deviceGroupRepository = deviceGroupRepository;
         this.deviceGroupMembershipRepository = deviceGroupMembershipRepository;
+        this.assignmentRepository = assignmentRepository;
     }
 
     @Transactional
@@ -64,6 +75,20 @@ public class DeviceProvisioningService {
 
         if (deviceName == null || deviceName.trim().isEmpty()) {
             throw new IllegalArgumentException("The field 'deviceName' is missing.");
+        }
+
+        if (!isAdmin()) {
+            if (request.groupId() == null || request.groupId().isBlank()) {
+                throw new SecurityException("Usuários não-admin devem especificar um grupo ao provisionar.");
+            }
+            String actorId = currentActor()[0];
+            boolean allowed = assignmentRepository
+                    .findByIdKeycloakUserIdAndGroupGroupId(actorId, request.groupId())
+                    .map(a -> a.getRole() == GroupRole.MEMBER || a.getRole() == GroupRole.OWNER)
+                    .orElse(false);
+            if (!allowed) {
+                throw new SecurityException("Sem permissão de MEMBER/OWNER no grupo " + request.groupId() + ".");
+            }
         }
 
         Device newDevice = new Device();
@@ -143,6 +168,12 @@ public class DeviceProvisioningService {
 
         // Retorna o PEM do certificado para o ESP32 guardar na memória (NVS)
         return certData.pemString;
+    }
+
+    private boolean isAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
     }
 
     private String[] currentActor() {

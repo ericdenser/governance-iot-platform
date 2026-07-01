@@ -20,6 +20,7 @@ public record FirmwareResponseDTO(
     Instant uploadedAt,
     int deployCount,
     boolean provisioningFirmware,
+    String ownerGroupId,
     String createdByActorId,
     String createdByUsername
 ) {
@@ -48,6 +49,7 @@ public record FirmwareResponseDTO(
             fw.getUploadedAt(),
             fw.getDeployCount(),
             fw.isProvisioningFirmware(),
+            fw.getOwnerGroupId(),
             fw.getCreatedByActorId(),
             fw.getCreatedByUsername()
         );

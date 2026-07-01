@@ -114,24 +114,39 @@ public class DeviceService {
         return DeviceCertificateResponseDTO.from(device.getCertificate());
     }
 
-    // todo (apenas adm pode ver todos os eventos de todos devices)
     @Transactional(readOnly = true)
     public Page<EventRegistryResponseDTO> listAllEvents(Pageable pageable) {
-        return eventRegistryRepository.findAllByOrderByUploadedAtDesc(pageable)
+        if (isAdmin()) {
+            return eventRegistryRepository.findAllByOrderByUploadedAtDesc(pageable)
+                    .map(EventRegistryResponseDTO::from);
+        }
+        String actorId = currentActorId();
+        if (actorId == null) return Page.empty(pageable);
+        return eventRegistryRepository.findAllByKeycloakUserId(actorId, pageable)
                 .map(EventRegistryResponseDTO::from);
     }
 
-    // todo (apenas adm pode ver todos os eventos de todos devices)
     @Transactional(readOnly = true)
     public Page<CommandRecordResponseDTO> listAllCommands(Pageable pageable) {
-        return commandRecordRepository.findAllByOrderBySentAtDesc(pageable)
+        if (isAdmin()) {
+            return commandRecordRepository.findAllByOrderBySentAtDesc(pageable)
+                    .map(CommandRecordResponseDTO::from);
+        }
+        String actorId = currentActorId();
+        if (actorId == null) return Page.empty(pageable);
+        return commandRecordRepository.findAllByKeycloakUserId(actorId, pageable)
                 .map(CommandRecordResponseDTO::from);
     }
 
-     // todo (apenas adm pode ver todos os eventos de todos devices)
     @Transactional(readOnly = true)
     public Page<ErrorRecordResponseDTO> listAllErrors(Pageable pageable) {
-        return errorRecordRepository.findAllByOrderByReportedAtDesc(pageable)
+        if (isAdmin()) {
+            return errorRecordRepository.findAllByOrderByReportedAtDesc(pageable)
+                    .map(ErrorRecordResponseDTO::from);
+        }
+        String actorId = currentActorId();
+        if (actorId == null) return Page.empty(pageable);
+        return errorRecordRepository.findAllByKeycloakUserId(actorId, pageable)
                 .map(ErrorRecordResponseDTO::from);
     }
 
@@ -149,11 +164,9 @@ public class DeviceService {
         return null;
     }
 
-    /** Returns true if the current user belongs to at least one group that contains the device. */
     private boolean canAccessDevice(Device device) {
         String actorId = currentActorId();
         if (actorId == null) return false;
-        List<Device> accessible = membershipRepository.findDevicesByKeycloakUserId(actorId);
-        return accessible.stream().anyMatch(d -> d.getId().equals(device.getId()));
+        return membershipRepository.countAccessibleByDeviceAndUser(device.getDeviceId(), actorId) > 0;
     }
 }

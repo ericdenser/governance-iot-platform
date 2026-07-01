@@ -72,6 +72,8 @@ provisioning:
   bootloader-bin-path: ${PROVISIONING_BOOTLOADER_BIN_PATH}
   partition-table-bin-path: ${PROVISIONING_PARTITION_TABLE_BIN_PATH}
   token-ttl-seconds: 86400
+  # Intervalo em ms para o job de limpeza de devices fantasma (padrão: 5 min)
+  cleanup-interval-ms: 300000
 
 logging:
   level:

@@ -50,6 +50,10 @@ public class CommandRecord extends AuthoredEntity {
     @Column(name = "payload", columnDefinition = "TEXT")
     private String payload;
 
+    // firmwareId UUID do firmware alvo para comandos UPDATE; null para outros tipos
+    @Column(name = "target_firmware_id", length = 36)
+    private String targetFirmwareId;
+
     // Data em que o ESP32 confirmou a execução (pode ser null se ainda estiver pendente)
     @Column(name = "completed_at")
     private Instant completedAt;

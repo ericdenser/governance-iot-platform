@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.model.response;
 
 import java.time.Instant;
 
+import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.model.entity.DeviceGroup;
 
 public record DeviceGroupResponseDTO(
@@ -10,7 +11,8 @@ public record DeviceGroupResponseDTO(
         String description,
         String createdByActorId,
         String createdByUsername,
-        Instant createdAt
+        Instant createdAt,
+        GroupRole myRole
 ) {
     public static DeviceGroupResponseDTO from(DeviceGroup g) {
         return new DeviceGroupResponseDTO(
@@ -19,7 +21,20 @@ public record DeviceGroupResponseDTO(
                 g.getDescription(),
                 g.getCreatedByActorId(),
                 g.getCreatedByUsername(),
-                g.getCreatedAt()
+                g.getCreatedAt(),
+                null
+        );
+    }
+
+    public static DeviceGroupResponseDTO from(DeviceGroup g, GroupRole myRole) {
+        return new DeviceGroupResponseDTO(
+                g.getGroupId(),
+                g.getName(),
+                g.getDescription(),
+                g.getCreatedByActorId(),
+                g.getCreatedByUsername(),
+                g.getCreatedAt(),
+                myRole
         );
     }
 }

@@ -19,7 +19,6 @@ public interface DeviceGroupMembershipRepository extends JpaRepository<DeviceGro
 
     Optional<DeviceGroupMembership> findByDeviceDeviceIdAndGroupGroupId(String deviceId, String groupId);
 
-    /** Returns all devices accessible to a given Keycloak user via their group assignments. */
     @Query("""
         SELECT m.device FROM DeviceGroupMembership m
         WHERE m.group.id IN (
@@ -29,6 +28,18 @@ public interface DeviceGroupMembershipRepository extends JpaRepository<DeviceGro
         """)
     List<Device> findDevicesByKeycloakUserId(@Param("keycloakUserId") String keycloakUserId);
 
-    /** Returns all groups a device belongs to, by device's internal ID. */
+    @Query("""
+        SELECT COUNT(m) FROM DeviceGroupMembership m
+        WHERE m.device.deviceId = :deviceId
+        AND m.id.groupId IN (
+            SELECT a.id.groupId FROM UserGroupAssignment a
+            WHERE a.id.keycloakUserId = :keycloakUserId
+        )
+        """)
+    long countAccessibleByDeviceAndUser(@Param("deviceId") String deviceId,
+                                        @Param("keycloakUserId") String keycloakUserId);
+
     List<DeviceGroupMembership> findByDeviceId(Long deviceId);
+
+    void deleteByDeviceId(Long deviceId);
 }

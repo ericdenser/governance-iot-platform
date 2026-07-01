@@ -4,6 +4,7 @@ import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
@@ -20,10 +21,14 @@ import com.eric.governanceApi.governanceApi.model.response.FirmwareResponseDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.SensorRepository;
+import com.eric.governanceApi.governanceApi.repository.UserGroupAssignmentRepository;
 
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -42,7 +47,7 @@ public class FirmwareService {
     private final DeviceRepository deviceRepository;
     private final AgentClient agentClient;
     private final SensorRepository sensorRepository;
-    //private final ObjectMapper mapper = new ObjectMapper();
+    private final UserGroupAssignmentRepository assignmentRepository;
 
     @Value("${ota.firmware-storage-path}")
     private String storagePath;
@@ -55,11 +60,14 @@ public class FirmwareService {
 
     public FirmwareService(FirmwareRepository firmwareRepository,
                            DeviceRepository deviceRepository,
-                           AgentClient agentClient, SensorRepository sensorRepository) {
+                           AgentClient agentClient,
+                           SensorRepository sensorRepository,
+                           UserGroupAssignmentRepository assignmentRepository) {
         this.firmwareRepository = firmwareRepository;
         this.deviceRepository = deviceRepository;
         this.agentClient = agentClient;
         this.sensorRepository = sensorRepository;
+        this.assignmentRepository = assignmentRepository;
     }
 
 
@@ -67,18 +75,45 @@ public class FirmwareService {
     @Transactional
     public FirmwareResponseDTO upload(MultipartFile file, FirmwareUploadMetadataDTO metadataDTO) throws Exception {
 
-        // Não podemos subir 2 firmwares de provisionamento
-        if (metadataDTO.isProvisioning() && firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
+        String ownerGroupId;
 
-            throw new ConflictException("Provisioning firmware already exists");
+        if (metadataDTO.isProvisioning()) {
+            // Provisioning firmware is always platform-level — ADMIN only
+            if (!isAdmin()) {
+                throw new SecurityException("Apenas administradores podem fazer upload de firmware de provisionamento.");
+            }
+            if (firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
+                throw new ConflictException("Provisioning firmware already exists");
+            }
+            ownerGroupId = null;
+        } else if (isAdmin()) {
+            // Admin can create platform firmware (ownerGroupId null) or assign to any group
+            ownerGroupId = metadataDTO.ownerGroupId();
+        } else {
+            // ROLE_USER must specify a group they are MEMBER or OWNER of
+            ownerGroupId = metadataDTO.ownerGroupId();
+            if (ownerGroupId == null || ownerGroupId.isBlank()) {
+                throw new IllegalArgumentException("Informe o grupo ao qual o firmware pertence.");
+            }
+            String actorId = currentActorId();
+            List<String> managementGroupIds = assignmentRepository.findGroupUuidsByKeycloakUserIdAndRoles(
+                actorId, List.of(GroupRole.MEMBER, GroupRole.OWNER));
+            if (!managementGroupIds.contains(ownerGroupId)) {
+                throw new SecurityException("Você não é MEMBER ou OWNER do grupo informado.");
+            }
         }
 
-        validateBinary(file, metadataDTO.version());
+        // Version unique per ownerGroupId scope (null-safe JPQL query)
+        if (firmwareRepository.existsByVersionInScope(metadataDTO.version(), ownerGroupId)) {
+            throw new ConflictException("Versão " + metadataDTO.version() + " já existe neste escopo.");
+        }
 
-        String sha256    = computeSha256(file);
+        validateBinary(file);
+
+        String sha256  = computeSha256(file);
         String filename = "firmware_v" + metadataDTO.version() + "_" + sha256.substring(0, 12) + ".bin";
-        Path dest        = Paths.get(storagePath, filename);
-        
+        Path dest       = Paths.get(storagePath, filename);
+
         try {
             Files.createDirectories(dest.getParent());
             Files.copy(file.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
@@ -91,6 +126,7 @@ public class FirmwareService {
 
         Firmware fw = new Firmware();
         fw.setVersion(metadataDTO.version());
+        fw.setOwnerGroupId(ownerGroupId);
         fw.setFilename(filename);
         fw.setOriginalFilename(file.getOriginalFilename());
         fw.setSha256(sha256);
@@ -100,28 +136,22 @@ public class FirmwareService {
         fw.setProvisioningFirmware(metadataDTO.isProvisioning());
         fw.setStatus(FirmwareStatus.STAGED);
 
-
-        // Valida sensores
         if (metadataDTO.sensors() != null && !metadataDTO.sensors().isEmpty()) {
             for (SensorConfigDTO sensorDto : metadataDTO.sensors()) {
                 sensorRepository.findBySensorId(sensorDto.sensorId()).ifPresent(sensor -> {
-
                     FirmwareSensorConfig cfg = new FirmwareSensorConfig();
                     cfg.setFirmware(fw);
                     cfg.setPin(sensorDto.pin());
                     cfg.setSensor(sensor);
-
                     fw.getSensorConfigs().add(cfg);
-                }
-                );
+                });
             }
         }
 
         firmwareRepository.save(fw);
 
-        log.info("Firmware v{} registrado — SHA256: {} | {} bytes | ID: {}",
-                 metadataDTO.version(), sha256, file.getSize(), fw.getId());
-
+        log.info("Firmware v{} registrado — ownerGroupId: {} | SHA256: {} | {} bytes | ID: {}",
+                 metadataDTO.version(), ownerGroupId, sha256, file.getSize(), fw.getId());
 
         return FirmwareResponseDTO.from(fw);
     }
@@ -133,65 +163,55 @@ public class FirmwareService {
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
             .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
 
+        requireFirmwareAccess(fw);
+
         if (fw.getStatus() == FirmwareStatus.DEPRECATED) {
             throw new IllegalArgumentException(
                 "Firmware v" + fw.getVersion() + " está DEPRECATED e não pode ser deployado.");
         }
 
-        // Monta payload que vai pro Agent
         Map<String, Object> payload = Map.of(
-        "version", fw.getVersion(),
-        "url",     fw.getDownloadUrl()
+            "version", fw.getVersion(),
+            "url",     fw.getDownloadUrl()
         );
 
-        // Filtra devices ativos
         List<String> activeDevs = new ArrayList<>();
         List<String> skipped    = new ArrayList<>();
 
         for (String devId : targetDevices) {
              deviceRepository.findByDeviceId(devId).ifPresentOrElse(
-                
                 device -> {
-
                    if (device.getStatus() == DeviceStatus.COMMAND_PENDING) {
                         skipped.add(devId);
                         log.warn("Device {} ignorado. Já existe um comando pendente em execução.", devId);
-                        return; // Interrompe este fluxo e vai para o próximo device do loop
+                        return;
                     }
-
                     if (device.getStatus() != DeviceStatus.ACTIVE) {
                         skipped.add(devId);
                         log.info("Device de ID {} não está ACTIVE, skippando...", devId);
                         return;
                     }
-
                     if (device.getFirmware().getVersion() == fw.getVersion()) {
                         skipped.add(devId);
                         log.warn("Device {} ignorado. Já está na versão {}", devId, fw.getVersion());
-                        return; 
+                        return;
                     }
-
                     CommandRecord record = new CommandRecord();
                     record.setCommandType(DeviceCommands.UPDATE);
                     record.setPayload(payload.toString());
-                                        
-                    
+                    record.setTargetFirmwareId(fw.getFirmwareId());
                     device.addCommandRecord(record);
                     device.setStatus(DeviceStatus.COMMAND_PENDING);
                     activeDevs.add(devId);
-
                     log.info("Device de ID {} válido, status alterado para COMMAND_PENDING", devId);
-
                     deviceRepository.save(device);
                 }, () -> {
                     skipped.add(devId);
                     log.info("Device de ID {} não encontrado, skippando...", devId);
                 });
-            
         }
 
         if (activeDevs.isEmpty()) {
-
             return new CommandResultResponseDTO(
                 DeviceCommands.UPDATE.toString(),
                 List.of(),
@@ -215,6 +235,8 @@ public class FirmwareService {
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
             .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
 
+        requireFirmwareManagement(fw);
+
         fw.setStatus(FirmwareStatus.DEPRECATED);
         firmwareRepository.save(fw);
 
@@ -227,35 +249,34 @@ public class FirmwareService {
     public FirmwareResponseDTO getByFirmwareId(String firmwareId) {
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
                 .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
+        requireFirmwareAccess(fw);
         return FirmwareResponseDTO.from(fw);
     }
 
-    //  LIST: retorna todos os firmwares ordenados por versão
     @Transactional(readOnly = true)
     public List<FirmwareResponseDTO> listAll() {
-        return firmwareRepository.findAll().stream()
+        return visibleFirmware().stream()
                 .map(FirmwareResponseDTO::from).toList();
     }
 
     @Transactional(readOnly = true)
     public List<FirmwareResponseDTO> listDeployable() {
-        List<Firmware> result = new ArrayList<>();
-        result.addAll(firmwareRepository.findByStatusOrderByVersionDesc(FirmwareStatus.STAGED));
-        result.addAll(firmwareRepository.findByStatusOrderByVersionDesc(FirmwareStatus.DEPLOYED));
-
-        return result.stream()
+        return visibleFirmware().stream()
+                .filter(f -> f.getStatus() != FirmwareStatus.DEPRECATED)
                 .map(FirmwareResponseDTO::from).toList();
     }
 
     @Auditable(action = AuditAction.FIRMWARE_SET_PROVISIONING, targetType = "FIRMWARE", targetIdArg = 0)
     @Transactional
     public FirmwareResponseDTO setProvisioningFirmware(String firmwareId) {
-        firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(
-            current -> {
-                current.setProvisioningFirmware(false);
-                firmwareRepository.save(current);
-            }
-        );
+        if (!isAdmin()) {
+            throw new SecurityException("Apenas administradores podem definir o firmware de provisionamento.");
+        }
+
+        firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(current -> {
+            current.setProvisioningFirmware(false);
+            firmwareRepository.save(current);
+        });
 
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
                     .orElseThrow(() ->
@@ -269,23 +290,83 @@ public class FirmwareService {
         if (fw.getDeployCount() > 0) {
             throw new IllegalArgumentException(
                  "Firmware v" + fw.getVersion() + "está deployed em dispositivos, não pode ser provisioning.");
-
         }
 
+        // Provisioning firmware is always platform-level
+        fw.setOwnerGroupId(null);
         fw.setProvisioningFirmware(true);
         firmwareRepository.save(fw);
         return FirmwareResponseDTO.from(fw);
     }
 
 
-    //  Validações do arqv binário (METODO AUXILIAR)
-    private void validateBinary(MultipartFile file, String version) throws IOException {
+    // ---- Auth helpers ----
 
-        if (file.isEmpty()){
+    private boolean isAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    private String currentActorId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            return jwt.getSubject();
+        }
+        return null;
+    }
+
+    /** Groups the current user belongs to (any role) — for read access. */
+    private List<String> currentUserGroupIds() {
+        String uid = currentActorId();
+        if (uid == null) return List.of();
+        return assignmentRepository.findGroupUuidsByKeycloakUserId(uid);
+    }
+
+    /** Groups the current user can manage firmware in (MEMBER or OWNER). */
+    private List<String> currentUserManagementGroupIds() {
+        String uid = currentActorId();
+        if (uid == null) return List.of();
+        return assignmentRepository.findGroupUuidsByKeycloakUserIdAndRoles(
+            uid, List.of(GroupRole.MEMBER, GroupRole.OWNER));
+    }
+
+    private List<Firmware> visibleFirmware() {
+        if (isAdmin()) return firmwareRepository.findAllByOrderByVersionDesc();
+        List<String> groupIds = currentUserGroupIds();
+        if (groupIds.isEmpty()) return firmwareRepository.findByOwnerGroupIdIsNull();
+        return firmwareRepository.findVisibleForUser(groupIds);
+    }
+
+    private void requireFirmwareAccess(Firmware fw) {
+        if (isAdmin()) return;
+        if (fw.getOwnerGroupId() == null) return; // platform firmware is readable by all
+        List<String> groupIds = currentUserGroupIds();
+        if (!groupIds.contains(fw.getOwnerGroupId())) {
+            throw new ResourceNotFoundException("Firmware " + fw.getFirmwareId() + " não encontrado.");
+        }
+    }
+
+    private void requireFirmwareManagement(Firmware fw) {
+        if (isAdmin()) return;
+        if (fw.getOwnerGroupId() == null) {
+            throw new SecurityException("Apenas administradores podem gerenciar firmware de plataforma.");
+        }
+        List<String> managementGroupIds = currentUserManagementGroupIds();
+        if (!managementGroupIds.contains(fw.getOwnerGroupId())) {
+            throw new SecurityException("Você precisa ser MEMBER ou OWNER do grupo dono deste firmware.");
+        }
+    }
+
+
+    // ---- Binary validation ----
+
+    private void validateBinary(MultipartFile file) throws IOException {
+
+        if (file.isEmpty()) {
             log.warn("Arquivo vazio.");
             throw new IllegalArgumentException("Arquivo vazio.");
         }
-            
 
         String name = file.getOriginalFilename();
 
@@ -293,7 +374,6 @@ public class FirmwareService {
             log.warn("Apenas .bin aceito. Recebido: " + name);
             throw new IllegalArgumentException("Apenas .bin aceito. Recebido: " + name);
         }
-            
 
         long maxBytes = (long) maxSizeMb * 1024 * 1024;
         if (file.getSize() > maxBytes) {
@@ -301,15 +381,12 @@ public class FirmwareService {
             throw new IllegalArgumentException(String.format(
                 "Excede %dMB. Recebido: %d bytes.", maxSizeMb, file.getSize()));
         }
-            
 
         if (file.getSize() < 30_000) {
-
             log.warn("Muito pequeno (%d bytes). Mínimo: ~30KB.", file.getSize());
             throw new IllegalArgumentException(String.format(
                 "Muito pequeno (%d bytes). Mínimo: ~30KB.", file.getSize()));
         }
-            
 
         byte[] header = new byte[16];
         try (InputStream is = file.getInputStream()) {
@@ -317,18 +394,12 @@ public class FirmwareService {
                 log.warn("Arquivo curto demais.");
                 throw new IllegalArgumentException("Arquivo curto demais.");
             }
-        
         }
-        if ((header[0] & 0xFF) != 0xE9){
+        if ((header[0] & 0xFF) != 0xE9) {
             log.warn("Magic byte 0x%02X inválido. Esperado: 0xE9.", header[0] & 0xFF);
             throw new IllegalArgumentException(String.format(
                 "Magic byte 0x%02X inválido. Esperado: 0xE9.", header[0] & 0xFF));
         }
-        if (firmwareRepository.existsByVersion(version)){
-            log.warn("Versão " + version + " já existe no banco.");
-            throw new ConflictException("Versão " + version + " já existe no banco.");
-        }
-            
     }
 
     private String computeSha256(MultipartFile file) throws Exception {

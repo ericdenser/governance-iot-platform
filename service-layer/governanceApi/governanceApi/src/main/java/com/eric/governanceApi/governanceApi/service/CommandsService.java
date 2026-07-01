@@ -4,12 +4,14 @@ import com.eric.governanceApi.governanceApi.audit.AuditService;
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.request.CommandRequest;
 import com.eric.governanceApi.governanceApi.model.response.AgentBroadcastResultDTO;
 import com.eric.governanceApi.governanceApi.model.response.CommandResultResponseDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
+import com.eric.governanceApi.governanceApi.repository.UserGroupAssignmentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,29 +25,64 @@ import java.util.*;
 @Slf4j
 public class CommandsService {
 
+    private static final List<GroupRole> MEMBER_OR_OWNER = List.of(GroupRole.MEMBER, GroupRole.OWNER);
+
     private final DeviceRepository deviceRepository;
     private final AgentClient agentClient;
     private final FirmwareService firmwareService;
     private final AuditService auditService;
+    private final UserGroupAssignmentRepository assignmentRepository;
 
     public CommandsService(DeviceRepository deviceRepository, AgentClient agentClient,
-                           FirmwareService firmwareService, AuditService auditService) {
+                           FirmwareService firmwareService, AuditService auditService,
+                           UserGroupAssignmentRepository assignmentRepository) {
         this.deviceRepository = deviceRepository;
         this.agentClient = agentClient;
         this.firmwareService = firmwareService;
         this.auditService = auditService;
+        this.assignmentRepository = assignmentRepository;
     }
 
     // UPDATE vai para FirmwareService que tem seu próprio @Auditable(FIRMWARE_DEPLOYED)
     // Simples (REBOOT, DEEP_SLEEP, ROLLBACK) auditamos manualmente para evitar duplo registro
     @Transactional
     public CommandResultResponseDTO execute(CommandRequest request) throws Exception {
-        return switch (request.command()) {
+        CommandRequest authorized = filterAuthorizedDevices(request);
+        return switch (authorized.command()) {
             case UPDATE           -> firmwareService.deploy(
-                                        request.params().get("firmwareId").toString(),
-                                        request.targetDevices());
-            case REBOOT, DEEP_SLEEP, FIRMWARE_ROLLBACK -> handleSimpleCommand(request);
+                                        authorized.params().get("firmwareId").toString(),
+                                        authorized.targetDevices());
+            case REBOOT, DEEP_SLEEP, FIRMWARE_ROLLBACK -> handleSimpleCommand(authorized);
         };
+    }
+
+    private CommandRequest filterAuthorizedDevices(CommandRequest request) {
+        if (isAdmin()) return request;
+        String actorId = currentActorId();
+        if (actorId == null) throw new SecurityException("Não autenticado.");
+
+        List<String> allowed = request.targetDevices().stream()
+                .filter(devId -> assignmentRepository
+                        .countByUserAndDeviceWithRoles(actorId, devId, MEMBER_OR_OWNER) > 0)
+                .toList();
+
+        if (allowed.isEmpty()) {
+            throw new SecurityException("Sem permissão de MEMBER/OWNER para enviar comandos a nenhum dos devices solicitados.");
+        }
+        if (allowed.size() == request.targetDevices().size()) return request;
+        return new CommandRequest(request.command(), allowed, request.params());
+    }
+
+    private boolean isAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    private String currentActorId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) return jwt.getSubject();
+        return null;
     }
 
     private CommandResultResponseDTO handleSimpleCommand(CommandRequest request) {

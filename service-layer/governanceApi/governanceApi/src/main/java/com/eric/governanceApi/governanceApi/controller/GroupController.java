@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -15,8 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.eric.governanceApi.governanceApi.model.request.AssignUserRequest;
 import com.eric.governanceApi.governanceApi.model.request.CreateGroupRequest;
+import com.eric.governanceApi.governanceApi.model.request.UpdateGroupRoleRequest;
 import com.eric.governanceApi.governanceApi.model.response.DeviceGroupResponseDTO;
-import com.eric.governanceApi.governanceApi.model.response.DeviceSummaryDTO;
+import com.eric.governanceApi.governanceApi.model.response.GroupDeviceMemberDTO;
 import com.eric.governanceApi.governanceApi.model.response.GroupMemberResponseDTO;
 import com.eric.governanceApi.governanceApi.service.GroupService;
 
@@ -56,7 +58,7 @@ public class GroupController {
     // ── Device membership ─────────────────────────────────────────────────────
 
     @GetMapping("/{groupId}/devices")
-    public ResponseEntity<List<DeviceSummaryDTO>> listDevices(@PathVariable String groupId) {
+    public ResponseEntity<List<GroupDeviceMemberDTO>> listDevices(@PathVariable String groupId) {
         return ResponseEntity.ok(groupService.listDevicesInGroup(groupId));
     }
 
@@ -97,5 +99,13 @@ public class GroupController {
     public ResponseEntity<Void> removeUser(@PathVariable String groupId, @PathVariable String keycloakUserId) {
         groupService.removeUser(groupId, keycloakUserId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{groupId}/users/{keycloakUserId}")
+    public ResponseEntity<GroupMemberResponseDTO> updateUserRole(
+            @PathVariable String groupId,
+            @PathVariable String keycloakUserId,
+            @Valid @RequestBody UpdateGroupRoleRequest request) {
+        return ResponseEntity.ok(groupService.updateUserRole(groupId, keycloakUserId, request));
     }
 }
