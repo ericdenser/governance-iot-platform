@@ -35,6 +35,7 @@ defineProps<{
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-5) 0;
+  flex-wrap: wrap;
 }
 
 .card-title {
@@ -52,6 +53,8 @@ defineProps<{
 
 .card-body {
   padding: var(--space-5);
+  overflow-x: auto;
+  min-width: 0;
 }
 
 .card-body.no-padding {

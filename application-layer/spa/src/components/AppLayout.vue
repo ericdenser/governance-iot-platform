@@ -1,26 +1,46 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const authStore = useAuthStore()
 
+const sidebarCollapsed = ref(false)
+const mobileOpen = ref(false)
+
+const isMobile = () => window.innerWidth < 768
+
+const toggleSidebar = () => {
+  if (isMobile()) {
+    mobileOpen.value = !mobileOpen.value
+  } else {
+    sidebarCollapsed.value = !sidebarCollapsed.value
+  }
+}
+
+const closeMobile = () => { mobileOpen.value = false }
+
+const handleResize = () => {
+  if (!isMobile()) mobileOpen.value = false
+}
+
+onMounted(() => window.addEventListener('resize', handleResize))
+onUnmounted(() => window.removeEventListener('resize', handleResize))
+
 const navItems = computed(() => {
   const items = [
-    { to: '/home',     icon: 'grid',            label: 'Dashboard' },
-    { to: '/devices',  icon: 'cpu',             label: 'Dispositivos' },
-    { to: '/firmware', icon: 'upload',           label: 'Firmware' },
-    { to: '/sensors',  icon: 'activity',         label: 'Sensores' },
-    { to: '/commands', icon: 'terminal',          label: 'Comandos' },
-    { to: '/events',   icon: 'zap',              label: 'Eventos' },
-    { to: '/errors',   icon: 'alert-triangle',   label: 'Erros' },
+    { to: '/home',     icon: 'grid',          label: 'Dashboard' },
+    { to: '/devices',  icon: 'cpu',           label: 'Dispositivos' },
+    { to: '/firmware', icon: 'upload',         label: 'Firmware' },
+    { to: '/sensors',  icon: 'activity',       label: 'Sensores' },
+    { to: '/commands', icon: 'terminal',        label: 'Comandos' },
+    { to: '/events',   icon: 'zap',            label: 'Eventos' },
+    { to: '/errors',   icon: 'alert-triangle', label: 'Erros' },
+    { to: '/groups',   icon: 'users',          label: 'Grupos' },
   ]
   if (authStore.isAdmin) {
-    items.push(
-      { to: '/groups', icon: 'users',     label: 'Grupos' },
-      { to: '/audit',  icon: 'file-text', label: 'Auditoria' },
-    )
+    items.push({ to: '/audit', icon: 'file-text', label: 'Auditoria' })
   }
   return items
 })
@@ -46,9 +66,11 @@ const fazerLogout = () => {
 </script>
 
 <template>
+  <div v-if="mobileOpen" class="mobile-backdrop" @click="closeMobile" />
+
   <div class="layout">
     <!-- Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileOpen }">
       <div class="sidebar-brand">
         <div class="brand-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -58,7 +80,7 @@ const fazerLogout = () => {
             <line x1="12" y1="20" x2="12.01" y2="20"/>
           </svg>
         </div>
-        <div>
+        <div class="brand-text">
           <span class="brand-name">Governance IoT</span>
           <span class="brand-sub">Dashboard</span>
         </div>
@@ -71,14 +93,21 @@ const fazerLogout = () => {
           :to="item.to"
           class="nav-item"
           :class="{ active: isActive(item.to) }"
+          :title="sidebarCollapsed ? item.label : undefined"
+          @click="closeMobile"
         >
           <span class="nav-icon" :data-icon="item.icon" />
-          <span>{{ item.label }}</span>
+          <span class="nav-label">{{ item.label }}</span>
         </router-link>
       </nav>
 
       <div class="sidebar-footer">
-        <router-link to="/profile" class="user-item">
+        <router-link
+          to="/profile"
+          class="user-item"
+          :title="sidebarCollapsed ? (authStore.user?.nome ?? undefined) : undefined"
+          @click="closeMobile"
+        >
           <div class="user-avatar">
             {{ authStore.user?.nome?.charAt(0).toUpperCase() }}
           </div>
@@ -98,9 +127,16 @@ const fazerLogout = () => {
     </aside>
 
     <!-- Main -->
-    <div class="main-wrapper">
+    <div class="main-wrapper" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <header class="topbar">
-        <div class="topbar-title">
+        <div class="topbar-left">
+          <button class="menu-btn" @click="toggleSidebar" title="Alternar menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
           <h2>{{ $route.meta.title || 'Dashboard' }}</h2>
         </div>
         <div class="topbar-status">
@@ -122,6 +158,14 @@ const fazerLogout = () => {
   min-height: 100vh;
 }
 
+/* ─── Mobile backdrop ───────────────────────────────── */
+.mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 99;
+}
+
 /* ─── Sidebar ───────────────────────────────────────── */
 .sidebar {
   width: var(--sidebar-width);
@@ -134,14 +178,23 @@ const fazerLogout = () => {
   left: 0;
   height: 100vh;
   z-index: 100;
+  overflow: hidden;
+  transition: width 220ms ease;
 }
 
+.sidebar.collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+/* ─── Brand ─────────────────────────────────────────── */
 .sidebar-brand {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-5) var(--space-4);
   border-bottom: 1px solid var(--border);
+  min-height: 77px;
+  flex-shrink: 0;
 }
 
 .brand-icon {
@@ -157,6 +210,20 @@ const fazerLogout = () => {
   flex-shrink: 0;
 }
 
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: opacity 180ms ease, max-width 220ms ease;
+  max-width: 160px;
+  opacity: 1;
+}
+
+.sidebar.collapsed .brand-text {
+  max-width: 0;
+  opacity: 0;
+}
+
 .brand-name {
   display: block;
   font-family: var(--font-sans);
@@ -164,14 +231,17 @@ const fazerLogout = () => {
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .brand-sub {
   display: block;
   font-size: var(--text-xs);
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
+/* ─── Nav ───────────────────────────────────────────── */
 .sidebar-nav {
   flex: 1;
   padding: var(--space-4) var(--space-3);
@@ -179,6 +249,7 @@ const fazerLogout = () => {
   flex-direction: column;
   gap: var(--space-1);
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .nav-item {
@@ -193,6 +264,8 @@ const fazerLogout = () => {
   color: var(--text-muted);
   transition: all var(--transition);
   text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .nav-item:hover {
@@ -205,7 +278,19 @@ const fazerLogout = () => {
   background: var(--primary-dim);
 }
 
-/* Nav icons via inline SVG workaround using CSS masks */
+.nav-label {
+  overflow: hidden;
+  opacity: 1;
+  max-width: 160px;
+  transition: opacity 180ms ease, max-width 220ms ease;
+}
+
+.sidebar.collapsed .nav-label {
+  max-width: 0;
+  opacity: 0;
+}
+
+/* Nav icons via CSS mask */
 .nav-icon {
   width: 16px;
   height: 16px;
@@ -256,13 +341,15 @@ const fazerLogout = () => {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3Cline x1='16' y1='13' x2='8' y2='13'/%3E%3Cline x1='16' y1='17' x2='8' y2='17'/%3E%3Cpolyline points='10 9 9 9 8 9'/%3E%3C/svg%3E");
 }
 
-/* ─── Sidebar footer ───────────────────────────────── */
+/* ─── Sidebar footer ────────────────────────────────── */
 .sidebar-footer {
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3);
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .user-item {
@@ -298,6 +385,14 @@ const fazerLogout = () => {
 .user-info {
   min-width: 0;
   overflow: hidden;
+  transition: opacity 180ms ease, max-width 220ms ease;
+  max-width: 160px;
+  opacity: 1;
+}
+
+.sidebar.collapsed .user-info {
+  max-width: 0;
+  opacity: 0;
 }
 
 .user-name {
@@ -331,8 +426,18 @@ const fazerLogout = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition);
+  transition: all var(--transition), opacity 180ms ease, max-width 220ms ease;
   flex-shrink: 0;
+  overflow: hidden;
+  max-width: 30px;
+  opacity: 1;
+}
+
+.sidebar.collapsed .logout-btn {
+  max-width: 0;
+  opacity: 0;
+  border-width: 0;
+  padding: 0;
 }
 
 .logout-btn:hover {
@@ -349,6 +454,11 @@ const fazerLogout = () => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  transition: margin-left 220ms ease;
+}
+
+.main-wrapper.sidebar-collapsed {
+  margin-left: var(--sidebar-collapsed-width);
 }
 
 .topbar {
@@ -362,11 +472,42 @@ const fazerLogout = () => {
   position: sticky;
   top: 0;
   z-index: 50;
+  gap: var(--space-4);
 }
 
-.topbar-title h2 {
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.topbar-left h2 {
   font-size: var(--text-md);
   font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.menu-btn:hover {
+  background: var(--panel);
   color: var(--text);
 }
 
@@ -374,6 +515,7 @@ const fazerLogout = () => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .status-dot {
@@ -393,5 +535,34 @@ const fazerLogout = () => {
 .content {
   flex: 1;
   padding: var(--space-6);
+  overflow-x: auto;
+  min-width: 0;
+}
+
+/* ─── Mobile ────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 220ms ease, width 220ms ease;
+    width: var(--sidebar-width) !important;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .main-wrapper,
+  .main-wrapper.sidebar-collapsed {
+    margin-left: 0;
+    transition: none;
+  }
+
+  .topbar {
+    padding: 0 var(--space-4);
+  }
+
+  .content {
+    padding: var(--space-4);
+  }
 }
 </style>

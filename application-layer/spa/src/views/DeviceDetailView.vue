@@ -205,7 +205,7 @@ onMounted(async () => {
 .device-name { font-size: var(--text-2xl); font-weight: 700; color: var(--text); margin: 0 0 var(--space-2); }
 .device-meta { display: flex; align-items: center; gap: var(--space-3); }
 
-.tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border); padding-bottom: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--space-1); border-bottom: 1px solid var(--border); padding-bottom: 0; overflow-x: auto; }
 .tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer; font-size: var(--text-sm); font-weight: 500; padding: var(--space-2) var(--space-4); margin-bottom: -1px; transition: all var(--transition); }
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
@@ -213,7 +213,7 @@ onMounted(async () => {
 .info-grid { display: flex; flex-direction: column; gap: 0; }
 .info-row { display: flex; align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--border); gap: var(--space-4); }
 .info-row:last-child { border-bottom: none; }
-.info-label { width: 180px; font-size: var(--text-sm); color: var(--text-muted); flex-shrink: 0; }
+.info-label { width: 160px; min-width: 90px; font-size: var(--text-sm); color: var(--text-muted); flex-shrink: 0; }
 .info-row-sensors { align-items: flex-start; }
 .sensor-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sensor-chip { display: flex; align-items: center; gap: var(--space-2); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 3px var(--space-2); font-size: var(--text-xs); }

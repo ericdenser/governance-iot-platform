@@ -13,12 +13,35 @@ import { useAuthStore } from '@/stores/auth'
 const authStore = useAuthStore()
 const firmwares = ref<any[]>([])
 const loading = ref(true)
+const groups = ref<any[]>([])
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 const statusVariant = (s: string): BadgeVariant =>
   ({ STAGED: 'muted', DEPLOYED: 'success', DEPRECATED: 'danger' }[s] as BadgeVariant) ?? 'muted'
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 const bytes = (n: number) => n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`
+
+// Groups where user can upload/deprecate firmware (MEMBER or OWNER)
+const managedGroupIds = computed(() =>
+  new Set(
+    groups.value
+      .filter(g => g.myRole === 'MEMBER' || g.myRole === 'OWNER')
+      .map(g => g.groupId)
+  )
+)
+
+const groupName = (ownerGroupId: string | null) => {
+  if (!ownerGroupId) return 'Plataforma'
+  return groups.value.find(g => g.groupId === ownerGroupId)?.name ?? ownerGroupId
+}
+
+const canUpload = computed(() => authStore.isAdmin || managedGroupIds.value.size > 0)
+const canDeploy = computed(() => authStore.isAdmin || managedGroupIds.value.size > 0)
+
+const canDeprecate = (fw: any) =>
+  authStore.isAdmin || (fw.ownerGroupId != null && managedGroupIds.value.has(fw.ownerGroupId))
+
+const showActionsCol = computed(() => authStore.isAdmin || managedGroupIds.value.size > 0)
 
 // ── Firmware list ─────────────────────────────────────────────────────────────
 const load = async () => {
@@ -51,16 +74,22 @@ const openDetail = async (fw: any) => {
 // ── Upload modal ──────────────────────────────────────────────────────────────
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
-const uploadMeta = ref({ version: '', releaseNotes: '', isProvisioning: false })
+const uploadMeta = ref({ version: '', releaseNotes: '', isProvisioning: false, ownerGroupId: '' })
 const uploading = ref(false)
 const uploadError = ref('')
 
 const availableSensors = ref<any[]>([])
 const selectedSensors = ref<Map<string, number>>(new Map()) // sensorId → pin
 
+// Groups the user can upload firmware to in the selector
+const uploadableGroups = computed(() => {
+  if (authStore.isAdmin) return groups.value
+  return groups.value.filter(g => g.myRole === 'MEMBER' || g.myRole === 'OWNER')
+})
+
 const openUpload = async (asProvisioning = false) => {
   uploadFile.value = null
-  uploadMeta.value = { version: '', releaseNotes: '', isProvisioning: asProvisioning }
+  uploadMeta.value = { version: '', releaseNotes: '', isProvisioning: asProvisioning, ownerGroupId: '' }
   uploadError.value = ''
   selectedSensors.value = new Map()
   showUpload.value = true
@@ -87,10 +116,23 @@ const doUpload = async () => {
     uploadError.value = 'Arquivo e versão são obrigatórios.'
     return
   }
+  if (!authStore.isAdmin && !uploadMeta.value.isProvisioning && !uploadMeta.value.ownerGroupId) {
+    uploadError.value = 'Selecione o grupo ao qual o firmware pertence.'
+    return
+  }
   uploading.value = true; uploadError.value = ''
   try {
     const sensors = [...selectedSensors.value.entries()].map(([sensorId, pin]) => ({ sensorId, pin }))
-    await firmwareApi.upload(uploadFile.value, { ...uploadMeta.value, sensors })
+    const meta: any = {
+      version: uploadMeta.value.version,
+      releaseNotes: uploadMeta.value.releaseNotes,
+      isProvisioning: uploadMeta.value.isProvisioning,
+      sensors,
+    }
+    if (!uploadMeta.value.isProvisioning && uploadMeta.value.ownerGroupId) {
+      meta.ownerGroupId = uploadMeta.value.ownerGroupId
+    }
+    await firmwareApi.upload(uploadFile.value, meta)
     showUpload.value = false
     await load()
   } catch (e: any) {
@@ -104,16 +146,12 @@ const packageForm = ref({ deviceName: '', wifiSsid: '', wifiPass: '', groupId: '
 const showWifiPass = ref(false)
 const generating = ref(false)
 const generateError = ref('')
-const groups = ref<any[]>([])
 
 const openPackage = async () => {
   packageForm.value = { deviceName: '', wifiSsid: '', wifiPass: '', groupId: '' }
   showWifiPass.value = false
   generateError.value = ''
   showPackage.value = true
-  if (!groups.value.length) {
-    try { groups.value = (await groupsApi.list()).data ?? [] } catch { /* grupos são opcionais */ }
-  }
 }
 
 const doGenerate = async () => {
@@ -191,9 +229,13 @@ const doDeploy = async () => {
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-const doDeprecate = async (id: string) => {
+const doDeprecate = async (fw: any) => {
   if (!confirm('Marcar firmware como DEPRECATED?')) return
-  await firmwareApi.deprecate(id); await load()
+  try {
+    await firmwareApi.deprecate(fw.firmwareId); await load()
+  } catch (e: any) {
+    alert(e.response?.data?.message ?? 'Erro ao deprecar firmware.')
+  }
 }
 
 const doSetProvisioning = async (id: string) => {
@@ -205,15 +247,21 @@ const doSetProvisioning = async (id: string) => {
   }
 }
 
-onMounted(async () => { try { await load() } finally { loading.value = false } })
+onMounted(async () => {
+  try {
+    const [fwRes, grpRes] = await Promise.all([firmwareApi.list(), groupsApi.list()])
+    firmwares.value = Array.isArray(fwRes.data) ? fwRes.data : []
+    groups.value = grpRes.data ?? []
+  } finally { loading.value = false }
+})
 </script>
 
 <template>
   <AppLayout>
     <AppCard title="Firmware">
       <template #actions>
-        <div class="actions-row" v-if="authStore.isAdmin">
-          <AppButton size="lg" variant="secondary" @click="openPackage">Gerar Pacote Flash</AppButton>
+        <div class="actions-row" v-if="canUpload">
+          <AppButton v-if="canDeploy" size="lg" variant="secondary" @click="openPackage">Gerar Pacote Flash</AppButton>
           <AppButton size="lg" variant="primary" @click="openUpload(false)">Upload Firmware</AppButton>
         </div>
       </template>
@@ -222,8 +270,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <table v-else class="tbl">
         <thead>
           <tr>
-            <th>Nome</th><th>Versão</th><th>Status</th><th>Provisioning</th>
-            <th>Enviado por</th><th>Data upload</th><th v-if="authStore.isAdmin">Ações</th>
+            <th>Nome</th><th>Versão</th><th>Status</th><th>Grupo</th><th>Provisioning</th>
+            <th>Enviado por</th><th>Data upload</th><th v-if="showActionsCol">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -231,26 +279,32 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <td class="text-sm fw-name">{{ fw.originalFilename ?? fw.filename }}</td>
             <td class="mono font-medium">v{{ fw.version }}</td>
             <td><AppBadge :variant="statusVariant(fw.status)">{{ fw.status }}</AppBadge></td>
+            <td class="text-sm">
+              <span v-if="!fw.ownerGroupId" class="owner-platform">Plataforma</span>
+              <span v-else class="owner-group">{{ groupName(fw.ownerGroupId) }}</span>
+            </td>
             <td>
               <AppBadge v-if="fw.provisioningFirmware" variant="primary" dot>Sim</AppBadge>
               <span v-else class="text-muted">—</span>
             </td>
             <td class="text-sm">{{ fw.createdByUsername ?? '—' }}</td>
             <td class="text-muted text-sm">{{ fmt(fw.uploadedAt) }}</td>
-            <td v-if="authStore.isAdmin" @click.stop>
+            <td v-if="showActionsCol" @click.stop>
               <div class="row-actions">
-                <AppButton size="sm" variant="secondary" :disabled="fw.status === 'DEPRECATED'"
+                <AppButton v-if="authStore.isAdmin" size="sm" variant="secondary"
+                  :disabled="fw.status === 'DEPRECATED'"
                   @click="openDeploy(fw.firmwareId, fw.version)">Deploy</AppButton>
-                <AppButton size="sm" variant="ghost"
+                <AppButton v-if="authStore.isAdmin" size="sm" variant="ghost"
                   :disabled="fw.provisioningFirmware || fw.status === 'DEPRECATED'"
                   @click="doSetProvisioning(fw.firmwareId)">Provisioning</AppButton>
-                <AppButton size="sm" variant="danger" :disabled="fw.status === 'DEPRECATED'"
-                  @click="doDeprecate(fw.firmwareId)">Deprecar</AppButton>
+                <AppButton v-if="canDeprecate(fw)" size="sm" variant="danger"
+                  :disabled="fw.status === 'DEPRECATED'"
+                  @click="doDeprecate(fw)">Deprecar</AppButton>
               </div>
             </td>
           </tr>
           <tr v-if="!firmwares.length">
-            <td colspan="7" class="empty">Nenhum firmware cadastrado</td>
+            <td :colspan="showActionsCol ? 8 : 7" class="empty">Nenhum firmware cadastrado</td>
           </tr>
         </tbody>
       </table>
@@ -266,6 +320,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
               <span class="mono">v{{ detailFw.version }}</span>
               <AppBadge :variant="statusVariant(detailFw.status)">{{ detailFw.status }}</AppBadge>
               <AppBadge v-if="detailFw.provisioningFirmware" variant="primary" dot>Provisioning</AppBadge>
+              <span class="text-muted text-xs">{{ groupName(detailFw.ownerGroupId) }}</span>
             </div>
           </div>
         </div>
@@ -334,11 +389,22 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           <label>Versão</label>
           <input v-model="uploadMeta.version" class="field" placeholder="ex: 1.0.3" />
         </div>
+
+        <!-- Group selector: hidden when isProvisioning (platform firmware) -->
+        <div v-if="!uploadMeta.isProvisioning" class="form-group">
+          <label>Grupo <span v-if="!authStore.isAdmin" class="text-danger">*</span><span v-else class="text-muted"> (opcional — vazio = plataforma)</span></label>
+          <select v-model="uploadMeta.ownerGroupId" class="field">
+            <option v-if="authStore.isAdmin" value="">Plataforma (sem grupo)</option>
+            <option v-else value="" disabled>Selecione um grupo</option>
+            <option v-for="g in uploadableGroups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
+          </select>
+        </div>
+
         <div class="form-group">
           <label>Release Notes</label>
           <textarea v-model="uploadMeta.releaseNotes" class="field" rows="3" placeholder="Descreva as mudanças..." />
         </div>
-        <label class="checkbox-row">
+        <label v-if="authStore.isAdmin" class="checkbox-row">
           <input type="checkbox" v-model="uploadMeta.isProvisioning" />
           Firmware de provisionamento
         </label>
@@ -426,7 +492,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           <div class="form-group">
             <label>Grupo <span class="text-muted">(opcional)</span></label>
             <select v-model="packageForm.groupId" class="field">
-              <option value="">— Nenhum —</option>
+              <option value="">Nenhum</option>
               <option v-for="g in groups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
             </select>
           </div>
@@ -493,9 +559,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .text-sm { font-size: var(--text-sm); }
 .text-xs { font-size: var(--text-xs); }
 .text-muted { color: var(--text-muted); }
+.text-danger { color: var(--danger); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 .empty-sm { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2) 0; }
-.row-actions { display: flex; gap: var(--space-2); }
+.row-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.owner-platform { font-size: var(--text-xs); background: var(--primary-dim, rgba(99,102,241,.1)); color: var(--primary); border-radius: var(--radius-sm); padding: 1px 6px; font-weight: 500; }
+.owner-group { font-size: var(--text-xs); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1px 6px; }
 
 /* ── Modal shell ────────────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
@@ -507,8 +576,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 /* ── Detail modal ───────────────────────────────────────────────────────────── */
 .detail-header { display: flex; align-items: flex-start; justify-content: space-between; }
-.detail-sub { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }
-.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.detail-sub { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); flex-wrap: wrap; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
 .detail-full { grid-column: 1 / -1; }
 .detail-item { display: flex; flex-direction: column; gap: 2px; }
 .detail-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }

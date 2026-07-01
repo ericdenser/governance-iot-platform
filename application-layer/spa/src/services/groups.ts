@@ -16,4 +16,6 @@ export const groupsApi = {
   assignUser: (groupId: string, payload: { keycloakUserId: string; role: string }) =>
     api.put(`/groups/${groupId}/users`, payload),
   removeUser: (groupId: string, userId: string) => api.delete(`/groups/${groupId}/users/${userId}`),
+  updateRole: (groupId: string, userId: string, payload: { role: string }) =>
+    api.patch(`/groups/${groupId}/users/${userId}`, payload),
 }

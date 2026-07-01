@@ -87,7 +87,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.toolbar { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-4); }
+.toolbar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .search { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px; font-size: var(--text-sm); color: var(--text); outline: none; }
 .search:focus { border-color: var(--primary); }
 .count { flex-shrink: 0; }
@@ -102,6 +102,6 @@ onMounted(async () => {
 .font-medium { font-weight: 500; color: var(--text); }
 .text-sm { font-size: var(--text-sm); }
 .text-muted { color: var(--text-muted); }
-.issued { font-weight: 500; color: var(--info); }
+.issued { font-weight: 500; color: var(--text); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 </style>

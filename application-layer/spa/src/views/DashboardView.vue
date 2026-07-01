@@ -117,4 +117,8 @@ onMounted(async () => {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .panels { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 540px) {
+  .stat-grid { grid-template-columns: 1fr; }
+}
 </style>

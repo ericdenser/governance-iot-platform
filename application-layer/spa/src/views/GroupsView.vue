@@ -8,6 +8,9 @@ import AppModal from '@/components/AppModal.vue'
 import { groupsApi } from '@/services/groups'
 import { devicesApi } from '@/services/devices'
 import { usersApi } from '@/services/users'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const groups = ref<any[]>([])
 const loading = ref(true)
@@ -70,8 +73,6 @@ const userSearch = ref('')
 const selectedUserId = ref('')
 const selectedRole = ref('MEMBER')
 
-const ROLES = ['OWNER', 'MEMBER', 'VIEWER']
-
 const alreadyAssigned = computed(() => new Set(groupUsers.value.map((u: any) => u.keycloakUserId)))
 
 const pickableUsers = computed(() => {
@@ -99,6 +100,60 @@ const openAssignUser = async () => {
   }
 }
 
+// Update role modal
+const showUpdateRole = ref(false)
+const updatingRole = ref(false)
+const updateRoleTarget = ref<any>(null)
+const newRole = ref('')
+const updateRoleError = ref('')
+
+const openUpdateRole = (u: any) => {
+  updateRoleTarget.value = u
+  newRole.value = u.role
+  updateRoleError.value = ''
+  showUpdateRole.value = true
+}
+
+const doUpdateRole = async () => {
+  if (!newRole.value) return
+  updatingRole.value = true; updateRoleError.value = ''
+  try {
+    await groupsApi.updateRole(selectedGroup.value.groupId, updateRoleTarget.value.keycloakUserId, { role: newRole.value })
+    showUpdateRole.value = false
+    await selectGroup(selectedGroup.value)
+  } catch (e: any) {
+    updateRoleError.value = e.response?.data?.message ?? 'Erro ao atualizar papel.'
+  } finally { updatingRole.value = false }
+}
+
+// Role-based permissions
+const myGroupRole = computed(() => {
+  if (!authStore.keycloakUserId || !selectedGroup.value) return null
+  return groupUsers.value.find((u: any) => u.keycloakUserId === authStore.keycloakUserId)?.role ?? null
+})
+
+const canManageDevices = computed(() =>
+  authStore.isAdmin || myGroupRole.value === 'MEMBER' || myGroupRole.value === 'OWNER'
+)
+
+const canManageUsers = computed(() =>
+  authStore.isAdmin || myGroupRole.value === 'OWNER'
+)
+
+const assignableRoles = computed(() =>
+  authStore.isAdmin ? ['OWNER', 'MEMBER', 'VIEWER'] : ['MEMBER', 'VIEWER']
+)
+
+const updateRoleOptions = computed(() =>
+  authStore.isAdmin ? ['OWNER', 'MEMBER', 'VIEWER'] : ['MEMBER', 'VIEWER']
+)
+
+const canUpdateRole = (u: any) => {
+  if (authStore.isAdmin) return true
+  if (myGroupRole.value === 'OWNER' && u.role !== 'OWNER') return true
+  return false
+}
+
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const load = async () => {
@@ -110,12 +165,15 @@ const selectGroup = async (g: any) => {
   selectedGroup.value = g
   loadingDetail.value = true
   try {
-    const [devRes, userRes] = await Promise.all([
+    const calls: Promise<any>[] = [
       groupsApi.listDevices(g.groupId),
       groupsApi.listUsers(g.groupId),
-    ])
+    ]
+    if (!allUsers.value.length) calls.push(usersApi.list())
+    const [devRes, userRes, usersRes] = await Promise.all(calls)
     groupDevices.value = devRes.data ?? []
     groupUsers.value = userRes.data ?? []
+    if (usersRes) allUsers.value = usersRes.data ?? []
   } finally { loadingDetail.value = false }
 }
 
@@ -186,7 +244,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <!-- Group list -->
       <AppCard title="Grupos">
         <template #actions>
-          <AppButton size="sm" variant="primary" @click="showCreate = true">+ Novo Grupo</AppButton>
+          <AppButton v-if="authStore.isAdmin" size="md" variant="primary" @click="showCreate = true">Novo Grupo</AppButton>
         </template>
 
         <div v-if="loading" class="empty">Carregando...</div>
@@ -202,6 +260,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
               <span class="group-desc text-muted text-xs" v-if="g.description">{{ g.description }}</span>
             </div>
             <AppButton
+              v-if="authStore.isAdmin"
               size="sm" variant="danger"
               @click.stop="doDelete(g)"
             >Excluir</AppButton>
@@ -214,8 +273,10 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <div v-if="selectedGroup" class="detail-col">
         <AppCard :title="selectedGroup.name">
           <template #actions>
-            <AppButton size="sm" variant="secondary" @click="openAddDevice">+ Dispositivo</AppButton>
-            <AppButton size="sm" variant="secondary" @click="openAssignUser">+ Usuário</AppButton>
+            <div style="display: flex; gap: var(--space-2);">
+              <AppButton v-if="canManageDevices" size="md" variant="secondary" @click="openAddDevice">Adicionar Dispositivo</AppButton>
+              <AppButton v-if="canManageUsers" size="md" variant="secondary" @click="openAssignUser">Adicionar Usuário</AppButton>
+            </div>
           </template>
 
           <div v-if="loadingDetail" class="empty">Carregando...</div>
@@ -224,17 +285,27 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <div class="section">
               <h4 class="section-title">Dispositivos ({{ groupDevices.length }})</h4>
               <table class="tbl">
-                <thead><tr><th>Nome</th><th>Device ID</th><th>Adicionado por</th><th></th></tr></thead>
+                <thead>
+                  <tr>
+                    <th style="width: 40%;">Dispositivo</th>
+                    <th style="width: 20%;">Atribuído por</th>
+                    <th v-if="canManageDevices" style="width: 12%; text-align: right;"></th>
+                  </tr>
+                </thead>
                 <tbody>
-                  <tr v-for="d in groupDevices" :key="d.deviceId ?? d.id">
-                    <td class="text-sm font-medium">{{ d.name ?? d.deviceId }}</td>
-                    <td class="mono text-xs text-muted">{{ d.deviceId }}</td>
-                    <td class="text-xs text-muted">{{ d.addedByUsername ?? '—' }}</td>
+                  <tr v-for="d in groupDevices" :key="d.deviceId">
                     <td>
+                      <div class="cell-main">{{ d.name }}</div>
+                      <div class="mono text-xs text-muted">{{ d.deviceId }}</div>
+                    </td>
+                    <td class="text-xs text-muted">{{ d.addedByUsername ?? '—' }}</td>
+                    <td v-if="canManageDevices" style="text-align: right;">
                       <AppButton size="sm" variant="ghost" @click="doRemoveDevice(d.deviceId)">Remover</AppButton>
                     </td>
                   </tr>
-                  <tr v-if="!groupDevices.length"><td colspan="4" class="empty">Nenhum dispositivo</td></tr>
+                  <tr v-if="!groupDevices.length">
+                    <td :colspan="canManageDevices ? 3 : 2" class="empty">Nenhum dispositivo</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -243,17 +314,27 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <div class="section">
               <h4 class="section-title">Usuários ({{ groupUsers.length }})</h4>
               <table class="tbl">
-                <thead><tr><th>Usuário</th><th>Papel</th><th>Atribuído por</th><th></th></tr></thead>
+                <thead>
+                  <tr>
+                    <th style="width: 35%;">Usuário</th>
+                    <th style="width: 15%;">Papel</th>
+                    <th style="width: 25%;">Atribuído por</th>
+                    <th style="text-align: right;"></th>
+                  </tr>
+                </thead>
                 <tbody>
-                  <tr v-for="u in groupUsers" :key="u.keycloakUserId ?? u.id">
+                  <tr v-for="u in groupUsers" :key="u.keycloakUserId">
                     <td>
-                      <span v-if="usernameFor(u.keycloakUserId)" class="text-sm font-medium">{{ usernameFor(u.keycloakUserId) }}</span>
-                      <span v-else class="mono text-xs text-muted">{{ u.keycloakUserId }}</span>
+                      <div class="cell-main">{{ usernameFor(u.keycloakUserId) ?? u.keycloakUserId }}</div>
+                      <div v-if="usernameFor(u.keycloakUserId)" class="mono text-xs text-muted">{{ u.keycloakUserId }}</div>
                     </td>
                     <td class="text-sm">{{ u.role }}</td>
                     <td class="text-xs text-muted">{{ u.assignedByUsername ?? '—' }}</td>
-                    <td>
-                      <AppButton size="sm" variant="ghost" @click="doRemoveUser(u.keycloakUserId)">Remover</AppButton>
+                    <td style="text-align: right;">
+                      <div style="display: flex; gap: var(--space-1); justify-content: flex-end;">
+                        <AppButton v-if="canUpdateRole(u)" size="sm" variant="secondary" @click="openUpdateRole(u)">Atualizar Papel</AppButton>
+                        <AppButton v-if="canManageUsers" size="sm" variant="ghost" @click="doRemoveUser(u.keycloakUserId)">Remover</AppButton>
+                      </div>
                     </td>
                   </tr>
                   <tr v-if="!groupUsers.length"><td colspan="4" class="empty">Nenhum usuário</td></tr>
@@ -331,13 +412,30 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <div class="form-group">
         <label>Papel</label>
         <select v-model="selectedRole" class="field">
-          <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
+          <option v-for="r in assignableRoles" :key="r" :value="r">{{ r }}</option>
         </select>
       </div>
       <p v-if="assignError" class="error">{{ assignError }}</p>
       <template #footer>
         <AppButton variant="ghost" @click="showAssignUser = false">Cancelar</AppButton>
         <AppButton variant="primary" :loading="assigningUser" :disabled="!selectedUserId" @click="doAssignUser">Atribuir</AppButton>
+      </template>
+    </AppModal>
+
+    <AppModal title="Atualizar Papel" :show="showUpdateRole" @close="showUpdateRole = false">
+      <p class="text-sm text-muted" v-if="updateRoleTarget">
+        Usuário: <strong>{{ usernameFor(updateRoleTarget.keycloakUserId) ?? updateRoleTarget.keycloakUserId }}</strong>
+      </p>
+      <div class="form-group">
+        <label>Novo Papel</label>
+        <select v-model="newRole" class="field">
+          <option v-for="r in updateRoleOptions" :key="r" :value="r">{{ r }}</option>
+        </select>
+      </div>
+      <p v-if="updateRoleError" class="error">{{ updateRoleError }}</p>
+      <template #footer>
+        <AppButton variant="ghost" @click="showUpdateRole = false">Cancelar</AppButton>
+        <AppButton variant="primary" :loading="updatingRole" @click="doUpdateRole">Salvar</AppButton>
       </template>
     </AppModal>
   </AppLayout>
@@ -360,14 +458,15 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .placeholder { display: flex; align-items: center; justify-content: center; min-height: 160px; }
 .placeholder-inner { color: var(--text-muted); font-size: var(--text-sm); }
 
-.detail-sections { display: flex; flex-direction: column; gap: var(--space-6); }
+.detail-sections { display: flex; flex-direction: column; gap: var(--space-10); }
 .section {}
-.section-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin: 0 0 var(--space-3); }
+.section-title { font-size: var(--text-muted); font-weight: 600; color: var(--text-sm); text-transform: uppercase; letter-spacing: .5px; margin: 0 0 var(--space-10); }
 
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
 .tbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); }
 .mono { font-family: var(--font-mono); }
+.cell-main { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 .font-medium { font-weight: 500; }
 .text-sm { font-size: var(--text-sm); }
 .text-xs { font-size: var(--text-xs); }

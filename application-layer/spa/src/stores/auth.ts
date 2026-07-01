@@ -4,6 +4,7 @@ import api from '@/services/api'
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null as { nome: string; username: string } | null,
+    keycloakUserId: null as string | null,
     isAuthenticated: false,
     isAdmin: false,
     isInitialized: false,
@@ -18,6 +19,7 @@ export const useAuthStore = defineStore('auth', {
 
         if (this.isAuthenticated) {
           this.user = { nome: resp.data.nome, username: resp.data.username }
+          this.keycloakUserId = resp.data.keycloakUserId ?? null
 
           const roleResp = await api.get('/check-role?roles=ROLE_ADMIN')
           this.isAdmin = roleResp.data.hasRole
@@ -25,6 +27,7 @@ export const useAuthStore = defineStore('auth', {
       } catch {
         this.isAuthenticated = false
         this.isAdmin = false
+        this.keycloakUserId = null
       } finally {
         this.isInitialized = true
       }
@@ -32,6 +35,7 @@ export const useAuthStore = defineStore('auth', {
 
     clearAuth() {
       this.user = null
+      this.keycloakUserId = null
       this.isAuthenticated = false
       this.isAdmin = false
       this.isInitialized = true

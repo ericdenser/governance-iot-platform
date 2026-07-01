@@ -15,7 +15,7 @@ const router = createRouter({
     { path: '/events',   name: 'events',     meta: { title: 'Eventos' },      component: () => import('../views/EventsView.vue') },
     { path: '/errors',   name: 'errors',     meta: { title: 'Erros' },        component: () => import('../views/ErrorsView.vue') },
     { path: '/audit',    name: 'audit',      meta: { title: 'Auditoria', requiresAdmin: true }, component: () => import('../views/AuditView.vue') },
-    { path: '/groups',   name: 'groups',     meta: { title: 'Grupos', requiresAdmin: true },    component: () => import('../views/GroupsView.vue') },
+    { path: '/groups',   name: 'groups',     meta: { title: 'Grupos' },                         component: () => import('../views/GroupsView.vue') },
     { path: '/profile',  name: 'profile',    meta: { title: 'Perfil' },       component: () => import('../views/ProfileView.vue') },
   ],
 })

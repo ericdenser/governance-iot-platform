@@ -164,7 +164,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
   <AppLayout>
     <AppCard title="Comandos">
       <template #actions>
-        <AppButton v-if="authStore.isAdmin" size="lg" variant="primary" @click="openWizard">
+        <AppButton size="lg" variant="primary" @click="openWizard">
           Enviar Comando
         </AppButton>
       </template>
