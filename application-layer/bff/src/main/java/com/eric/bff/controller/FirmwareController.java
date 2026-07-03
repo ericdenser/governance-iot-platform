@@ -24,18 +24,12 @@ public class FirmwareController {
         this.restClient = restClient;
     }
 
+    // ─── Firmware (product) ────────────────────────────────────────────────────
+
     @GetMapping
     public ResponseEntity<String> listAll() {
         return restClient.get()
                 .uri(govApiUrl + "/firmware")
-                .retrieve()
-                .toEntity(String.class);
-    }
-
-    @GetMapping("/deployable")
-    public ResponseEntity<String> listDeployable() {
-        return restClient.get()
-                .uri(govApiUrl + "/firmware/deployable")
                 .retrieve()
                 .toEntity(String.class);
     }
@@ -48,11 +42,70 @@ public class FirmwareController {
                 .toEntity(String.class);
     }
 
-    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> upload(
+    @PostMapping(value = "/create", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<String> createFirmware(
             @RequestPart("file") MultipartFile file,
             @RequestPart("metadata") String metadata) throws Exception {
 
+        return relayMultipart(govApiUrl + "/firmware/create", file, metadata);
+    }
+
+    @PutMapping("/{firmwareId}/provisioning")
+    public ResponseEntity<String> setProvisioning(@PathVariable String firmwareId) {
+        return restClient.put()
+                .uri(govApiUrl + "/firmware/" + firmwareId + "/provisioning")
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    // ─── Firmware Version ──────────────────────────────────────────────────────
+
+    @GetMapping("/{firmwareId}/versions")
+    public ResponseEntity<String> listVersions(@PathVariable String firmwareId) {
+        return restClient.get()
+                .uri(govApiUrl + "/firmware/" + firmwareId + "/versions")
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    @GetMapping("/versions/{versionId}")
+    public ResponseEntity<String> getVersion(@PathVariable String versionId) {
+        return restClient.get()
+                .uri(govApiUrl + "/firmware/versions/" + versionId)
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    @PostMapping(value = "/{firmwareId}/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<String> uploadVersion(
+            @PathVariable String firmwareId,
+            @RequestPart("file") MultipartFile file,
+            @RequestPart("metadata") String metadata) throws Exception {
+
+        return relayMultipart(govApiUrl + "/firmware/" + firmwareId + "/upload", file, metadata);
+    }
+
+    @PatchMapping("/versions/{versionId}/deprecate")
+    public ResponseEntity<String> deprecate(@PathVariable String versionId) {
+        return restClient.patch()
+                .uri(govApiUrl + "/firmware/versions/" + versionId + "/deprecate")
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    // ─── Deploy helper ─────────────────────────────────────────────────────────
+
+    @GetMapping("/deployable")
+    public ResponseEntity<String> listDeployable() {
+        return restClient.get()
+                .uri(govApiUrl + "/firmware/deployable")
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    // ─── Helper ────────────────────────────────────────────────────────────────
+
+    private ResponseEntity<String> relayMultipart(String url, MultipartFile file, String metadata) {
         HttpHeaders metadataHeaders = new HttpHeaders();
         metadataHeaders.setContentType(MediaType.APPLICATION_JSON);
 
@@ -61,25 +114,9 @@ public class FirmwareController {
         parts.add("metadata", new HttpEntity<>(metadata, metadataHeaders));
 
         return restClient.post()
-                .uri(govApiUrl + "/firmware/upload")
+                .uri(url)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(parts)
-                .retrieve()
-                .toEntity(String.class);
-    }
-
-    @PatchMapping("/{firmwareId}/deprecate")
-    public ResponseEntity<String> deprecate(@PathVariable String firmwareId) {
-        return restClient.patch()
-                .uri(govApiUrl + "/firmware/" + firmwareId + "/deprecate")
-                .retrieve()
-                .toEntity(String.class);
-    }
-
-    @PutMapping("/{firmwareId}/provisioning")
-    public ResponseEntity<String> setProvisioning(@PathVariable String firmwareId) {
-        return restClient.put()
-                .uri(govApiUrl + "/firmware/" + firmwareId + "/provisioning")
                 .retrieve()
                 .toEntity(String.class);
     }
