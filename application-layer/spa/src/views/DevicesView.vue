@@ -6,13 +6,16 @@ import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import type { DeviceSummaryDTO, DeviceStatus } from '@/types/models'
+
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const authStore = useAuthStore()
-const devices = ref<any[]>([])
+const devices = ref<DeviceSummaryDTO[]>([])
 const loading = ref(true)
 const search = ref('')
 
-const filtered = () => {
+const filtered = (): DeviceSummaryDTO[] => {
   const q = search.value.toLowerCase()
   if (!q) return devices.value
   return devices.value.filter(d =>
@@ -22,8 +25,8 @@ const filtered = () => {
   )
 }
 
-const statusVariant = (s: string): any => {
-  const m: Record<string, string> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
+const statusVariant = (s: DeviceStatus): BadgeVariant => {
+  const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
   return m[s] ?? 'muted'
 }
 

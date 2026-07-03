@@ -6,16 +6,21 @@ import AppButton from '@/components/AppButton.vue'
 import AppModal from '@/components/AppModal.vue'
 import { sensorsApi } from '@/services/sensors'
 import { useAuthStore } from '@/stores/auth'
+import type { SensorResponseDTO } from '@/types/models'
+import { errorMessage } from '@/utils/errors'
 
 const authStore = useAuthStore()
-const sensors = ref<any[]>([])
+const sensors = ref<SensorResponseDTO[]>([])
 const loading = ref(true)
 const showForm = ref(false)
 const newName = ref('')
 const saving = ref(false)
 const error = ref('')
 
-const load = async () => { const r = await sensorsApi.list(); sensors.value = r.data }
+const load = async () => {
+  const r = await sensorsApi.list()
+  sensors.value = Array.isArray(r.data) ? r.data : []
+}
 
 const save = async () => {
   if (!newName.value.trim()) return
@@ -23,8 +28,8 @@ const save = async () => {
   try {
     await sensorsApi.register(newName.value.trim())
     showForm.value = false; newName.value = ''; await load()
-  } catch (e: any) {
-    error.value = e.response?.data?.message ?? 'Erro ao cadastrar sensor.'
+  } catch (e: unknown) {
+    error.value = errorMessage(e, 'Erro ao cadastrar sensor.')
   } finally { saving.value = false }
 }
 

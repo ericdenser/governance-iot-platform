@@ -9,9 +9,21 @@ import { commandsApi } from '@/services/commands'
 import { devicesApi } from '@/services/devices'
 import { firmwareApi } from '@/services/firmware'
 import { useAuthStore } from '@/stores/auth'
+import type {
+  CommandRecordResponseDTO,
+  CommandRequest,
+  CommandResultResponseDTO,
+  CommandStatus,
+  DeviceCommands,
+  DeviceSummaryDTO,
+  DeployableVersionProjection,
+} from '@/types/models'
+import { errorMessage } from '@/utils/errors'
+
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const authStore = useAuthStore()
-const commands = ref<any[]>([])
+const commands = ref<CommandRecordResponseDTO[]>([])
 const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
@@ -24,17 +36,17 @@ const wizardStep = ref<Step>('command')
 const sending = ref(false)
 const sendError = ref('')
 
-const selectedCommand = ref('')
-const selectedFirmware = ref<any>(null)
+const selectedCommand = ref<DeviceCommands | ''>('')
+const selectedFirmware = ref<DeployableVersionProjection | null>(null)
 const selectedDeviceIds = ref<Set<string>>(new Set())
 const durationS = ref(60)
 
-const allDevices = ref<any[]>([])
-const allFirmwares = ref<any[]>([])
+const allDevices = ref<DeviceSummaryDTO[]>([])
+const allFirmwares = ref<DeployableVersionProjection[]>([])
 const loadingDevices = ref(false)
 const loadingFirmwares = ref(false)
 
-const sendResult = ref<{ command: string; publishedTo: string[]; failed: string[]; skipped: string[] } | null>(null)
+const sendResult = ref<CommandResultResponseDTO | null>(null)
 
 const COMMANDS = [
   { value: 'UPDATE',            label: 'Atualizar Firmware',  desc: 'OTA — instala uma versão específica no device' },
@@ -56,7 +68,7 @@ const openWizard = async () => {
   showWizard.value = true
 }
 
-const pickCommand = async (cmd: string) => {
+const pickCommand = async (cmd: DeviceCommands) => {
   selectedCommand.value = cmd
   if (cmd === 'UPDATE') {
     wizardStep.value = 'firmware'
@@ -67,7 +79,7 @@ const pickCommand = async (cmd: string) => {
   }
 }
 
-const pickFirmware = async (fw: any) => {
+const pickFirmware = async (fw: DeployableVersionProjection) => {
   selectedFirmware.value = fw
   wizardStep.value = 'devices'
   await loadDevices()
@@ -94,7 +106,7 @@ const loadDevices = async () => {
   loadingDevices.value = true
   try {
     const r = await devicesApi.list()
-    allDevices.value = Array.isArray(r.data) ? r.data : (r.data?.content ?? [])
+    allDevices.value = Array.isArray(r.data) ? r.data : []
   } finally { loadingDevices.value = false }
 }
 
@@ -103,20 +115,21 @@ const loadFirmwares = async () => {
   loadingFirmwares.value = true
   try {
     const r = await firmwareApi.listDeployable()
-    allFirmwares.value = Array.isArray(r.data) ? r.data : (r.data?.data ?? [])
+    allFirmwares.value = Array.isArray(r.data) ? r.data : []
   } finally { loadingFirmwares.value = false }
 }
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 
 const doSend = async () => {
+  if (!selectedCommand.value) return
   sending.value = true; sendError.value = ''
   try {
-    const payload: any = {
+    const payload: CommandRequest = {
       command: selectedCommand.value,
       targetDevices: [...selectedDeviceIds.value],
     }
-    if (selectedCommand.value === 'UPDATE') {
+    if (selectedCommand.value === 'UPDATE' && selectedFirmware.value) {
       payload.params = { versionId: selectedFirmware.value.versionId }
     } else if (selectedCommand.value === 'DEEP_SLEEP') {
       payload.params = { duration_s: Number(durationS.value) }
@@ -125,15 +138,15 @@ const doSend = async () => {
     sendResult.value = r.data
     wizardStep.value = 'result'
     page.value = 0; await load()
-  } catch (e: any) {
-    sendError.value = e.response?.data?.message ?? 'Erro ao enviar comando.'
+  } catch (e: unknown) {
+    sendError.value = errorMessage(e, 'Erro ao enviar comando.')
   } finally { sending.value = false }
 }
 
 // ── History table ─────────────────────────────────────────────────────────────
 
-const statusVariant = (s: string): any =>
-  ({ PENDING: 'warning', COMPLETED: 'success', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' }[s] ?? 'muted')
+const statusVariant = (s: CommandStatus): BadgeVariant =>
+  (({ PENDING: 'warning', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
@@ -154,7 +167,7 @@ const deviceNameById = computed(() => {
 })
 
 // Compara pelo versionId (UUID único) — antes comparava só a string da versão, ambíguo com múltiplos firmwares
-const isSameVersion = (d: any) =>
+const isSameVersion = (d: DeviceSummaryDTO) =>
   selectedCommand.value === 'UPDATE' && !!selectedFirmware.value && d.firmwareVersionId === selectedFirmware.value.versionId
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })

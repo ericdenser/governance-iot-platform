@@ -10,6 +10,16 @@ import { devicesApi } from '@/services/devices'
 import { sensorsApi } from '@/services/sensors'
 import { groupsApi } from '@/services/groups'
 import { useAuthStore } from '@/stores/auth'
+import type {
+  FirmwareResponseDTO,
+  FirmwareVersionResponseDTO,
+  FirmwareVersionSummaryDTO,
+  DeviceGroupResponseDTO,
+  DeviceSummaryDTO,
+  SensorResponseDTO,
+  UploadVersionRequest
+} from '@/types/models'
+import { errorMessage } from '@/utils/errors'
 
 const authStore = useAuthStore()
 const route = useRoute()
@@ -17,9 +27,9 @@ const router = useRouter()
 
 const firmwareId = route.params.firmwareId as string
 
-const firmware = ref<any>(null)
-const versions = ref<any[]>([])
-const groups = ref<any[]>([])
+const firmware = ref<FirmwareResponseDTO | null>(null)
+const versions = ref<FirmwareVersionSummaryDTO[]>([])
+const groups = ref<DeviceGroupResponseDTO[]>([])
 const loading = ref(true)
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
@@ -49,16 +59,16 @@ const load = async () => {
     firmwareApi.listVersions(firmwareId),
   ])
   firmware.value = fwRes.data
-  versions.value = Array.isArray(vRes.data) ? vRes.data : (vRes.data?.data ?? [])
+  versions.value = Array.isArray(vRes.data) ? vRes.data :  []
 }
 
 // ── Version detail modal  ────────────────────────────────────────────
 const showDetail = ref(false)
-const detailVersion = ref<any>(null)
-const detailDevices = ref<any[]>([])
+const detailVersion = ref<FirmwareVersionResponseDTO | null>(null)
+const detailDevices = ref<DeviceSummaryDTO[]>([])
 const loadingDetailDevices = ref(false)
 
-const openVersionDetail = async (versionSummary: any) => {
+const openVersionDetail = async (versionSummary: FirmwareVersionSummaryDTO) => {
   detailVersion.value = null
   showDetail.value = true
   loadingDetailDevices.value = true
@@ -68,8 +78,8 @@ const openVersionDetail = async (versionSummary: any) => {
       devicesApi.list(),
     ])
     detailVersion.value = vRes.data
-    const all = Array.isArray(dRes.data) ? dRes.data : (dRes.data?.content ?? [])
-    detailDevices.value = all.filter((d: any) => d.firmwareVersionId === versionSummary.versionId)
+    const all = Array.isArray(dRes.data) ? dRes.data : []
+    detailDevices.value = all.filter(d => d.firmwareVersionId === versionSummary.versionId)
   } finally { loadingDetailDevices.value = false }
 }
 
@@ -79,7 +89,7 @@ const uploadFile = ref<File | null>(null)
 const uploadMeta = ref({ version: '', releaseNotes: '' })
 const uploading = ref(false)
 const uploadError = ref('')
-const availableSensors = ref<any[]>([])
+const availableSensors = ref<SensorResponseDTO[]>([])
 const selectedSensors = ref<Map<string, number>>(new Map())
 
 const openUpload = async () => {
@@ -90,7 +100,7 @@ const openUpload = async () => {
   showUpload.value = true
   if (!availableSensors.value.length) {
     const r = await sensorsApi.list()
-    availableSensors.value = r.data?.data ?? r.data ?? []
+    availableSensors.value = Array.isArray(r.data) ? r.data : []
   }
 }
 
@@ -114,15 +124,18 @@ const doUpload = async () => {
   uploading.value = true; uploadError.value = ''
   try {
     const sensors = [...selectedSensors.value.entries()].map(([sensorId, pin]) => ({ sensorId, pin }))
-    await firmwareApi.uploadVersion(firmwareId, uploadFile.value, {
+    
+    const payload: UploadVersionRequest = {
       version: uploadMeta.value.version.trim(),
-      releaseNotes: uploadMeta.value.releaseNotes,
+      releaseNotes: uploadMeta.value.releaseNotes || null,
       sensors,
-    })
+    }
+
+    await firmwareApi.uploadVersion(firmwareId, uploadFile.value, payload as unknown as Record<string, unknown>)
     showUpload.value = false
     await load()
-  } catch (e: any) {
-    uploadError.value = e.response?.data?.message ?? 'Erro ao subir nova versão.'
+  } catch (e: unknown) {
+    uploadError.value = errorMessage(e, 'Erro ao subir nova versão.')
   } finally { uploading.value = false }
 }
 
@@ -131,12 +144,12 @@ const showDeploy = ref(false)
 const deployVersionId = ref('')
 const deployVersionString = ref('')
 const selectedDeployIds = ref<Set<string>>(new Set())
-const allDevices = ref<any[]>([])
+const allDevices = ref<DeviceSummaryDTO[]>([])
 const loadingDevices = ref(false)
 const deploying = ref(false)
 const deployError = ref('')
 
-const openDeploy = async (versionSummary: any) => {
+const openDeploy = async (versionSummary: FirmwareVersionSummaryDTO) => {
   deployVersionId.value = versionSummary.versionId
   deployVersionString.value = versionSummary.version
   selectedDeployIds.value = new Set()
@@ -146,7 +159,7 @@ const openDeploy = async (versionSummary: any) => {
     loadingDevices.value = true
     try {
       const r = await devicesApi.list()
-      allDevices.value = Array.isArray(r.data) ? r.data : (r.data?.content ?? [])
+      allDevices.value = Array.isArray(r.data) ? r.data :  []
     } finally { loadingDevices.value = false }
   }
 }
@@ -165,20 +178,20 @@ const doDeploy = async () => {
   try {
     await firmwareApi.deploy(deployVersionId.value, [...selectedDeployIds.value])
     showDeploy.value = false
-  } catch (e: any) {
-    deployError.value = e.response?.data?.message ?? 'Erro ao enviar deploy.'
+  } catch (e: unknown) {
+    deployError.value = errorMessage(e, 'Erro ao enviar deploy.')
   } finally { deploying.value = false }
 }
 
 // ── Deprecate version ────────────────────────────────────────────────────────
-const doDeprecate = async (v: any) => {
+const doDeprecate = async (v: FirmwareVersionSummaryDTO) => {
   const msg = `Você tem certeza que quer marcar a versão v${v.version} como obsoleta?\n\n` +
               `Esta ação é IRREVERSÍVEL. Para desfazer, será necessário subir uma nova versão com o fix.`
   if (!confirm(msg)) return
   try {
     await firmwareApi.deprecate(v.versionId); await load()
-  } catch (e: any) {
-    alert(e.response?.data?.message ?? 'Erro ao deprecar versão.')
+  } catch (e: unknown) {
+    alert(errorMessage(e, 'Erro ao deprecar versão.'))
   }
 }
 

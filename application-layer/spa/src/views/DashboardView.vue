@@ -9,20 +9,27 @@ import ErrorActivityList from '@/components/ErrorActivityList.vue'
 import { devicesApi } from '@/services/devices'
 import { eventsApi } from '@/services/events'
 import { errorsApi } from '@/services/errors'
+import type {
+  DeviceSummaryDTO,
+  DeviceStatus,
+  EventRegistryResponseDTO,
+  ErrorRecordResponseDTO,
+} from '@/types/models'
 
-const devices = ref<any[]>([])
-const recentEvents = ref<any[]>([])
-const recentErrors = ref<any[]>([])
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
+
+const devices = ref<DeviceSummaryDTO[]>([])
+const recentEvents = ref<EventRegistryResponseDTO[]>([])
+const recentErrors = ref<ErrorRecordResponseDTO[]>([])
 const totalEvents = ref(0)
 const totalErrors = ref(0)
 const loading = ref(true)
 
 const totalDevices = computed(() => devices.value.length)
 const activeDevices = computed(() => devices.value.filter(d => d.status === 'ACTIVE').length)
-const pendingDevices = computed(() => devices.value.filter(d => ['PENDING', 'PROVISIONING'].includes(d.status)).length)
+const pendingDevices = computed(() => devices.value.filter(d => (['PENDING', 'PROVISIONING'] as DeviceStatus[]).includes(d.status)).length)
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
-const statusVariant = (s: string): BadgeVariant => {
+const statusVariant = (s: DeviceStatus): BadgeVariant => {
   const map: Record<string, BadgeVariant> = {
     ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info',
     COMMAND_PENDING: 'info', REVOKED: 'danger', ERROR: 'danger',
@@ -39,7 +46,7 @@ onMounted(async () => {
       eventsApi.list(0),
       errorsApi.list(0),
     ])
-    devices.value = devRes.data
+    devices.value = Array.isArray(devRes.data) ? devRes.data : []
     recentEvents.value = evRes.data.content?.slice(0, 5) ?? []
     totalEvents.value = evRes.data.page?.totalElements ?? 0
     recentErrors.value = errRes.data.content?.slice(0, 5) ?? []

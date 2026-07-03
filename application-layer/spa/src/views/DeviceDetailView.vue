@@ -9,35 +9,48 @@ import AppPagination from '@/components/AppPagination.vue'
 import EventList from '@/components/EventList.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import type {
+  DeviceDetailDTO,
+  DeviceStatus,
+  CommandRecordResponseDTO,
+  CommandStatus,
+  EventRegistryResponseDTO,
+  ErrorRecordResponseDTO,
+  ErrorStatus,
+} from '@/types/models'
+
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const deviceId = route.params.id as string
 
-const device = ref<any>(null)
+const device = ref<DeviceDetailDTO | null>(null)
 const tab = ref<'info' | 'commands' | 'events' | 'errors'>('info')
 const loading = ref(true)
 
-const commands = ref<any[]>([])
-const events = ref<any[]>([])
-const errors = ref<any[]>([])
+const commands = ref<CommandRecordResponseDTO[]>([])
+const events = ref<EventRegistryResponseDTO[]>([])
+const errors = ref<ErrorRecordResponseDTO[]>([])
 const cmdPage = ref(0); const cmdTotal = ref(0)
 const evPage  = ref(0); const evTotal  = ref(0)
 const errPage = ref(0); const errTotal = ref(0)
 
 const revoking = ref(false)
 
-const statusVariant = (s: string): any => {
-  const m: Record<string, string> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
+const statusVariant = (s: DeviceStatus): BadgeVariant => {
+  const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
   return m[s] ?? 'muted'
 }
-const cmdVariant = (s: string): any => ({ PENDING: 'warning', COMPLETED: 'success', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' }[s] ?? 'muted')
-const errVariant = (s: string): any => ({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' }[s] ?? 'warning')
+const cmdVariant = (s: CommandStatus): BadgeVariant =>
+  (({ PENDING: 'warning', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
+const errVariant = (s: ErrorStatus): BadgeVariant =>
+  (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
-const errExpanded = ref<Set<number>>(new Set())
-const toggleErrExpand = (id: number) => {
+const errExpanded = ref<Set<string>>(new Set())
+const toggleErrExpand = (id: string) => {
   const next = new Set(errExpanded.value)
   next.has(id) ? next.delete(id) : next.add(id)
   errExpanded.value = next
@@ -173,20 +186,20 @@ onMounted(async () => {
         <table class="tbl">
           <thead><tr><th>Código</th><th>Status</th><th>Reportado em</th><th>Fixado em</th><th>Detalhes</th></tr></thead>
           <tbody>
-            <template v-for="e in errors" :key="e.id">
+            <template v-for="e in errors" :key="e.errorId">
               <tr>
                 <td><AppBadge variant="danger">{{ e.error }}</AppBadge></td>
                 <td><AppBadge :variant="errVariant(e.status)">{{ e.status }}</AppBadge></td>
                 <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
                 <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
                 <td>
-                  <button v-if="e.details || e.message" class="expand-btn" :class="{ open: errExpanded.has(e.id) }" @click="toggleErrExpand(e.id)">
-                    <span>{{ errExpanded.has(e.id) ? '▴' : '▾' }}</span>
+                  <button v-if="e.details || e.message" class="expand-btn" :class="{ open: errExpanded.has(e.errorId) }" @click="toggleErrExpand(e.errorId)">
+                    <span>{{ errExpanded.has(e.errorId) ? '▴' : '▾' }}</span>
                   </button>
                   <span v-else class="text-muted text-sm">—</span>
                 </td>
               </tr>
-              <tr v-if="errExpanded.has(e.id)" class="detail-row">
+              <tr v-if="errExpanded.has(e.errorId)" class="detail-row">
                 <td colspan="5">
                   <div class="detail-box">
                     <p v-if="e.message" class="detail-message">{{ e.message }}</p>

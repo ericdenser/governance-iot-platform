@@ -5,19 +5,22 @@ import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { errorsApi } from '@/services/errors'
+import type { ErrorRecordResponseDTO, ErrorStatus } from '@/types/models'
 
-const errors = ref<any[]>([])
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
+
+const errors = ref<ErrorRecordResponseDTO[]>([])
 const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
-const expanded = ref<Set<number>>(new Set())
+const expanded = ref<Set<string>>(new Set())
 
-const statusVariant = (s: string): any =>
-  ({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' }[s] ?? 'warning')
+const statusVariant = (s: ErrorStatus): BadgeVariant =>
+  (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
-const toggleExpand = (id: number) => {
+const toggleExpand = (id: string) => {
   const next = new Set(expanded.value)
   next.has(id) ? next.delete(id) : next.add(id)
   expanded.value = next
@@ -50,7 +53,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           </tr>
         </thead>
         <tbody>
-          <template v-for="e in errors" :key="e.id">
+          <template v-for="e in errors" :key="e.errorId">
             <tr>
               <td><AppBadge variant="danger">{{ e.error }}</AppBadge></td>
               <td><AppBadge :variant="statusVariant(e.status)">{{ e.status }}</AppBadge></td>
@@ -61,16 +64,16 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
                 <button
                   v-if="e.details || e.message"
                   class="expand-btn"
-                  :class="{ open: expanded.has(e.id) }"
-                  @click="toggleExpand(e.id)"
-                  :title="expanded.has(e.id) ? 'Fechar detalhes' : 'Ver detalhes'"
+                  :class="{ open: expanded.has(e.errorId) }"
+                  @click="toggleExpand(e.errorId)"
+                  :title="expanded.has(e.errorId) ? 'Fechar detalhes' : 'Ver detalhes'"
                 >
-                  <span class="expand-icon">{{ expanded.has(e.id) ? '▴' : '▾' }}</span>
+                  <span class="expand-icon">{{ expanded.has(e.errorId) ? '▴' : '▾' }}</span>
                 </button>
                 <span v-else class="text-muted text-sm">—</span>
               </td>
             </tr>
-            <tr v-if="expanded.has(e.id)" class="detail-row">
+            <tr v-if="expanded.has(e.errorId)" class="detail-row">
               <td colspan="6">
                 <div class="detail-box">
                   <p v-if="e.message" class="detail-message">{{ e.message }}</p>

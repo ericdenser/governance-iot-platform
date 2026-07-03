@@ -9,12 +9,19 @@ import { firmwareApi } from '@/services/firmware'
 import { sensorsApi } from '@/services/sensors'
 import { groupsApi } from '@/services/groups'
 import { useAuthStore } from '@/stores/auth'
+import type {
+  FirmwareResponseDTO,
+  DeviceGroupResponseDTO,
+  SensorResponseDTO,
+  CreateFirmwareRequest
+} from '@/types/models'
+import { errorMessage } from '@/utils/errors'
 
 const authStore = useAuthStore()
 const router = useRouter()
 
-const firmwares = ref<any[]>([])
-const groups = ref<any[]>([])
+const firmwares = ref<FirmwareResponseDTO[]>([])
+const groups = ref<DeviceGroupResponseDTO[]>([])
 const loading = ref(true)
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
@@ -52,7 +59,7 @@ const provisioningReady = computed(() =>
 
 const load = async () => {
   const r = await firmwareApi.list()
-  firmwares.value = Array.isArray(r.data) ? r.data : (r.data?.data ?? [])
+  firmwares.value = Array.isArray(r.data) ? r.data : []
 }
 
 // ── Create Firmware modal ─────────────────────────────────────────────────────
@@ -64,11 +71,10 @@ const createMeta = ref({
   initialVersion: '',
   isProvisioning: false,
   ownerGroupId: '',
-  releaseNotes: '',
 })
 const creating = ref(false)
 const createError = ref('')
-const availableSensors = ref<any[]>([])
+const availableSensors = ref<SensorResponseDTO[]>([])
 const selectedSensors = ref<Map<string, number>>(new Map())
 
 const uploadableGroups = computed(() => {
@@ -84,14 +90,13 @@ const openCreate = async (asProvisioning = false) => {
     initialVersion: '',
     isProvisioning: asProvisioning,
     ownerGroupId: '',
-    releaseNotes: '',
   }
   createError.value = ''
   selectedSensors.value = new Map()
   showCreate.value = true
   if (!availableSensors.value.length) {
     const r = await sensorsApi.list()
-    availableSensors.value = r.data?.data ?? r.data ?? []
+    availableSensors.value = Array.isArray(r.data) ? r.data : []
   }
 }
 
@@ -120,22 +125,21 @@ const doCreate = async () => {
   creating.value = true; createError.value = ''
   try {
     const sensors = [...selectedSensors.value.entries()].map(([sensorId, pin]) => ({ sensorId, pin }))
-    const payload: any = {
+    const payload: CreateFirmwareRequest = {
       firmwareName: meta.firmwareName.trim(),
       description: meta.description.trim() || null,
       initialVersion: meta.initialVersion.trim(),
       isProvisioning: meta.isProvisioning,
-      releaseNotes: meta.releaseNotes,
       sensors,
     }
     if (!meta.isProvisioning && meta.ownerGroupId) {
       payload.ownerGroupId = meta.ownerGroupId
     }
-    await firmwareApi.create(createFile.value, payload)
+    await firmwareApi.create(createFile.value, payload as unknown as Record<string, unknown>)
     showCreate.value = false
     await load()
-  } catch (e: any) {
-    createError.value = e.response?.data?.message ?? 'Erro ao criar firmware.'
+  } catch (e: unknown) {
+    createError.value = errorMessage(e, 'Erro ao criar firmware.')
   } finally { creating.value = false }
 }
 
@@ -144,8 +148,8 @@ const doSetProvisioning = async (id: string) => {
   if (!confirm('Definir como firmware de provisionamento? O provisioning atual perderá esse status.')) return
   try {
     await firmwareApi.setProvisioning(id); await load()
-  } catch (e: any) {
-    alert(e.response?.data?.message ?? 'Erro ao definir firmware de provisioning.')
+  } catch (e: unknown) {
+    alert(errorMessage(e, 'Erro ao definir firmware de provisioning.'))
   }
 }
 
@@ -171,7 +175,11 @@ const doGenerate = async () => {
   }
   generating.value = true; generateError.value = ''
   try {
-    const payload: any = { deviceName: deviceName.trim(), wifiSsid: wifiSsid.trim(), wifiPass: wifiPass.trim() }
+    const payload: { deviceName: string; wifiSsid: string; wifiPass: string; groupId?: string } = {
+      deviceName: deviceName.trim(),
+      wifiSsid: wifiSsid.trim(),
+      wifiPass: wifiPass.trim(),
+    }
     if (groupId) payload.groupId = groupId
     const r = await firmwareApi.generatePackage(payload)
     const url = URL.createObjectURL(r.data)
@@ -181,8 +189,8 @@ const doGenerate = async () => {
     a.click()
     URL.revokeObjectURL(url)
     showPackage.value = false
-  } catch (e: any) {
-    generateError.value = e.response?.data?.message ?? 'Erro ao gerar pacote.'
+  } catch (e: unknown) {
+    generateError.value = errorMessage(e, 'Erro ao gerar pacote.')
   } finally { generating.value = false }
 }
 
@@ -197,8 +205,8 @@ const goToDetail = (firmwareId: string) => router.push(`/firmware/${firmwareId}`
 onMounted(async () => {
   try {
     const [fwRes, grpRes] = await Promise.all([firmwareApi.list(), groupsApi.list()])
-    firmwares.value = Array.isArray(fwRes.data) ? fwRes.data : (fwRes.data?.data ?? [])
-    groups.value = grpRes.data ?? []
+    firmwares.value = Array.isArray(fwRes.data) ? fwRes.data : []
+    groups.value = Array.isArray(grpRes.data) ? grpRes.data : []
   } finally { loading.value = false }
 })
 </script>
@@ -294,11 +302,6 @@ onMounted(async () => {
             <option v-else value="" disabled>Selecione um grupo</option>
             <option v-for="g in uploadableGroups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
           </select>
-        </div>
-
-        <div class="form-group">
-          <label>Release Notes</label>
-          <textarea v-model="createMeta.releaseNotes" class="field" rows="3" placeholder="Descreva as mudanças..." />
         </div>
 
         <label v-if="authStore.isAdmin" class="checkbox-row">

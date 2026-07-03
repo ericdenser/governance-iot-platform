@@ -9,16 +9,28 @@ import { groupsApi } from '@/services/groups'
 import { devicesApi } from '@/services/devices'
 import { usersApi } from '@/services/users'
 import { useAuthStore } from '@/stores/auth'
+import type {
+  DeviceGroupResponseDTO,
+  GroupMemberResponseDTO,
+  GroupDeviceMemberDTO,
+  DeviceSummaryDTO,
+  DeviceStatus,
+  KeycloakUserDTO,
+  GroupRole,
+} from '@/types/models'
+import { errorMessage } from '@/utils/errors'
+
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const authStore = useAuthStore()
 
-const groups = ref<any[]>([])
+const groups = ref<DeviceGroupResponseDTO[]>([])
 const loading = ref(true)
 
 // Selected group detail panel
-const selectedGroup = ref<any>(null)
-const groupDevices = ref<any[]>([])
-const groupUsers = ref<any[]>([])
+const selectedGroup = ref<DeviceGroupResponseDTO | null>(null)
+const groupDevices = ref<GroupDeviceMemberDTO[]>([])
+const groupUsers = ref<GroupMemberResponseDTO[]>([])
 const loadingDetail = ref(false)
 
 // Create group modal
@@ -31,15 +43,15 @@ const createError = ref('')
 const showAddDevice = ref(false)
 const addingDevice = ref(false)
 const addDeviceError = ref('')
-const allDevices = ref<any[]>([])
+const allDevices = ref<DeviceSummaryDTO[]>([])
 const loadingAllDevices = ref(false)
 const deviceSearch = ref('')
 const selectedDeviceId = ref('')
 
-const statusVariant = (s: string): any =>
-  ({ ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }[s] ?? 'muted')
+const statusVariant = (s: DeviceStatus): BadgeVariant =>
+  (({ ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' } as Record<string, BadgeVariant>)[s] ?? 'muted')
 
-const alreadyInGroup = computed(() => new Set(groupDevices.value.map((d: any) => d.deviceId)))
+const alreadyInGroup = computed(() => new Set(groupDevices.value.map(d => d.deviceId)))
 
 const pickableDevices = computed(() => {
   const inGroup = alreadyInGroup.value
@@ -58,7 +70,7 @@ const openAddDevice = async () => {
     loadingAllDevices.value = true
     try {
       const r = await devicesApi.list()
-      allDevices.value = Array.isArray(r.data) ? r.data : (r.data?.content ?? [])
+      allDevices.value = Array.isArray(r.data) ? r.data : []
     } finally { loadingAllDevices.value = false }
   }
 }
@@ -67,13 +79,13 @@ const openAddDevice = async () => {
 const showAssignUser = ref(false)
 const assigningUser = ref(false)
 const assignError = ref('')
-const allUsers = ref<any[]>([])
+const allUsers = ref<KeycloakUserDTO[]>([])
 const loadingAllUsers = ref(false)
 const userSearch = ref('')
 const selectedUserId = ref('')
-const selectedRole = ref('MEMBER')
+const selectedRole = ref<GroupRole>('MEMBER')
 
-const alreadyAssigned = computed(() => new Set(groupUsers.value.map((u: any) => u.keycloakUserId)))
+const alreadyAssigned = computed(() => new Set(groupUsers.value.map(u => u.keycloakUserId)))
 
 const pickableUsers = computed(() => {
   const assigned = alreadyAssigned.value
@@ -103,11 +115,11 @@ const openAssignUser = async () => {
 // Update role modal
 const showUpdateRole = ref(false)
 const updatingRole = ref(false)
-const updateRoleTarget = ref<any>(null)
-const newRole = ref('')
+const updateRoleTarget = ref<GroupMemberResponseDTO | null>(null)
+const newRole = ref<GroupRole | ''>('')
 const updateRoleError = ref('')
 
-const openUpdateRole = (u: any) => {
+const openUpdateRole = (u: GroupMemberResponseDTO) => {
   updateRoleTarget.value = u
   newRole.value = u.role
   updateRoleError.value = ''
@@ -115,21 +127,21 @@ const openUpdateRole = (u: any) => {
 }
 
 const doUpdateRole = async () => {
-  if (!newRole.value) return
+  if (!newRole.value || !selectedGroup.value || !updateRoleTarget.value) return
   updatingRole.value = true; updateRoleError.value = ''
   try {
     await groupsApi.updateRole(selectedGroup.value.groupId, updateRoleTarget.value.keycloakUserId, { role: newRole.value })
     showUpdateRole.value = false
     await selectGroup(selectedGroup.value)
-  } catch (e: any) {
-    updateRoleError.value = e.response?.data?.message ?? 'Erro ao atualizar papel.'
+  } catch (e: unknown) {
+    updateRoleError.value = errorMessage(e, 'Erro ao atualizar papel.')
   } finally { updatingRole.value = false }
 }
 
 // Role-based permissions
-const myGroupRole = computed(() => {
+const myGroupRole = computed<GroupRole | null>(() => {
   if (!authStore.keycloakUserId || !selectedGroup.value) return null
-  return groupUsers.value.find((u: any) => u.keycloakUserId === authStore.keycloakUserId)?.role ?? null
+  return groupUsers.value.find(u => u.keycloakUserId === authStore.keycloakUserId)?.role ?? null
 })
 
 const canManageDevices = computed(() =>
@@ -140,15 +152,15 @@ const canManageUsers = computed(() =>
   authStore.isAdmin || myGroupRole.value === 'OWNER'
 )
 
-const assignableRoles = computed(() =>
+const assignableRoles = computed<GroupRole[]>(() =>
   authStore.isAdmin ? ['OWNER', 'MEMBER', 'VIEWER'] : ['MEMBER', 'VIEWER']
 )
 
-const updateRoleOptions = computed(() =>
+const updateRoleOptions = computed<GroupRole[]>(() =>
   authStore.isAdmin ? ['OWNER', 'MEMBER', 'VIEWER'] : ['MEMBER', 'VIEWER']
 )
 
-const canUpdateRole = (u: any) => {
+const canUpdateRole = (u: GroupMemberResponseDTO) => {
   if (authStore.isAdmin) return true
   if (myGroupRole.value === 'OWNER' && u.role !== 'OWNER') return true
   return false
@@ -158,22 +170,22 @@ const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const load = async () => {
   const r = await groupsApi.list()
-  groups.value = r.data ?? []
+  groups.value = Array.isArray(r.data) ? r.data : []
 }
 
-const selectGroup = async (g: any) => {
+const selectGroup = async (g: DeviceGroupResponseDTO) => {
   selectedGroup.value = g
   loadingDetail.value = true
   try {
-    const calls: Promise<any>[] = [
+    const needUsers = !allUsers.value.length
+    const [devRes, userRes, usersRes] = await Promise.all([
       groupsApi.listDevices(g.groupId),
       groupsApi.listUsers(g.groupId),
-    ]
-    if (!allUsers.value.length) calls.push(usersApi.list())
-    const [devRes, userRes, usersRes] = await Promise.all(calls)
-    groupDevices.value = devRes.data ?? []
-    groupUsers.value = userRes.data ?? []
-    if (usersRes) allUsers.value = usersRes.data ?? []
+      needUsers ? usersApi.list() : Promise.resolve(null),
+    ])
+    groupDevices.value = Array.isArray(devRes.data) ? devRes.data : []
+    groupUsers.value = Array.isArray(userRes.data) ? userRes.data : []
+    if (usersRes && Array.isArray(usersRes.data)) allUsers.value = usersRes.data
   } finally { loadingDetail.value = false }
 }
 
@@ -184,12 +196,12 @@ const doCreate = async () => {
     await groupsApi.create({ name: createForm.value.name.trim(), description: createForm.value.description.trim() || undefined })
     showCreate.value = false; createForm.value = { name: '', description: '' }
     await load()
-  } catch (e: any) {
-    createError.value = e.response?.data?.message ?? 'Erro ao criar grupo.'
+  } catch (e: unknown) {
+    createError.value = errorMessage(e, 'Erro ao criar grupo.')
   } finally { creating.value = false }
 }
 
-const doDelete = async (g: any) => {
+const doDelete = async (g: DeviceGroupResponseDTO) => {
   if (!confirm(`Excluir grupo "${g.name}"? Todos os membros serão removidos.`)) return
   await groupsApi.delete(g.groupId)
   if (selectedGroup.value?.groupId === g.groupId) selectedGroup.value = null
@@ -197,25 +209,26 @@ const doDelete = async (g: any) => {
 }
 
 const doAddDevice = async () => {
-  if (!selectedDeviceId.value) { addDeviceError.value = 'Selecione um dispositivo.'; return }
+  if (!selectedGroup.value || !selectedDeviceId.value) { addDeviceError.value = 'Selecione um dispositivo.'; return }
   addingDevice.value = true; addDeviceError.value = ''
   try {
     await groupsApi.addDevice(selectedGroup.value.groupId, selectedDeviceId.value)
     showAddDevice.value = false; selectedDeviceId.value = ''
     await selectGroup(selectedGroup.value)
-  } catch (e: any) {
-    addDeviceError.value = e.response?.data?.message ?? 'Erro ao adicionar dispositivo.'
+  } catch (e: unknown) {
+    addDeviceError.value = errorMessage(e, 'Erro ao adicionar dispositivo.')
   } finally { addingDevice.value = false }
 }
 
 const doRemoveDevice = async (deviceId: string) => {
+  if (!selectedGroup.value) return
   if (!confirm('Remover dispositivo do grupo?')) return
   await groupsApi.removeDevice(selectedGroup.value.groupId, deviceId)
   await selectGroup(selectedGroup.value)
 }
 
 const doAssignUser = async () => {
-  if (!selectedUserId.value) { assignError.value = 'Selecione um usuário.'; return }
+  if (!selectedGroup.value || !selectedUserId.value) { assignError.value = 'Selecione um usuário.'; return }
   assigningUser.value = true; assignError.value = ''
   try {
     await groupsApi.assignUser(selectedGroup.value.groupId, {
@@ -224,12 +237,13 @@ const doAssignUser = async () => {
     })
     showAssignUser.value = false; selectedUserId.value = ''
     await selectGroup(selectedGroup.value)
-  } catch (e: any) {
-    assignError.value = e.response?.data?.message ?? 'Erro ao atribuir usuário.'
+  } catch (e: unknown) {
+    assignError.value = errorMessage(e, 'Erro ao atribuir usuário.')
   } finally { assigningUser.value = false }
 }
 
 const doRemoveUser = async (userId: string) => {
+  if (!selectedGroup.value) return
   if (!confirm('Remover usuário do grupo?')) return
   await groupsApi.removeUser(selectedGroup.value.groupId, userId)
   await selectGroup(selectedGroup.value)

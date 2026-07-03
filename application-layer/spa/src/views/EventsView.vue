@@ -5,8 +5,9 @@ import AppCard from '@/components/AppCard.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import EventList from '@/components/EventList.vue'
 import { eventsApi } from '@/services/events'
+import type { EventRegistryResponseDTO } from '@/types/models'
 
-const events = ref<any[]>([])
+const events = ref<EventRegistryResponseDTO[]>([])
 const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)

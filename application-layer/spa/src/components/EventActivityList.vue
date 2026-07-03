@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import AppBadge from '@/components/AppBadge.vue'
+import type { EventRegistryResponseDTO } from '@/types/models'
 
-defineProps<{ events: any[] }>()
+defineProps<{ events: EventRegistryResponseDTO[] }>()
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 </script>
@@ -11,7 +12,7 @@ const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
     <li v-for="e in events" :key="e.eventId" class="activity-item">
       <div class="item-top">
         <AppBadge variant="info">{{ e.eventType }}</AppBadge>
-        <span class="date">{{ fmt(e.uploadedAt) }}</span>
+        <span class="date">{{ fmt(e.occurredAt) }}</span>
       </div>
       <span class="device-name">{{ e.deviceName ?? e.deviceId ?? '—' }}</span>
     </li>

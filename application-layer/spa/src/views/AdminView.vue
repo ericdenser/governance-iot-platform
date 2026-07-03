@@ -11,7 +11,7 @@ const carregarDadosAdmin = async () => {
   try {
     const resposta = await api.get('/buscar-tarefas-admin')
     mensagemSecreta.value = resposta.data
-  } catch (e: any) {
+  } catch {
     erro.value = 'Você foi barrado pelo Backend! Só admins passam daqui.'
   }
 }

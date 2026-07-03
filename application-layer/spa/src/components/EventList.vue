@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import AppBadge from '@/components/AppBadge.vue'
+import type { EventRegistryResponseDTO } from '@/types/models'
 
 withDefaults(defineProps<{
-  events: any[]
+  events: EventRegistryResponseDTO[]
   showDevice?: boolean
 }>(), { showDevice: true })
 
@@ -22,7 +23,7 @@ const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
       <tr v-for="e in events" :key="e.eventId">
         <td><AppBadge variant="info">{{ e.eventType }}</AppBadge></td>
         <td v-if="showDevice" class="text-sm">{{ e.deviceName ?? e.deviceId ?? '—' }}</td>
-        <td class="text-muted text-sm">{{ fmt(e.uploadedAt) }}</td>
+        <td class="text-muted text-sm">{{ fmt(e.occurredAt) }}</td>
       </tr>
       <tr v-if="!events.length">
         <td :colspan="showDevice ? 3 : 2" class="empty">Nenhum evento encontrado</td>

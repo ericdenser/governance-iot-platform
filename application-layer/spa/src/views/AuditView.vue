@@ -5,15 +5,18 @@ import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { auditApi } from '@/services/audit'
+import type { AuditLogResponseDTO } from '@/types/models'
 
-const entries = ref<any[]>([])
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
+
+const entries = ref<AuditLogResponseDTO[]>([])
 const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
-const successVariant = (ok: boolean): any => ok ? 'success' : 'danger'
+const successVariant = (ok: boolean): BadgeVariant => ok ? 'success' : 'danger'
 
 const load = async () => {
   const r = await auditApi.list(page.value)
@@ -36,7 +39,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           </tr>
         </thead>
         <tbody>
-          <tr v-for="e in entries" :key="e.id">
+          <tr v-for="e in entries" :key="e.auditId">
             <td class="mono text-sm action-cell">{{ e.action }}</td>
             <td class="text-sm">
               <span>{{ e.actorUsername ?? e.actorId }}</span>

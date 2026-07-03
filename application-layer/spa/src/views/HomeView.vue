@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import api from '@/services/api' 
 
-const tarefas = ref<any[]>([]) 
+const tarefas = ref<{ id: string; titulo: string }[]>([])
 const erro = ref<string>('')
 
 const carregarTarefas = async () => {

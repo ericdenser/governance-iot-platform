@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import AppBadge from '@/components/AppBadge.vue'
+import type { ErrorRecordResponseDTO, ErrorStatus } from '@/types/models'
 
-defineProps<{ errors: any[] }>()
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
-const statusVariant = (s: string): any =>
-  ({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' }[s] ?? 'warning')
+defineProps<{ errors: ErrorRecordResponseDTO[] }>()
+
+const statusVariant = (s: ErrorStatus): BadgeVariant =>
+  (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
 
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
 </script>
 
 <template>
   <ul class="error-list">
-    <li v-for="e in errors" :key="e.id" class="error-item">
+    <li v-for="e in errors" :key="e.errorId" class="error-item">
       <div class="item-badges">
         <AppBadge variant="danger">{{ e.error }}</AppBadge>
         <AppBadge :variant="statusVariant(e.status)">{{ e.status }}</AppBadge>
