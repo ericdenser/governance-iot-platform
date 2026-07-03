@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -25,10 +26,10 @@ public class FirmwareSensorConfig {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "firmware_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "firmware_version_id", nullable = false)
     @JsonIgnore
-    private Firmware firmware;
+    private FirmwareVersion firmwareVersion;
 
     @ManyToOne
     @JoinColumn(name = "sensor_id")

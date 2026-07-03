@@ -6,6 +6,7 @@ import java.util.Map;
 
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 
 public record DeviceDetailDTO(
     String deviceId,
@@ -15,11 +16,14 @@ public record DeviceDetailDTO(
     Instant createdAt,
     Instant lastSeen,
     FirmwareSummaryDTO firmware,
+    FirmwareVersionSummaryDTO firmwareVersion,
     Map<String, Boolean> sensorStatus,
     String issuedByActorId,
     String issuedByUsername
 ) {
     public static DeviceDetailDTO from(Device device) {
+        FirmwareVersion v = device.getFirmwareVersion();
+
         return new DeviceDetailDTO(
             device.getDeviceId(),
             device.getName(),
@@ -27,7 +31,8 @@ public record DeviceDetailDTO(
             device.getMacAddress(),
             device.getCreatedAt(),
             device.getLastSeen(),
-            FirmwareSummaryDTO.from(device.getFirmware()),
+            v != null ? FirmwareSummaryDTO.from(v.getFirmware()) : null,
+            v != null ? FirmwareVersionSummaryDTO.from(v) : null,
             new HashMap<>(device.getSensorStatus()),
             device.getIssuedByActorId(),
             device.getIssuedByUsername()

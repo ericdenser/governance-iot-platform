@@ -15,14 +15,14 @@ import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
-import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
-import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
+import com.eric.governanceApi.governanceApi.repository.FirmwareVersionRepository;
 
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -34,9 +34,9 @@ import lombok.extern.slf4j.Slf4j;
 public class DeviceUpdatedHandler implements DeviceEventHandler {
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
-    private final FirmwareRepository firmwareRepository;
     private final ErrorRecordRepository errorRecordRepository;
     private final CommandRecordRepository commandRecordRepository;
+    private final FirmwareVersionRepository firmwareVersionRepository;
 
     public EventType handles() { return EventType.DEVICE_UPDATED; }
 
@@ -78,7 +78,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         }
 
         // atualiza firmware antigo
-        Firmware previous_firmware = device.getFirmware();
+        FirmwareVersion previous_firmware = device.getFirmwareVersion();
         if (previous_firmware != null) {
             previous_firmware.setDeployCount(previous_firmware.getDeployCount() - 1);
             if (previous_firmware.getDeployCount() <= 0 && previous_firmware.getStatus() != FirmwareStatus.DEPRECATED) {
@@ -86,33 +86,38 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
             }
         }
 
-        // Resolve o firmware alvo pelo firmwareId gravado no CommandRecord (evita ambiguidade de versão)
-        Firmware current_firmware = null;
+        // Resolve o firmware alvo pelo firmwareId gravado no CommandRecord 
+        FirmwareVersion current_firmware = null;
         String current_firmware_version = event.deviceInfo().firmware_version();
 
         Optional<CommandRecord> pendingForFirmware = commandRecordRepository
                 .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);
 
-        String targetFirmwareId = pendingForFirmware.map(CommandRecord::getTargetFirmwareId).orElse(null);
-        Optional<Firmware> current_firmwareOptional = targetFirmwareId != null
-                ? firmwareRepository.findByFirmwareId(targetFirmwareId)
+        @SuppressWarnings("null")
+        String targetVersionId = pendingForFirmware.map(CommandRecord::getTargetVersionId).orElse(null);
+        Optional<FirmwareVersion> newVersion = targetVersionId != null
+                ? firmwareVersionRepository.findByFirmwareVersionId(targetVersionId)
                 : Optional.empty();
 
-        if (!current_firmwareOptional.isPresent()) {
+        if (!newVersion.isPresent()) {
             log.warn("Device de ID {} atualizou para uma versão não registrada [v{}].", event.deviceId(), current_firmware_version);
             eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + "atualizou para uma versão não registrada [v" + current_firmware_version + "]");
-            device.setFirmware(current_firmware); // null para indicar firmware inválido
+            device.setFirmwareVersion(current_firmware); // null para indicar firmware inválido
             eventRegistryRepository.save(eventRegistry);
             return;
         }
 
-        // atualiza firmware atual
-        current_firmware = current_firmwareOptional.get();
+        // Promove: previous = current, current = new (attempted), attempted = null
+        current_firmware = newVersion.get();
+
+        device.setPreviousFirmwareVersion(previous_firmware); // pode ser null no provisioning
+        device.setFirmwareVersion(current_firmware);
+        device.setAttemptedFirmwareVersion(null); // OTA concluído com sucesso
+
         current_firmware.setDeployCount(current_firmware.getDeployCount() + 1);
         if (current_firmware.getDeployCount() >= 1) {
             current_firmware.setStatus(FirmwareStatus.DEPLOYED);
         }
-        device.setFirmware(current_firmware);
         device.setStatus(DeviceStatus.ACTIVE);
         
         log.info("Device de ID {} atualizou para a versão [v{}] com sucesso!.", event.deviceId(), current_firmware_version);

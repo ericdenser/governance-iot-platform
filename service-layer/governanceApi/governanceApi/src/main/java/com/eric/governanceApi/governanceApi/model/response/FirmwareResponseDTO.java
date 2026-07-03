@@ -1,57 +1,35 @@
 package com.eric.governanceApi.governanceApi.model.response;
 
 import java.time.Instant;
-import java.util.List;
-
-import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 
 public record FirmwareResponseDTO(
     String firmwareId,
-    String version,
-    String filename,
-    String originalFilename,
-    String sha256,
-    long sizeBytes,
-    String downloadUrl,
-    String releaseNotes,
-    FirmwareStatus status,
-    List<FirmwareSensorConfigResponseDTO> sensorConfigs,
-    Instant uploadedAt,
-    int deployCount,
-    boolean provisioningFirmware,
+    String firmwareName,
+    String description,
     String ownerGroupId,
+    boolean provisioningFirmware,
+    Instant createdAt,
     String createdByActorId,
-    String createdByUsername
+    String createdByUsername,
+    int versionsCount,
+    FirmwareVersionSummaryDTO latestVersion
 ) {
 
-    public static FirmwareResponseDTO from(Firmware fw) {
-
-        List<FirmwareSensorConfigResponseDTO> sensors =
-            fw.getSensorConfigs().stream()
-                .map(cfg -> new FirmwareSensorConfigResponseDTO(
-                    cfg.getSensor().getName(),
-                    cfg.getPin()
-                ))
-                .toList();
+    public static FirmwareResponseDTO from(Firmware fw, FirmwareVersion latest) {
 
         return new FirmwareResponseDTO(
             fw.getFirmwareId(),
-            fw.getVersion(),
-            fw.getFilename(),
-            fw.getOriginalFilename(),
-            fw.getSha256(),
-            fw.getSizeBytes(),
-            fw.getDownloadUrl(),
-            fw.getReleaseNotes(),
-            fw.getStatus(),
-            sensors,
-            fw.getUploadedAt(),
-            fw.getDeployCount(),
-            fw.isProvisioningFirmware(),
+            fw.getFirmwareName(),
+            fw.getDescription(),
             fw.getOwnerGroupId(),
+            fw.isProvisioningFirmware(),
+            fw.getCreatedAt(),
             fw.getCreatedByActorId(),
-            fw.getCreatedByUsername()
+            fw.getCreatedByUsername(),
+            fw.getVersions().size(),
+            latest != null ? FirmwareVersionSummaryDTO.from(latest) : null
         );
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
@@ -52,9 +53,18 @@ public class CommandTimeoutScheduler {
                 // Se o device já mudou para outro estado por telemetria, não mexemos.
                 if (device.getStatus() == DeviceStatus.COMMAND_PENDING) {
                     device.setStatus(DeviceStatus.ACTIVE);
-                    
-                    log.warn("Device ID {} destravado automaticamente devido a timeout no comando [{}]", 
+
+                    log.warn("Device ID {} destravado automaticamente devido a timeout no comando [{}]",
                             device.getDeviceId(), command.getCommandType());
+                }
+
+                // UPDATE timeout: OTA nunca confirmou — limpa attemptedFirmwareVersion pra não
+                // ficar preso indicando um OTA em andamento que na verdade morreu.
+                if (command.getCommandType() == DeviceCommands.UPDATE
+                    && device.getAttemptedFirmwareVersion() != null) {
+                    device.setAttemptedFirmwareVersion(null);
+                    log.warn("Device ID {}: attemptedFirmwareVersion limpo por timeout de UPDATE.",
+                            device.getDeviceId());
                 }
             }
         }

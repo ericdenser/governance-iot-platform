@@ -10,8 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
-
 @Entity
 @Table(name = "firmwares")
 @Getter
@@ -26,55 +24,25 @@ public class Firmware extends AuthoredEntity {
     @Column(name = "firmware_id", unique = true, nullable = false, updatable = false)
     private String firmwareId;
 
-    @Column(nullable = false)
-    private String version;
-
-    // null = platform firmware (ADMIN only); non-null = group-owned firmware
-    private String ownerGroupId;
-
-    @Column(nullable = false)
-    private String filename;           
-
-    @Column(nullable = false)
-    private String originalFilename;   // nome do arquivo que o usuário subiu
-
-    @Column(nullable = false, length = 64)
-    private String sha256;
-
-    @Column(nullable = false)
-    private long sizeBytes;
-
-    @Column(nullable = false)
-    private String downloadUrl;        // URL pública para o ESP baixar
+    @Column(name = "firmware_name", nullable = false)
+    private String firmwareName;
 
     @Column(length = 1000)
-    private String releaseNotes;      
+    private String description;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private FirmwareStatus status = FirmwareStatus.STAGED;
-
-    // TODO
-    @OneToMany(mappedBy = "firmware", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<FirmwareSensorConfig> sensorConfigs = new ArrayList<>();
-
-    @Column(nullable = false)
-    private Instant uploadedAt = Instant.now();
-
-    private int deployCount = 0;       // incrementa a cada broadcast
+    // null = platform firmware (ADMIN only); non-null = group-owned firmware
+    @Column(name = "owner_group_id")
+    private String ownerGroupId;
 
     private boolean provisioningFirmware = false;
 
-    public void decrementDeployCount() {
-        this.deployCount = Math.max(0, deployCount - 1);
-    }
+    private Instant createdAt = Instant.now();
 
-    public void incrementDeployCount() {
-        this.deployCount++;
-    }
+    @OneToMany(mappedBy = "firmware", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<FirmwareVersion> versions = new ArrayList<>();
 
     @PrePersist
-    private void generateDeviceId() {
+    private void generateFirmwareId() {
         if (this.firmwareId == null) {
             this.firmwareId = UUID.randomUUID().toString();
         }

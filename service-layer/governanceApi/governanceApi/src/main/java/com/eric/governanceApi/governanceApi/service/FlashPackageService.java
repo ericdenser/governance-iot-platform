@@ -4,11 +4,12 @@ import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
-import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
 import com.eric.governanceApi.governanceApi.model.request.GenerateFlashPackageRequest;
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
-import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
+import com.eric.governanceApi.governanceApi.repository.FirmwareVersionRepository;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -45,12 +46,12 @@ public class FlashPackageService {
     private String firmwareStoragePath;
 
     private final DeviceProvisioningService provisioningService;
-    private final FirmwareRepository firmwareRepository;
+    private final FirmwareVersionRepository firmwareVersionRepository;
 
     public FlashPackageService(DeviceProvisioningService provisioningService,
-                               FirmwareRepository firmwareRepository) {
+                              FirmwareVersionRepository firmwareVersionRepository) {
         this.provisioningService = provisioningService;
-        this.firmwareRepository = firmwareRepository;
+        this.firmwareVersionRepository = firmwareVersionRepository;
     }
 
     @Auditable(action = AuditAction.FLASH_PACKAGE_GENERATED, targetType = "DEVICE")
@@ -69,7 +70,7 @@ public class FlashPackageService {
             Path csvPath    = tempDir.resolve("nvs_data.csv");
             Path nvsBinPath = tempDir.resolve("nvs_device.bin");
 
-            Firmware firmware = resolveProvisioningFirmware();
+            FirmwareVersion firmware = resolveProvisioningFirmware();
 
             String firmwareVersion = firmware.getVersion();
 
@@ -94,13 +95,13 @@ public class FlashPackageService {
 
     // -------------------------------------------------------------------------
 
-    private Firmware resolveProvisioningFirmware() {
-        return firmwareRepository.findByProvisioningFirmwareTrue()
+    private FirmwareVersion resolveProvisioningFirmware() {
+        return firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Nenhum firmware de provisioning registrado. Faça upload de um firmware com isProvisioning=true."));
     }
 
-    private Path resolveFirmwarePath(Firmware fw) throws IOException {
+    private Path resolveFirmwarePath(FirmwareVersion fw) throws IOException {
        
         if (fw.getStatus() == FirmwareStatus.DEPRECATED) {
             throw new IllegalArgumentException(

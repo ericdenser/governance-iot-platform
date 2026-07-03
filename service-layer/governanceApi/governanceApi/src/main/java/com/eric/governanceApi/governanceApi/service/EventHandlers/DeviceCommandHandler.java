@@ -12,12 +12,12 @@ import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
-import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
-import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
+import com.eric.governanceApi.governanceApi.repository.FirmwareVersionRepository;
 
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DeviceCommandHandler implements DeviceEventHandler{
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
-    private final FirmwareRepository firmwareRepository;
+    private final FirmwareVersionRepository firmwareVersionRepository;
     private final CommandRecordRepository commandRecordRepository;
 
 
@@ -89,9 +89,13 @@ public class DeviceCommandHandler implements DeviceEventHandler{
         device.setStatus(DeviceStatus.ACTIVE);
     
 
+
+        // SE FOI ROLLBACK
         if (record.getCommandType() == DeviceCommands.FIRMWARE_ROLLBACK) {
 
-            Firmware currentFirmware = device.getFirmware();
+            FirmwareVersion currentFirmware = device.getFirmwareVersion();
+            FirmwareVersion previousFirmware = device.getPreviousFirmwareVersion();
+
             if (currentFirmware != null) {
                 currentFirmware.decrementDeployCount();
                 if (currentFirmware.getDeployCount() <= 0 && currentFirmware.getStatus() != FirmwareStatus.DEPRECATED) {
@@ -99,21 +103,36 @@ public class DeviceCommandHandler implements DeviceEventHandler{
                 }
             }
 
-            // Escopo = mesmo ownerGroupId do firmware atual; resolve versão sem ambiguidade
-            String reportedVersion = event.deviceInfo().firmware_version();
-            String ownerScope = currentFirmware != null ? currentFirmware.getOwnerGroupId() : null;
-            Optional<Firmware> firmwareOpt = firmwareRepository.findByVersionInScope(reportedVersion, ownerScope);
-            if (firmwareOpt.isPresent()) {
-                Firmware rolledBackFirmware = firmwareOpt.get();
-                device.setFirmware(rolledBackFirmware);
-                rolledBackFirmware.incrementDeployCount();
-                if (rolledBackFirmware.getDeployCount() >= 1 && rolledBackFirmware.getStatus() != FirmwareStatus.DEPRECATED) {
-                    rolledBackFirmware.setStatus(FirmwareStatus.DEPLOYED);
+            String reportedVersion = event.deviceInfo().firmware_version(); // versão que o esp está agora (reportado em seu payload)
+            FirmwareVersion rolledBackTo = null;
+
+            if (previousFirmware != null && previousFirmware.getVersion().equals(reportedVersion)) {
+                rolledBackTo = previousFirmware;
+            } else {
+                // fallback: ESP reportou versão diferente do esperado — busca pela família do previous
+                String firmwareId = previousFirmware != null ? previousFirmware.getFirmware().getFirmwareId() : null;
+                if (firmwareId != null) {
+                    rolledBackTo = firmwareVersionRepository
+                        .findByFirmware_FirmwareIdAndVersion(firmwareId, reportedVersion)
+                        .orElse(null);
+                }
+                log.warn("Rollback: device {} reportou v{}, mas previousFirmwareVersion era v{} — {}",
+                        device.getDeviceId(), reportedVersion,
+                        previousFirmware != null ? previousFirmware.getVersion() : "null",
+                        rolledBackTo != null ? "encontrado por lookup" : "sem match");
+            }
+
+            if (rolledBackTo != null) {
+                device.setFirmwareVersion(rolledBackTo);
+                device.setPreviousFirmwareVersion(null);
+                rolledBackTo.incrementDeployCount();
+                if (rolledBackTo.getDeployCount() >= 1 && rolledBackTo.getStatus() != FirmwareStatus.DEPRECATED) {
+                    rolledBackTo.setStatus(FirmwareStatus.DEPLOYED);
                 }
                 log.info("Rollback confirmado. Device {} revertido para firmware v{}.", device.getDeviceId(), reportedVersion);
             } else {
                 log.warn("Rollback confirmado, mas firmware v{} não está registrado no CMDB.", reportedVersion);
-                device.setFirmware(null);
+                device.setFirmwareVersion(null);
             }
         }
 

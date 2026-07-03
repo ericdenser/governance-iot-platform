@@ -44,8 +44,17 @@ public class Device {
     private String deviceId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "firmware")
-    private Firmware firmware;
+    @JoinColumn(name = "firmware_version_id")
+    private FirmwareVersion firmwareVersion;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "previous_firmware_version_id")
+    private FirmwareVersion previousFirmwareVersion;
+
+    // Versão alvo de um OTA em andamento — set no deploy, cleared no sucesso/rollback/timeout
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "attempted_firmware_version_id")
+    private FirmwareVersion attemptedFirmwareVersion;
 
     @Column(name = "mac_address", unique = true)
     private String macAddress;

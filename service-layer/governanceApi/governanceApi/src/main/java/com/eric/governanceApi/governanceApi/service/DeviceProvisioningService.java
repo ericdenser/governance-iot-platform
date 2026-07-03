@@ -24,6 +24,7 @@ import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepo
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
+import com.eric.governanceApi.governanceApi.repository.FirmwareVersionRepository;
 import com.eric.governanceApi.governanceApi.repository.ProvisioningTokenRepository;
 import com.eric.governanceApi.governanceApi.repository.UserGroupAssignmentRepository;
 import com.eric.governanceApi.governanceApi.service.CryptoService.SignedCertificateData;
@@ -38,7 +39,7 @@ public class DeviceProvisioningService {
     private final ProvisioningTokenRepository tokenRepository;
     private final DeviceCertificateRepository deviceCertificateRepository;
     private final CryptoService cryptoService;
-    private final FirmwareRepository firmwareRepository;
+    private final FirmwareVersionRepository firmwareVersionRepository;
     private final DeviceGroupRepository deviceGroupRepository;
     private final DeviceGroupMembershipRepository deviceGroupMembershipRepository;
     private final UserGroupAssignmentRepository assignmentRepository;
@@ -53,12 +54,12 @@ public class DeviceProvisioningService {
                                      FirmwareRepository firmwareRepository,
                                      DeviceGroupRepository deviceGroupRepository,
                                      DeviceGroupMembershipRepository deviceGroupMembershipRepository,
-                                     UserGroupAssignmentRepository assignmentRepository) {
+                                     UserGroupAssignmentRepository assignmentRepository, FirmwareVersionRepository firmwareVersionRepository) {
         this.deviceRepository = deviceRepository;
         this.tokenRepository = tokenRepository;
         this.deviceCertificateRepository = deviceCertificateRepository;
         this.cryptoService = cryptoService;
-        this.firmwareRepository = firmwareRepository;
+        this.firmwareVersionRepository = firmwareVersionRepository;
         this.deviceGroupRepository = deviceGroupRepository;
         this.deviceGroupMembershipRepository = deviceGroupMembershipRepository;
         this.assignmentRepository = assignmentRepository;
@@ -159,7 +160,7 @@ public class DeviceProvisioningService {
         device.setMacAddress(request.getMacAddress());
         device.setStatus(DeviceStatus.PROVISIONING);
         device.setLastSeen(Instant.now());
-        device.setFirmware(firmwareRepository.findByProvisioningFirmwareTrue()
+        device.setFirmwareVersion(firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
                 .orElseThrow(() -> new ResourceNotFoundException("Nenhum firmware de provisioning registrado.")));
 
         // Propaga o autor do token para o device: quem gerou o zip que originou esse provisioning

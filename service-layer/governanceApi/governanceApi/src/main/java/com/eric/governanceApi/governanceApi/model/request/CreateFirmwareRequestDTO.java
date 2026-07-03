@@ -3,8 +3,10 @@ package com.eric.governanceApi.governanceApi.model.request;
 import java.util.List;
 
 
-public record FirmwareUploadMetadataDTO (
-    String version,
+public record CreateFirmwareRequestDTO (
+    String firmwareName,
+    String description,
+    String initialVersion,
     boolean isProvisioning,
     String ownerGroupId,
     String releaseNotes,

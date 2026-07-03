@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
+import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceCertificateResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceDetailDTO;
@@ -45,26 +46,44 @@ public class DeviceService {
         this.eventRegistryRepository = eventRegistryRepository;
         this.membershipRepository = membershipRepository;
     }
-
+    
     @Transactional(readOnly = true)
     public List<DeviceSummaryDTO> listAll() {
+        List<DeviceSummaryProjection> rows;
         if (isAdmin()) {
-            return deviceRepository.findAll().stream().map(DeviceSummaryDTO::from).toList();
+            rows = deviceRepository.findAllSummaries();
+        } else {
+            String actorId = currentActorId();
+            if (actorId == null) return List.of();
+            rows = deviceRepository.findSummariesByUserGroups(actorId);
         }
-        String actorId = currentActorId();
-        if (actorId == null) return List.of();
-        return membershipRepository.findDevicesByKeycloakUserId(actorId).stream()
-                .map(DeviceSummaryDTO::from)
-                .toList();
+
+        return rows.stream()
+            .map(row -> new DeviceSummaryDTO(
+                row.deviceId(),
+                row.name(),
+                row.status(),
+                row.macAddress(),
+                row.firmwareId(),
+                row.firmwareName(),
+                row.firmwareVersionId(),
+                row.version(),
+                row.createdAt(),
+                row.lastSeen(),
+                row.issuedByActorId(),
+                row.issuedByUsername()
+            ))
+            .toList();
     }
 
     @Transactional(readOnly = true)
     public DeviceDetailDTO getDevice(String deviceId) {
-        Device device = deviceRepository.findByDeviceId(deviceId)
+        // 1 query só (device + firmwareVersion + firmware) via @EntityGraph
+        Device device = deviceRepository.findWithFirmwareByDeviceId(deviceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
 
         if (!isAdmin() && !canAccessDevice(device)) {
-            // Return 404 to avoid leaking device existence to unauthorized users
+            // 404 pra não vazar existência do device pra quem não tem acesso
             throw new ResourceNotFoundException("Device " + deviceId + " não encontrado.");
         }
 

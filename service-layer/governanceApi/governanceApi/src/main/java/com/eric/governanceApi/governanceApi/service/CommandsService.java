@@ -50,7 +50,7 @@ public class CommandsService {
         CommandRequest authorized = filterAuthorizedDevices(request);
         return switch (authorized.command()) {
             case UPDATE           -> firmwareService.deploy(
-                                        authorized.params().get("firmwareId").toString(),
+                                        authorized.params().get("versionId").toString(),
                                         authorized.targetDevices());
             case REBOOT, DEEP_SLEEP, FIRMWARE_ROLLBACK -> handleSimpleCommand(authorized);
         };

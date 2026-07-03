@@ -10,7 +10,7 @@ import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
-import com.eric.governanceApi.governanceApi.model.entity.Firmware;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
@@ -70,8 +70,8 @@ public class DeviceProvisionedHandler implements DeviceEventHandler {
         device.setStatus(DeviceStatus.ACTIVE);
 
         // Contabiliza que este device está rodando o provisioning firmware
-        if (device.getFirmware() != null) {
-            Firmware fw = device.getFirmware();
+        if (device.getFirmwareVersion() != null) {
+            FirmwareVersion fw = device.getFirmwareVersion();
             fw.setDeployCount(fw.getDeployCount() + 1);
             if (fw.getDeployCount() >= 1 && fw.getStatus() != FirmwareStatus.DEPRECATED) {
                 fw.setStatus(FirmwareStatus.DEPLOYED);

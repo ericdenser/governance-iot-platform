@@ -9,16 +9,29 @@
   "/firmware": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
-  "/firmware/upload": {
+  "/firmware/create": {
     "POST": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/deployable": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
+  "/firmware/*/upload": {
+    "POST": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/firmware/*/versions": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/firmware/versions/*": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/firmware/versions/*/deprecate": {
+    "PATCH": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/firmware/*/provisioning": {
+    "PUT": ["ROLE_ADMIN"]
+  },
   "/firmware/**": {
-    "GET":   ["ROLE_ADMIN", "ROLE_USER"],
-    "PATCH": ["ROLE_ADMIN", "ROLE_USER"],
-    "PUT":   ["ROLE_ADMIN"]
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
 
   "/sensors": {

@@ -50,5 +50,4 @@ public class EventController {
     }
 
 
-    // TODO endpoint para buscar erros e exibir no dashboard
 }

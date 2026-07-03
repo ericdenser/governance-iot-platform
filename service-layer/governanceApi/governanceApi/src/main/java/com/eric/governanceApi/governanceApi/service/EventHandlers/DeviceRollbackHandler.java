@@ -1,8 +1,8 @@
 package com.eric.governanceApi.governanceApi.service.EventHandlers;
 
-import java.util.Optional;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,12 +12,11 @@ import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
-import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
-import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,18 +24,23 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-
-
-// Evento de DeviceRollback ocorre quando temos um device X que por um motivo Y executou a lógica de rollback
-// e retornou para uma partição anterior.
+// Evento DeviceRollback: bootloader do ESP executou lógica de rollback automático
+// (crash count exceded, verify_rollback detectou app inválida, etc).
+// NÃO é o mesmo que rollback comandado pelo usuário (esse cai em DeviceCommandHandler).
+//
+// Dois cenários distintos, tratados via device.attemptedFirmwareVersion:
+//   Cenário A — Rollback DURANTE OTA (attempted != null)
+//     Device nunca chegou a promover o novo firmware. Continua no currentFirmware.
+//   Cenário B — Rollback TARDIO (attempted == null)
+//     currentFirmware operou por um tempo e falhou. Volta pro previousFirmwareVersion.
 public class DeviceRollbackHandler implements DeviceEventHandler {
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
-    private final FirmwareRepository firmwareRepository;
 
     @Override
     public EventType handles() { return EventType.DEVICE_FIRMWARE_ROLLBACK; }
 
+    @SuppressWarnings("null")
     @Override
     @Transactional
     public void process(DeviceEventWebhookDTO event) {
@@ -47,78 +51,108 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         eventRegistry.setPreviousStatus(event.previousStatus());
         eventRegistry.setNewStatus(event.newStatus());
         eventRegistry.setUploadedAt(event.timestamp());
-        
+
         Optional<Device> deviceOptional = deviceRepository.findByDeviceId(event.deviceId());
 
-        // VALIDAÇÃO 1: DEVICE REMETENTE EXISTE?
-        if(!deviceOptional.isPresent()) {
+        if (!deviceOptional.isPresent()) {
             log.warn("Device de ID {} não encontrado.", event.deviceId());
             eventRegistry.setDevice(null);
-            eventRegistry.setResultMessage("Device de ID ["+ event.deviceId() + "] não encontrado.");
+            eventRegistry.setResultMessage("Device de ID [" + event.deviceId() + "] não encontrado.");
             eventRegistryRepository.save(eventRegistry);
             return;
         }
-        // persiste
+
         Device device = deviceOptional.get();
         device.setLastSeen(event.timestamp());
         eventRegistry.setDevice(device);
 
-        // VALIDAÇÃO 2: O firmware que o device está rodando pós-rollback é o que já está registrado
-        // em device.getFirmware() — ele ainda não havia sido atualizado (DeviceUpdatedHandler só altera
-        // device.firmware ao confirmar sucesso). Reutilizamos diretamente sem nova query.
-        Firmware firmware_atual = device.getFirmware();
-        String current_firmware_version = event.deviceInfo().firmware_version();
+        FirmwareVersion currentFirmware  = device.getFirmwareVersion();
+        FirmwareVersion previousVersion  = device.getPreviousFirmwareVersion();
+        FirmwareVersion attemptedVersion = device.getAttemptedFirmwareVersion();
 
-        if (firmware_atual == null) {
-            log.warn("Device de ID {} está rodando uma versão não registrada: v{}.", event.deviceId(), current_firmware_version);
-        } else {
-            firmware_atual.setDeployCount(firmware_atual.getDeployCount() + 1);
-        }
+        String reportedVersion = event.deviceInfo().firmware_version();
+        Map<String, Object> params = event.deviceInfo().params();
+        String reason = params.get("reason") != null ? params.get("reason").toString() : null;
 
-        if (firmware_atual != null) {
+        // Detecta cenário
+        boolean scenarioA = attemptedVersion != null;
+
+        boolean scenarioB = attemptedVersion == null
+                            && currentFirmware != null
+                            && previousVersion != null
+                            && !currentFirmware.getVersion().equals(reportedVersion)
+                            && previousVersion.getVersion().equals(reportedVersion);
+                            
+        FirmwareVersion invalidVersion = null;
+
+        if (scenarioA) {
+            // Rollback durante OTA: device continua rodando currentFirmware.
+            // Só limpa attempted e marca a versão que falhou.
+            invalidVersion = attemptedVersion;
+            device.setAttemptedFirmwareVersion(null);
+
+            log.info("Rollback durante OTA. Device {} continua em v{}. Versão que falhou: v{} ({}).",
+                     device.getDeviceId(), reportedVersion,
+                     invalidVersion.getVersion(),
+                     invalidVersion.getFirmware().getFirmwareName());
+
+            eventRegistry.setResultMessage(
+                "Rollback durante OTA. Device continua em v" + reportedVersion +
+                ". Versão que falhou instalar: v" + invalidVersion.getVersion() + ".");
+
+        } else if (scenarioB) {
+            // Rollback tardio: currentFirmware operou por um tempo e falhou.
+            // Swap current ↔ previous, ajusta deployCounts.
+            invalidVersion = currentFirmware;
+
+            currentFirmware.setDeployCount(currentFirmware.getDeployCount() - 1);
+            if (currentFirmware.getDeployCount() <= 0 && currentFirmware.getStatus() != FirmwareStatus.DEPRECATED) {
+                currentFirmware.setStatus(FirmwareStatus.STAGED);
+            }
+            previousVersion.setDeployCount(previousVersion.getDeployCount() + 1);
+            if (previousVersion.getDeployCount() >= 1 && previousVersion.getStatus() != FirmwareStatus.DEPRECATED) {
+                previousVersion.setStatus(FirmwareStatus.DEPLOYED);
+            }
+
+            device.setFirmwareVersion(previousVersion);
+            device.setPreviousFirmwareVersion(null);
+
+            // Sensor status volta pra config da versão pra qual voltamos
             Map<String, Boolean> sensorStatus = new HashMap<>();
-            for (FirmwareSensorConfig cfg : firmware_atual.getSensorConfigs()) {
+            for (FirmwareSensorConfig cfg : previousVersion.getSensorConfigs()) {
                 sensorStatus.put(cfg.getSensor().getName(), false);
             }
             device.setSensorStatus(sensorStatus);
+
+            log.info("Rollback tardio. Device {} revertido de {} v{} para {} v{}.",
+                     device.getDeviceId(),
+                     invalidVersion.getFirmware().getFirmwareName(), invalidVersion.getVersion(),
+                     previousVersion.getFirmware().getFirmwareName(), previousVersion.getVersion());
+
+            eventRegistry.setResultMessage(
+                "Rollback tardio. Device revertido para v" + previousVersion.getVersion() + ".");
+
+        } else {
+            // Device reportou algo que não bate com o tracking do CMDB
+            log.warn("Rollback com estado inesperado. Device={}, reportedVersion={}, current={}, previous={}, attempted={}",
+                     device.getDeviceId(), reportedVersion,
+                     currentFirmware != null ? currentFirmware.getVersion() : "null",
+                     previousVersion != null ? previousVersion.getVersion() : "null",
+                     attemptedVersion != null ? attemptedVersion.getVersion() : "null");
+
+            eventRegistry.setResultMessage(
+                "Rollback com estado inesperado. reportedVersion=v" + reportedVersion + ".");
         }
 
-        // VALIDAÇÃO 3: O FIRMWARE QUE SOFREU ROLLBACK É VÁLIDO?
-        Firmware rollback_firmware;
-        Map<String, Object> params = event.deviceInfo().params();
-        String rollback_version = params.get("invalid_ver") != null ? params.get("invalid_ver").toString() : null;
-
-        // Escopo do firmware que falhou = mesmo ownerGroupId do firmware atual do device
-        String ownerScope = firmware_atual != null ? firmware_atual.getOwnerGroupId() : null;
-        Optional<Firmware> rollback_firmwareOptional = rollback_version != null
-                ? firmwareRepository.findByVersionInScope(rollback_version, ownerScope)
-                : Optional.empty();
-
-        boolean firmware_not_informed = rollback_version == null || rollback_version.isEmpty();
-        boolean firmware_not_found = rollback_firmwareOptional.isEmpty();
-
-        // Se o firmware não foi informado pelo device, ou o firmware não estava registrado no cmdb
-        if (firmware_not_found || firmware_not_informed) {
-            log.warn("Device de ID {} fez rollback de uma versão inválida (não registrada ou não informada). [v{}]", rollback_version);
-            eventRegistry.setResultMessage("Device de ID ["+ event.deviceId() + "] fez rollback de versão inválida (não registrada ou não informada) [v" + rollback_version +"]");
-            eventRegistryRepository.save(eventRegistry);
-            return;
-        }
-        
-        // persiste
-        rollback_firmware = rollback_firmwareOptional.get();
-        rollback_firmware.setDeployCount(rollback_firmware.getDeployCount() - 1);
-        String reason = params.get("reason").toString();
-        eventRegistry.setResultMessage("Device de ID: ["+ event.deviceId() + "] fez rollback de versão: [v" + rollback_version +"] por reason [" + reason + "].");
-        
-        if (reason.equals("crashCount") || reason.equals("bootloader_rollback")) {
-            rollback_firmware.setStatus(FirmwareStatus.DEPRECATED);
+        // Deprecação da versão inválida se o motivo justificar
+        if (invalidVersion != null && ("crashCount".equals(reason) || "bootloader_rollback".equals(reason))) {
+            invalidVersion.setStatus(FirmwareStatus.DEPRECATED);
+            log.info("Versão v{} de '{}' marcada como DEPRECATED (reason={}).",
+                     invalidVersion.getVersion(), invalidVersion.getFirmware().getFirmwareName(), reason);
         }
 
         device.setStatus(DeviceStatus.ACTIVE);
-        eventRegistry.setCompleted(true);
+        eventRegistry.setCompleted(scenarioA || scenarioB);
         eventRegistryRepository.save(eventRegistry);
-        log.info("Device de ID [{}] fez rollback da versão [v{}] para a versão [v{}] por reason [{}].", device.getDeviceId(), rollback_version, current_firmware_version, reason);
-        return;
     }
 }
