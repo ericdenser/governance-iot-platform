@@ -102,8 +102,8 @@ const loadFirmwares = async () => {
   if (allFirmwares.value.length) return
   loadingFirmwares.value = true
   try {
-    const r = await firmwareApi.list()
-    allFirmwares.value = Array.isArray(r.data) ? r.data : []
+    const r = await firmwareApi.listDeployable()
+    allFirmwares.value = Array.isArray(r.data) ? r.data : (r.data?.data ?? [])
   } finally { loadingFirmwares.value = false }
 }
 
@@ -117,7 +117,7 @@ const doSend = async () => {
       targetDevices: [...selectedDeviceIds.value],
     }
     if (selectedCommand.value === 'UPDATE') {
-      payload.params = { firmwareId: selectedFirmware.value.firmwareId }
+      payload.params = { versionId: selectedFirmware.value.versionId }
     } else if (selectedCommand.value === 'DEEP_SLEEP') {
       payload.params = { duration_s: Number(durationS.value) }
     }
@@ -144,9 +144,8 @@ const load = async () => {
 }
 const changePage = (p: number) => { page.value = p; load() }
 
-const deployableList = computed(() =>
-  allFirmwares.value.filter(fw => fw.status !== 'DEPRECATED')
-)
+// `listDeployable` já filtra DEPRECATED e o escopo do usuário no backend
+const deployableList = computed(() => allFirmwares.value)
 
 const deviceNameById = computed(() => {
   const m: Record<string, string> = {}
@@ -154,8 +153,9 @@ const deviceNameById = computed(() => {
   return m
 })
 
+// Compara pelo versionId (UUID único) — antes comparava só a string da versão, ambíguo com múltiplos firmwares
 const isSameVersion = (d: any) =>
-  selectedCommand.value === 'UPDATE' && !!selectedFirmware.value && d.firmwareVersion === selectedFirmware.value.version
+  selectedCommand.value === 'UPDATE' && !!selectedFirmware.value && d.firmwareVersionId === selectedFirmware.value.versionId
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })
 </script>
@@ -224,12 +224,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           <div v-else class="fw-list">
             <button
               v-for="fw in deployableList"
-              :key="fw.firmwareId"
+              :key="fw.versionId"
               class="fw-row"
-              :class="{ selected: selectedFirmware?.firmwareId === fw.firmwareId }"
+              :class="{ selected: selectedFirmware?.versionId === fw.versionId }"
               @click="pickFirmware(fw)"
             >
-              <span class="fw-version">v{{ fw.version }}</span>
+              <span class="fw-version"><strong>{{ fw.firmwareName }}</strong> <span class="mono">v{{ fw.version }}</span></span>
               <AppBadge :variant="fw.status === 'DEPLOYED' ? 'success' : 'muted'" class="fw-badge">{{ fw.status }}</AppBadge>
               <span class="fw-date text-muted">{{ fw.uploadedAt ? new Date(fw.uploadedAt).toLocaleDateString('pt-BR') : '' }}</span>
             </button>
@@ -243,7 +243,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         <template v-else-if="wizardStep === 'devices'">
           <h3 class="modal-title">Selecionar Dispositivos</h3>
           <p v-if="selectedCommand === 'UPDATE' && selectedFirmware" class="step-hint">
-            Firmware: <strong>v{{ selectedFirmware.version }}</strong>
+            Firmware: <strong>{{ selectedFirmware.firmwareName }}</strong> <span class="mono">v{{ selectedFirmware.version }}</span>
           </p>
           <div v-if="loadingDevices" class="empty">Carregando dispositivos...</div>
           <div v-else-if="!allDevices.length" class="empty">Nenhum dispositivo registrado.</div>

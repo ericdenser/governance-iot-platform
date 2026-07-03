@@ -10,6 +10,7 @@ const router = createRouter({
     { path: '/devices',  name: 'devices',    meta: { title: 'Dispositivos' }, component: () => import('../views/DevicesView.vue') },
     { path: '/devices/:id', name: 'device-detail', meta: { title: 'Dispositivo' }, component: () => import('../views/DeviceDetailView.vue') },
     { path: '/firmware', name: 'firmware',   meta: { title: 'Firmware' },     component: () => import('../views/FirmwareView.vue') },
+    { path: '/firmware/:firmwareId', name: 'firmware-detail', meta: { title: 'Firmware' }, component: () => import('../views/FirmwareDetailView.vue') },
     { path: '/sensors',  name: 'sensors',    meta: { title: 'Sensores' },     component: () => import('../views/SensorsView.vue') },
     { path: '/commands', name: 'commands',   meta: { title: 'Comandos' },     component: () => import('../views/CommandsView.vue') },
     { path: '/events',   name: 'events',     meta: { title: 'Eventos' },      component: () => import('../views/EventsView.vue') },

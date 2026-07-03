@@ -115,7 +115,15 @@ onMounted(async () => {
       <AppCard v-if="tab === 'info'">
         <div class="info-grid">
           <div class="info-row"><span class="info-label">MAC Address</span><span class="mono">{{ device.macAddress ?? '—' }}</span></div>
-          <div class="info-row"><span class="info-label">Firmware</span><span>{{ device.firmware?.version ?? '—' }}</span></div>
+          <div class="info-row">
+            <span class="info-label">Firmware</span>
+            <span v-if="device.firmware && device.firmwareVersion">
+              {{ device.firmware.firmwareName }}
+              <span class="mono text-muted"> v{{ device.firmwareVersion.version }}</span>
+              <AppBadge v-if="device.firmware.provisioningFirmware" variant="primary" dot class="badge-inline">Provisioning</AppBadge>
+            </span>
+            <span v-else class="text-muted">—</span>
+          </div>
           <div class="info-row"><span class="info-label">Criado em</span><span>{{ fmt(device.createdAt) }}</span></div>
           <div class="info-row"><span class="info-label">Última atividade</span><span>{{ fmt(device.lastSeen) }}</span></div>
           <div class="info-row"><span class="info-label">Provisionado por</span>

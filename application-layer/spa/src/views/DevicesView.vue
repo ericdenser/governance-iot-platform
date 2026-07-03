@@ -69,7 +69,13 @@ onMounted(async () => {
             <td class="font-medium">{{ d.name }}</td>
             <td class="mono text-sm">{{ d.deviceId }}</td>
             <td><AppBadge :variant="statusVariant(d.status)" dot>{{ d.status }}</AppBadge></td>
-            <td class="mono text-sm">{{ d.firmwareVersion ? `v${d.firmwareVersion}` : '—' }}</td>
+            <td class="text-sm">
+              <template v-if="d.firmwareVersion">
+                <span>{{ d.firmwareName }}</span>
+                <span class="mono text-muted"> v{{ d.firmwareVersion }}</span>
+              </template>
+              <span v-else class="text-muted">—</span>
+            </td>
             <td class="mono text-sm">{{ d.macAddress ?? '—' }}</td>
             <td class="text-sm">
               <span v-if="d.issuedByUsername" class="issued">{{ d.issuedByUsername }}</span>
