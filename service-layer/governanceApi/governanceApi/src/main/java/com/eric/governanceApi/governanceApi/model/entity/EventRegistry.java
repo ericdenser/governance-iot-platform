@@ -45,7 +45,7 @@ public class EventRegistry {
     private String resultMessage;
 
     @Column(nullable = false)
-    private Instant uploadedAt;
+    private Instant ocurredAt;
 
     @PrePersist
     private void generateEventID() {

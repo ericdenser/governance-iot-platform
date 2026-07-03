@@ -109,9 +109,10 @@ public class FirmwareService {
         fw.setOwnerGroupId(ownerGroupId);
         fw.setProvisioningFirmware(requestDTO.isProvisioning());
 
+        // 1ª versão não tem releaseNotes — quem descreve o firmware é a description do product.
         FirmwareVersion v = buildVersion(fw, requestDTO.initialVersion(),
                                          file.getOriginalFilename(), filename, sha256,
-                                         file.getSize(), requestDTO.releaseNotes(),
+                                         file.getSize(), null,
                                          requestDTO.sensors());
         fw.getVersions().add(v);
 

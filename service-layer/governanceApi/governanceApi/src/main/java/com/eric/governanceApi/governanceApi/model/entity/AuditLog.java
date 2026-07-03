@@ -1,6 +1,7 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 
@@ -25,6 +26,10 @@ public class AuditLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** UUID de negócio exposto na API — o Long id fica interno ao JPA. */
+    @Column(name = "audit_id", unique = true, nullable = false, updatable = false, length = 36)
+    private String auditId;
 
     /** Keycloak subject UUID — stable user identity. Null for M2M calls. */
     @Column(name = "actor_id", length = 36)
@@ -61,5 +66,6 @@ public class AuditLog {
     @PrePersist
     private void prePersist() {
         if (performedAt == null) performedAt = Instant.now();
+        if (auditId == null) auditId = UUID.randomUUID().toString();
     }
 }

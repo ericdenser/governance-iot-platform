@@ -6,7 +6,7 @@ import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.model.entity.AuditLog;
 
 public record AuditLogResponseDTO(
-        Long id,
+        String auditId,
         String actorId,
         String actorUsername,
         AuditAction action,
@@ -19,7 +19,7 @@ public record AuditLogResponseDTO(
 ) {
     public static AuditLogResponseDTO from(AuditLog log) {
         return new AuditLogResponseDTO(
-                log.getId(),
+                log.getAuditId(),
                 log.getActorId(),
                 log.getActorUsername(),
                 log.getAction(),

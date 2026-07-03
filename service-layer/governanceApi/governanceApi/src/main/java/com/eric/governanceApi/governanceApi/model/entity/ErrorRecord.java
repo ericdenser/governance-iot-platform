@@ -1,6 +1,8 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
 import java.time.Instant;
+import java.util.UUID;
+
 import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
 
@@ -14,6 +16,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -21,10 +24,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Entity
 public class ErrorRecord {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "error_id", unique = true, nullable = false, updatable = false, length = 36)
+    private String errorId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "error_name", nullable = false)
@@ -52,4 +58,10 @@ public class ErrorRecord {
     @ManyToOne(fetch = FetchType.LAZY)
     private Device device;
 
+    @PrePersist
+    private void generateErrorId() {
+        if (this.errorId == null) {
+            this.errorId = UUID.randomUUID().toString();
+        }
+    }
 }

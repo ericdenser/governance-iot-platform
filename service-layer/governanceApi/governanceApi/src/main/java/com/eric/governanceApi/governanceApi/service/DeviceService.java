@@ -119,7 +119,7 @@ public class DeviceService {
         if (!isAdmin() && !canAccessDevice(device)) {
             throw new ResourceNotFoundException("Device " + deviceId + " não encontrado.");
         }
-        return eventRegistryRepository.findByDevice_DeviceIdOrderByUploadedAtDesc(deviceId, pageable)
+        return eventRegistryRepository.findByDevice_DeviceIdOrderByOcurredAtDesc(deviceId, pageable)
                 .map(EventRegistryResponseDTO::from);
     }
 
@@ -136,7 +136,7 @@ public class DeviceService {
     @Transactional(readOnly = true)
     public Page<EventRegistryResponseDTO> listAllEvents(Pageable pageable) {
         if (isAdmin()) {
-            return eventRegistryRepository.findAllByOrderByUploadedAtDesc(pageable)
+            return eventRegistryRepository.findAllByOrderByOcurredAtDesc(pageable)
                     .map(EventRegistryResponseDTO::from);
         }
         String actorId = currentActorId();

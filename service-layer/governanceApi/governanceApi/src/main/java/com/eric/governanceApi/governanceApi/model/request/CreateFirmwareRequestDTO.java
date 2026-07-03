@@ -9,6 +9,5 @@ public record CreateFirmwareRequestDTO (
     String initialVersion,
     boolean isProvisioning,
     String ownerGroupId,
-    String releaseNotes,
     List<SensorConfigDTO> sensors){
 }

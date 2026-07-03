@@ -25,7 +25,7 @@ public record EventRegistryResponseDTO(
             e.getNewStatus(),
             e.isCompleted(),
             e.getResultMessage(),
-            e.getUploadedAt()
+            e.getOcurredAt()
         );
     }
 }

@@ -10,9 +10,9 @@ import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 
 public interface EventRegistryRepository extends JpaRepository<EventRegistry, Long> {
 
-    Page<EventRegistry> findByDevice_DeviceIdOrderByUploadedAtDesc(String deviceId, Pageable pageable);
+    Page<EventRegistry> findByDevice_DeviceIdOrderByOcurredAtDesc(String deviceId, Pageable pageable);
 
-    Page<EventRegistry> findAllByOrderByUploadedAtDesc(Pageable pageable);
+    Page<EventRegistry> findAllByOrderByOcurredAtDesc(Pageable pageable);
 
     @Query("""
         SELECT e FROM EventRegistry e
