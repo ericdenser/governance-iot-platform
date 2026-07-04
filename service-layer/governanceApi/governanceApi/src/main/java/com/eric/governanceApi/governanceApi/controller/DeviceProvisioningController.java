@@ -10,6 +10,7 @@ import com.eric.governanceApi.governanceApi.service.DeviceRevokeService;
 import com.eric.governanceApi.governanceApi.service.FlashPackageService;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.HttpHeaders;
@@ -41,7 +42,7 @@ public class DeviceProvisioningController {
     // Antigo endpoint para fluxo de provisioning (token via wifi_ap)
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<Map<String, String>>> registerDevice(
-            @RequestBody RegisterDeviceRequest deviceRequest, 
+            @Valid @RequestBody RegisterDeviceRequest deviceRequest,
             HttpServletRequest httpRequest) {
         
         ProvisioningToken token = provisioningService.registerDevice(deviceRequest);
@@ -52,7 +53,7 @@ public class DeviceProvisioningController {
 
     // Endpoint destinado ao esp na fase de provisioning
     @PostMapping("/activate")
-    public ResponseEntity<ApiResponse<String>> activateDevice(@RequestBody DeviceRegistrationRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<ApiResponse<String>> activateDevice(@Valid @RequestBody DeviceRegistrationRequest request, HttpServletRequest httpRequest) {
        
         String certificatePem = provisioningService.processDeviceRegistration(request);
         
@@ -66,7 +67,7 @@ public class DeviceProvisioningController {
     }
 
     @PostMapping("/generate-package")
-    public ResponseEntity<byte[]> generateFlashPackage(@RequestBody GenerateFlashPackageRequest request) throws IOException {
+    public ResponseEntity<byte[]> generateFlashPackage(@Valid @RequestBody GenerateFlashPackageRequest request) throws IOException {
         byte[] zip = flashPackageService.generatePackage(request);
         String filename = "flash_package_" + request.deviceName().replaceAll("[^a-zA-Z0-9_-]", "_") + ".zip";
         return ResponseEntity.ok()

@@ -37,7 +37,7 @@ public class DeviceOtaFailedHandler implements DeviceEventHandler {
         eventRegistry.setEventName(event.eventType());
         eventRegistry.setPreviousStatus(event.previousStatus());
         eventRegistry.setNewStatus(event.newStatus());
-        eventRegistry.setUploadedAt(event.timestamp());
+        eventRegistry.setOcurredAt(event.timestamp());
 
         Optional<Device> deviceOptional = deviceRepository.findByDeviceId(event.deviceId());
 

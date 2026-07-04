@@ -75,6 +75,17 @@ provisioning:
   # Intervalo em ms para o job de limpeza de devices fantasma (padrão: 5 min)
   cleanup-interval-ms: 300000
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
 logging:
   level:
     org.springframework.web.servlet.DispatcherServlet: DEBUG

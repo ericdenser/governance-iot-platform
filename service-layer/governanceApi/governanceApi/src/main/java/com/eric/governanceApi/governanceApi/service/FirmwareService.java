@@ -48,6 +48,7 @@ import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareVersionRepository;
 import com.eric.governanceApi.governanceApi.repository.SensorRepository;
 import com.eric.governanceApi.governanceApi.repository.UserGroupAssignmentRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -62,6 +63,8 @@ public class FirmwareService {
     private final SensorRepository sensorRepository;
     private final UserGroupAssignmentRepository assignmentRepository;
 
+    private final ObjectMapper mapper;
+    
     @Value("${ota.firmware-storage-path}")
     private String storagePath;
 
@@ -76,13 +79,14 @@ public class FirmwareService {
                            DeviceRepository deviceRepository,
                            AgentClient agentClient,
                            SensorRepository sensorRepository,
-                           UserGroupAssignmentRepository assignmentRepository) {
+                           UserGroupAssignmentRepository assignmentRepository, ObjectMapper mapper) {
         this.firmwareRepository = firmwareRepository;
         this.firmwareVersionRepository = firmwareVersionRepository;
         this.deviceRepository = deviceRepository;
         this.agentClient = agentClient;
         this.sensorRepository = sensorRepository;
         this.assignmentRepository = assignmentRepository;
+        this.mapper = mapper;
     }
 
 
@@ -203,6 +207,8 @@ public class FirmwareService {
         List<String> activeDevs = new ArrayList<>();
         List<String> skipped    = new ArrayList<>();
 
+        String payloadJson = mapper.writeValueAsString(payload);
+
         for (String devId : targetDevices) {
             deviceRepository.findByDeviceId(devId).ifPresentOrElse(
                 device -> {
@@ -224,7 +230,7 @@ public class FirmwareService {
                     }
                     CommandRecord record = new CommandRecord();
                     record.setCommandType(DeviceCommands.UPDATE);
-                    record.setPayload(payload.toString());
+                    record.setPayload(payloadJson);
                     record.setTargetVersionId(v.getFirmwareVersionId());
                     device.addCommandRecord(record);
                     device.setAttemptedFirmwareVersion(v);  // marca OTA em andamento

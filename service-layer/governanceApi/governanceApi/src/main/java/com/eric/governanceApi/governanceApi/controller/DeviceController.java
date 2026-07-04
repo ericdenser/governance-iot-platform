@@ -1,5 +1,6 @@
 package com.eric.governanceApi.governanceApi.controller;
 
+import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceCertificateResponseDTO;
@@ -17,8 +18,6 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @Slf4j
 @RestController
 @RequestMapping("/devices")
@@ -31,8 +30,13 @@ public class DeviceController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<DeviceSummaryDTO>>> listAll(HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(ApiResponse.success(deviceService.listAll(), httpRequest.getRequestURI()));
+    public ResponseEntity<ApiResponse<Page<DeviceSummaryDTO>>> listAll(
+        @PageableDefault(size = 50, sort = "name") Pageable pageable,
+        @RequestParam(required = false) String search,
+        @RequestParam(required = false) DeviceStatus status,
+        HttpServletRequest httpRequest) {
+
+        return ResponseEntity.ok(ApiResponse.success(deviceService.listAll(pageable, search, status), httpRequest.getRequestURI()));
     }
 
     @GetMapping("/{deviceId}")

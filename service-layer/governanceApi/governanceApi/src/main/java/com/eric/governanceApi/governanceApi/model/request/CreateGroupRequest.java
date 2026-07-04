@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 
 public record CreateGroupRequest(
         
-        @NotBlank @Size(max = 100) 
+        @NotBlank @Size(max = 50) 
         String name,
 
         @Size(max = 500) 

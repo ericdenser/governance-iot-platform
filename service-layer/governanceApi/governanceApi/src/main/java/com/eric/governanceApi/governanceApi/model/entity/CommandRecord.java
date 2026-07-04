@@ -58,7 +58,7 @@ public class CommandRecord extends AuthoredEntity {
     @Column(name = "completed_at")
     private Instant completedAt;
 
-    @Column(name = "error_message", length = 500)
+    @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
     @JoinColumn(name = "event_id", nullable = false)

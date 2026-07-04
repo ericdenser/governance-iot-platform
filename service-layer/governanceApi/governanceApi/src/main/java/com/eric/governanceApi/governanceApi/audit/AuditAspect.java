@@ -36,6 +36,8 @@ public class AuditAspect {
         if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
             actorId = jwt.getSubject();
             actorUsername = jwt.getClaimAsString("preferred_username");
+            if (actorUsername == null) actorUsername = jwt.getClaimAsString("client_id");
+            if (actorUsername == null) actorUsername = "unknown";
         }
 
         // Skip audit for M2M calls (no human actor in SecurityContext)

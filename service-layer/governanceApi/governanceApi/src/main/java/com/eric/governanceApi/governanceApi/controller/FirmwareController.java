@@ -9,6 +9,7 @@ import com.eric.governanceApi.governanceApi.model.response.FirmwareVersionRespon
 import com.eric.governanceApi.governanceApi.model.response.FirmwareVersionSummaryDTO;
 import com.eric.governanceApi.governanceApi.service.FirmwareService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -50,7 +51,7 @@ public class FirmwareController {
     @PostMapping(value = "/create", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<FirmwareResponseDTO>> createFirmware(
             @RequestPart("file") MultipartFile file,
-            @RequestPart("metadata") CreateFirmwareRequestDTO metadataDTO,
+            @Valid @RequestPart("metadata") CreateFirmwareRequestDTO metadataDTO,
             HttpServletRequest httpRequest) throws Exception {
 
         log.info("Request for create firmware '{}' — {} ({} bytes)",
@@ -95,7 +96,7 @@ public class FirmwareController {
     public ResponseEntity<ApiResponse<FirmwareVersionResponseDTO>> uploadVersion(
             @PathVariable String firmwareId,
             @RequestPart("file") MultipartFile file,
-            @RequestPart("metadata") UploadVersionRequestDTO metadataDTO,
+            @Valid @RequestPart("metadata") UploadVersionRequestDTO metadataDTO,
             HttpServletRequest httpRequest) throws Exception {
 
         log.info("Request for upload version v{} for firmware {}", metadataDTO.version(), firmwareId);

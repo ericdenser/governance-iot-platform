@@ -3,11 +3,14 @@ package com.eric.governanceApi.governanceApi.repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
 
@@ -20,11 +23,11 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
     Optional<Device> findByDeviceId(String deviceId);
 
     /** Detail — carrega firmwareVersion e firmware em 1 query só. */
-    @EntityGraph(attributePaths = {"firmwareVersion", "firmwareVersion.firmware"})
+    @EntityGraph(attributePaths = {"firmwareVersion", "firmwareVersion.firmware", "sensorStatus"})
     Optional<Device> findWithFirmwareByDeviceId(String deviceId);
 
-    /** Admin: TODOS os devices como projection. */
-    @Query("""
+    /** Admin: TODOS os devices como projection, paginado, com filtros opcionais. */
+    @Query(value = """
             SELECT new com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection (
                 d.deviceId, d.name, d.status, d.macAddress,
                 fw.firmwareId,
@@ -35,11 +38,26 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
             FROM Device d
             LEFT JOIN d.firmwareVersion v
             LEFT JOIN v.firmware fw
+            WHERE (:search IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:status IS NULL OR d.status = :status)
+            """,
+            countQuery = """
+            SELECT COUNT(d) FROM Device d
+            WHERE (:search IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:status IS NULL OR d.status = :status)
             """)
-    List<DeviceSummaryProjection> findAllSummaries();
+    Page<DeviceSummaryProjection> findAllSummaries(@Param("search") String search,
+                                                   @Param("status") DeviceStatus status,
+                                                   Pageable pageable);
 
-    /** Non-admin: só devices dos grupos que o usuário pertence. */
-    @Query("""
+    /** Non-admin: só devices dos grupos que o usuário pertence, paginado, com filtros. */
+    @Query(value = """
             SELECT new com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection (
                 d.deviceId, d.name, d.status, d.macAddress,
                 fw.firmwareId,
@@ -57,6 +75,29 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
                     WHERE a.id.keycloakUserId = :actorId
                 )
             )
+              AND (:search IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:status IS NULL OR d.status = :status)
+            """,
+            countQuery = """
+            SELECT COUNT(d) FROM Device d
+            WHERE d.id IN (
+                SELECT m.device.id FROM DeviceGroupMembership m
+                WHERE m.group.id IN (
+                    SELECT a.group.id FROM UserGroupAssignment a
+                    WHERE a.id.keycloakUserId = :actorId
+                )
+            )
+              AND (:search IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:status IS NULL OR d.status = :status)
             """)
-    List<DeviceSummaryProjection> findSummariesByUserGroups(@Param("actorId") String actorId);
+    Page<DeviceSummaryProjection> findSummariesByUserGroups(@Param("actorId") String actorId,
+                                                            @Param("search") String search,
+                                                            @Param("status") DeviceStatus status,
+                                                            Pageable pageable);
 }

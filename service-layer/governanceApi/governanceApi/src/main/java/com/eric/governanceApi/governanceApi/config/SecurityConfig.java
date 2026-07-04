@@ -24,6 +24,9 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
+                // Docker/Kubernetes healthcheck — sem auth
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+
                 // ESP32 envia provisioning token no body (qualquer outra requisição é 404)
                 .requestMatchers("/provisioning/activate").permitAll()
 

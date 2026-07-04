@@ -1,9 +1,10 @@
 package com.eric.governanceApi.governanceApi.model.request;
 
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public record SensorDTO (
-    @NotNull(message = "name is required")
+    @NotBlank(message = "name is required") @Size(max = 20)
     String name
 ){
 }

@@ -1,5 +1,6 @@
 package com.eric.governanceApi.governanceApi.service;
 
+import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
@@ -22,8 +23,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Slf4j
 @Service
@@ -48,32 +47,32 @@ public class DeviceService {
     }
     
     @Transactional(readOnly = true)
-    public List<DeviceSummaryDTO> listAll() {
-        List<DeviceSummaryProjection> rows;
+    public Page<DeviceSummaryDTO> listAll(Pageable pageable, String search, DeviceStatus status) {
+        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
+
+        Page<DeviceSummaryProjection> rows;
         if (isAdmin()) {
-            rows = deviceRepository.findAllSummaries();
+            rows = deviceRepository.findAllSummaries(normalizedSearch, status, pageable);
         } else {
             String actorId = currentActorId();
-            if (actorId == null) return List.of();
-            rows = deviceRepository.findSummariesByUserGroups(actorId);
+            if (actorId == null) return Page.empty(pageable);
+            rows = deviceRepository.findSummariesByUserGroups(actorId, normalizedSearch, status, pageable);
         }
 
-        return rows.stream()
-            .map(row -> new DeviceSummaryDTO(
-                row.deviceId(),
-                row.name(),
-                row.status(),
-                row.macAddress(),
-                row.firmwareId(),
-                row.firmwareName(),
-                row.firmwareVersionId(),
-                row.version(),
-                row.createdAt(),
-                row.lastSeen(),
-                row.issuedByActorId(),
-                row.issuedByUsername()
-            ))
-            .toList();
+        return rows.map(row -> new DeviceSummaryDTO(
+            row.deviceId(),
+            row.name(),
+            row.status(),
+            row.macAddress(),
+            row.firmwareId(),
+            row.firmwareName(),
+            row.firmwareVersionId(),
+            row.version(),
+            row.createdAt(),
+            row.lastSeen(),
+            row.issuedByActorId(),
+            row.issuedByUsername()
+        ));
     }
 
     @Transactional(readOnly = true)
