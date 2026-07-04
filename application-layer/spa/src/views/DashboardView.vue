@@ -41,12 +41,12 @@ const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 onMounted(async () => {
   try {
-    const [devRes, evRes, errRes] = await Promise.all([
-      devicesApi.list(),
+    const [devList, evRes, errRes] = await Promise.all([
+      devicesApi.listAll(),
       eventsApi.list(0),
       errorsApi.list(0),
     ])
-    devices.value = Array.isArray(devRes.data) ? devRes.data : []
+    devices.value = devList
     recentEvents.value = evRes.data.content?.slice(0, 5) ?? []
     totalEvents.value = evRes.data.page?.totalElements ?? 0
     recentErrors.value = errRes.data.content?.slice(0, 5) ?? []

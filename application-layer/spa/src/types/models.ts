@@ -125,7 +125,7 @@ export interface DeviceSummaryDTO {
   firmwareVersionId: string | null
   firmwareVersion: string | null
   createdAt: string
-  lastSeen: string | null
+  lastSeen: string 
   issuedByActorId: string | null
   issuedByUsername: string | null
 }

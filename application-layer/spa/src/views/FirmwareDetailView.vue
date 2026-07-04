@@ -73,12 +73,11 @@ const openVersionDetail = async (versionSummary: FirmwareVersionSummaryDTO) => {
   showDetail.value = true
   loadingDetailDevices.value = true
   try {
-    const [vRes, dRes] = await Promise.all([
+    const [vRes, all] = await Promise.all([
       firmwareApi.getVersion(versionSummary.versionId),
-      devicesApi.list(),
+      devicesApi.listAll(),
     ])
     detailVersion.value = vRes.data
-    const all = Array.isArray(dRes.data) ? dRes.data : []
     detailDevices.value = all.filter(d => d.firmwareVersionId === versionSummary.versionId)
   } finally { loadingDetailDevices.value = false }
 }
@@ -98,10 +97,8 @@ const openUpload = async () => {
   uploadError.value = ''
   selectedSensors.value = new Map()
   showUpload.value = true
-  if (!availableSensors.value.length) {
-    const r = await sensorsApi.list()
-    availableSensors.value = Array.isArray(r.data) ? r.data : []
-  }
+  const r = await sensorsApi.list()
+  availableSensors.value = Array.isArray(r.data) ? r.data : []
 }
 
 const toggleSensor = (sensorId: string) => {
@@ -155,13 +152,10 @@ const openDeploy = async (versionSummary: FirmwareVersionSummaryDTO) => {
   selectedDeployIds.value = new Set()
   deployError.value = ''
   showDeploy.value = true
-  if (!allDevices.value.length) {
-    loadingDevices.value = true
-    try {
-      const r = await devicesApi.list()
-      allDevices.value = Array.isArray(r.data) ? r.data :  []
-    } finally { loadingDevices.value = false }
-  }
+  loadingDevices.value = true
+  try {
+    allDevices.value = await devicesApi.listAll()
+  } finally { loadingDevices.value = false }
 }
 
 const toggleDeployDevice = (id: string) => {

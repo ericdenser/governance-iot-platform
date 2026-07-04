@@ -102,16 +102,13 @@ const toggleDevice = (deviceId: string) => {
 }
 
 const loadDevices = async () => {
-  if (allDevices.value.length) return
   loadingDevices.value = true
   try {
-    const r = await devicesApi.list()
-    allDevices.value = Array.isArray(r.data) ? r.data : []
+    allDevices.value = await devicesApi.listAll()
   } finally { loadingDevices.value = false }
 }
 
 const loadFirmwares = async () => {
-  if (allFirmwares.value.length) return
   loadingFirmwares.value = true
   try {
     const r = await firmwareApi.listDeployable()

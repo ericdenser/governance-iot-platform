@@ -15,7 +15,7 @@ import type {
   SensorResponseDTO,
   CreateFirmwareRequest
 } from '@/types/models'
-import { errorMessage } from '@/utils/errors'
+import { errorMessage, errorMessageFromBlob } from '@/utils/errors'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -94,10 +94,8 @@ const openCreate = async (asProvisioning = false) => {
   createError.value = ''
   selectedSensors.value = new Map()
   showCreate.value = true
-  if (!availableSensors.value.length) {
-    const r = await sensorsApi.list()
-    availableSensors.value = Array.isArray(r.data) ? r.data : []
-  }
+  const r = await sensorsApi.list()
+  availableSensors.value = Array.isArray(r.data) ? r.data : []
 }
 
 const toggleSensor = (sensorId: string) => {
@@ -190,7 +188,7 @@ const doGenerate = async () => {
     URL.revokeObjectURL(url)
     showPackage.value = false
   } catch (e: unknown) {
-    generateError.value = errorMessage(e, 'Erro ao gerar pacote.')
+    generateError.value = await errorMessageFromBlob(e, 'Erro ao gerar pacote.')
   } finally { generating.value = false }
 }
 

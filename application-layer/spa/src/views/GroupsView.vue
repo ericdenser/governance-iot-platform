@@ -69,8 +69,7 @@ const openAddDevice = async () => {
   if (!allDevices.value.length) {
     loadingAllDevices.value = true
     try {
-      const r = await devicesApi.list()
-      allDevices.value = Array.isArray(r.data) ? r.data : []
+      allDevices.value = await devicesApi.listAll()
     } finally { loadingAllDevices.value = false }
   }
 }
