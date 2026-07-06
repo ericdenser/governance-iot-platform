@@ -31,7 +31,7 @@
 // =============================================================================
 #define MAX_WIFI_RETRIES        10
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
-#define URL_PROVISIONING        "http://172.16.39.40:8082/provisioning/activate"
+#define URL_PROVISIONING        CONFIG_GOV_MDM_BASE_URL "provisioning/activate"
 #define ADVERTISE_INTERVAL_MS   10000
 
 #define GPS_UART_PORT    UART_NUM_1

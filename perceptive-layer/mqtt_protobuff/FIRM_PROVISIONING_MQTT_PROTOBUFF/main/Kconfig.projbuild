@@ -49,14 +49,28 @@ menu "WiFi Manager Configuration"
 
 endmenu
 
-# menu "Firmware Configuration"
+menu "Governance IoT"
 
-#     config FIRMWARE_VERSION
-#         string "Firmware Version"
-#         default "0"
-#         help
-#             Versão numérica deste firmware. Gravada na NVS no primeiro boot
-#             e usada pelo OtaManager para comparação com versões disponíveis.
-#             Altere aqui antes de cada build para identificar a versão corretamente.
+    config GOV_MQTT_BROKER_URI
+        string "MQTT Broker URI"
+        default "mqtts://xxx.xxx.xx.xx:8883"
+        help
+            URI completa do broker MQTT. O esquema define o transporte:
+              mqtts://host:8883        — TLS direto 
+              mqtt://host:1883         — sem TLS 
+            Exemplos:
+              mqtts://xxx.xxx.xx.xx:8883
+              mqtts://iot.mackenzie.br:8883
 
-# endmenu
+    config GOV_MDM_BASE_URL
+        string "MDM (govApi) base URL"
+        default "http://xxx.xxx.xx.xx:8080"
+        help
+            URL base do govApi, SEM barra final. Os endpoints
+            (/provisioning/activate etc) são concatenados pelo firmware.
+            Exemplos:
+              http://xxx.xxx.xx.xx:8080
+              https://mackenzie.br/apps/govApi
+              https://iot.mackenzie.br
+
+endmenu

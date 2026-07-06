@@ -8,7 +8,7 @@
 #include <vector>
 #include <utility>
 
-#define BROKER_URL     "mqtts://172.16.39.40:8883"
+#define BROKER_URL     CONFIG_GOV_MQTT_BROKER_URI
 #define MAX_RECONNECT_ATTEMPTS  5
 #define RECONNECT_DELAY_MS      5000
 
