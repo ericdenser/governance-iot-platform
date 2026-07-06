@@ -42,19 +42,6 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
             .headers(headers -> headers
-                // CSP — última linha de defesa contra XSS. Cada diretiva justificada:
-                //  script-src 'self'         : só JS do próprio origin (sem eval, sem inline)
-                //  style-src googleapis      : import de fonts (design-system.css); 'unsafe-inline'
-                //                              necessário pro Vue <style scoped> e :style bindings
-                //  font-src gstatic          : Google Fonts serve .woff2 desse host
-                //  img-src data:             : SVG icons inline via data: URI no AppLayout
-                //  connect-src 'self'        : SPA só fala com o BFF (que proxya govApi)
-                //  object-src 'none'         : sem plugins (<object>, <embed>)
-                //  base-uri 'self'           : bloqueia injection de <base>
-                //  form-action 'self'        : forms não submetem cross-origin
-                //  frame-ancestors 'none'    : anti-clickjacking
-                // TODO Obj 2: adicionar 'https://*.tile.openstreetmap.org' em img-src
-                //             quando Leaflet for integrado no MapView.
                 .contentSecurityPolicy(csp -> csp.policyDirectives(
                     "default-src 'self'; " +
                     "script-src 'self'; " +
@@ -67,7 +54,6 @@ public class SecurityConfig {
                     "form-action 'self'; " +
                     "frame-ancestors 'none'"
                 ))
-                // Referrer-Policy — não vaza URL completa em navegações cross-origin.
                 .referrerPolicy(ref -> ref.policy(
                     org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN
                 ))

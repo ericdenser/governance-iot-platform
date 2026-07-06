@@ -39,8 +39,6 @@
 #define TELEMETRY_INTERVAL_MS   5000
 #define GPS_SYNC_EVERY_N_BOOTS  24   // corrige drift do DS3231 a cada ~48min (ciclos de 2min)
 
-//ppgeec 172.16.39.40
-//alencar 192.168.15.76
 
 static const char* TAG           = "MAIN";
 static const char* NVS_NAMESPACE = "main_store";
