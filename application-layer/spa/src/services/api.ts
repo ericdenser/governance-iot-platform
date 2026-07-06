@@ -11,33 +11,35 @@ const api = axios.create({
   }
 })
 
+const NEXT_STORAGE_KEY = 'post_login_next'
+
+let sessionExpiredHandled = false
+
+const isSafeInternalPath = (path: string): boolean =>
+  path.startsWith('/') && !path.startsWith('//') && !path.includes('..')
 
 api.interceptors.response.use(
   (response) => {
-    // Desempacota ApiResponse<T> automaticamente: { success, data, ... } → data
     if (response.data && typeof response.data === 'object' && 'success' in response.data) {
       response.data = response.data.data
     }
     return response
   },
   (error) => {
-    // Garante que o servidor respondeu algo antes de checar o status
-    if (error.response) {
-      
-      // 401: Sessão expirou ou não existe no Redis
-      if (error.response.status === 401) {
-        const authStore = useAuthStore()
-        authStore.clearAuth()
-        
-        // Chuta pro login com Hard Reset (Limpa cache do Pinia de todas as abas)
-        window.location.href = '/' 
-      } 
-      
-      // 403: Está logado, mas não tem permissão — deixa o componente tratar
+    if (error.response?.status === 401 && !sessionExpiredHandled) {
+      sessionExpiredHandled = true
 
+      const currentPath = window.location.pathname + window.location.search
+      if (currentPath !== '/' && isSafeInternalPath(currentPath)) {
+        sessionStorage.setItem(NEXT_STORAGE_KEY, currentPath)
+      }
+
+      const authStore = useAuthStore()
+      authStore.clearAuth()
+
+      window.location.href = '/?expired=1'
     }
 
-    //SEMPRE rejeita a promessa no final para quebrar o fluxo lá no componente Vue
     return Promise.reject(error)
   }
 )

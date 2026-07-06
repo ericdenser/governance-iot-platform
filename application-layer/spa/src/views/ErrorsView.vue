@@ -22,7 +22,7 @@ const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const toggleExpand = (id: string) => {
   const next = new Set(expanded.value)
-  next.has(id) ? next.delete(id) : next.add(id)
+  if (next.has(id)) next.delete(id); else next.add(id)
   expanded.value = next
 }
 

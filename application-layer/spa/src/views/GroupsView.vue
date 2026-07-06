@@ -19,6 +19,8 @@ import type {
   GroupRole,
 } from '@/types/models'
 import { errorMessage } from '@/utils/errors'
+import { confirm } from '@/composables/useConfirm'
+import { toast } from '@/composables/useToast'
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
@@ -132,6 +134,7 @@ const doUpdateRole = async () => {
     await groupsApi.updateRole(selectedGroup.value.groupId, updateRoleTarget.value.keycloakUserId, { role: newRole.value })
     showUpdateRole.value = false
     await selectGroup(selectedGroup.value)
+    toast.success('Papel atualizado')
   } catch (e: unknown) {
     updateRoleError.value = errorMessage(e, 'Erro ao atualizar papel.')
   } finally { updatingRole.value = false }
@@ -165,8 +168,6 @@ const canUpdateRole = (u: GroupMemberResponseDTO) => {
   return false
 }
 
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
-
 const load = async () => {
   const r = await groupsApi.list()
   groups.value = Array.isArray(r.data) ? r.data : []
@@ -195,16 +196,28 @@ const doCreate = async () => {
     await groupsApi.create({ name: createForm.value.name.trim(), description: createForm.value.description.trim() || undefined })
     showCreate.value = false; createForm.value = { name: '', description: '' }
     await load()
+    toast.success('Grupo criado')
   } catch (e: unknown) {
     createError.value = errorMessage(e, 'Erro ao criar grupo.')
   } finally { creating.value = false }
 }
 
 const doDelete = async (g: DeviceGroupResponseDTO) => {
-  if (!confirm(`Excluir grupo "${g.name}"? Todos os membros serão removidos.`)) return
-  await groupsApi.delete(g.groupId)
-  if (selectedGroup.value?.groupId === g.groupId) selectedGroup.value = null
-  await load()
+  const ok = await confirm({
+    title: `Excluir grupo "${g.name}"?`,
+    message: 'Todos os membros (dispositivos e usuários) serão removidos.',
+    confirmText: 'Excluir',
+    danger: true,
+  })
+  if (!ok) return
+  try {
+    await groupsApi.delete(g.groupId)
+    if (selectedGroup.value?.groupId === g.groupId) selectedGroup.value = null
+    await load()
+    toast.success(`Grupo "${g.name}" excluído`)
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao excluir grupo.'))
+  }
 }
 
 const doAddDevice = async () => {
@@ -214,6 +227,7 @@ const doAddDevice = async () => {
     await groupsApi.addDevice(selectedGroup.value.groupId, selectedDeviceId.value)
     showAddDevice.value = false; selectedDeviceId.value = ''
     await selectGroup(selectedGroup.value)
+    toast.success('Dispositivo adicionado ao grupo')
   } catch (e: unknown) {
     addDeviceError.value = errorMessage(e, 'Erro ao adicionar dispositivo.')
   } finally { addingDevice.value = false }
@@ -221,9 +235,20 @@ const doAddDevice = async () => {
 
 const doRemoveDevice = async (deviceId: string) => {
   if (!selectedGroup.value) return
-  if (!confirm('Remover dispositivo do grupo?')) return
-  await groupsApi.removeDevice(selectedGroup.value.groupId, deviceId)
-  await selectGroup(selectedGroup.value)
+  const ok = await confirm({
+    title: 'Remover dispositivo?',
+    message: 'O dispositivo sai do grupo mas continua no CMDB.',
+    confirmText: 'Remover',
+    danger: true,
+  })
+  if (!ok) return
+  try {
+    await groupsApi.removeDevice(selectedGroup.value.groupId, deviceId)
+    await selectGroup(selectedGroup.value)
+    toast.success('Dispositivo removido do grupo')
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao remover dispositivo.'))
+  }
 }
 
 const doAssignUser = async () => {
@@ -236,6 +261,7 @@ const doAssignUser = async () => {
     })
     showAssignUser.value = false; selectedUserId.value = ''
     await selectGroup(selectedGroup.value)
+    toast.success('Usuário atribuído ao grupo')
   } catch (e: unknown) {
     assignError.value = errorMessage(e, 'Erro ao atribuir usuário.')
   } finally { assigningUser.value = false }
@@ -243,9 +269,20 @@ const doAssignUser = async () => {
 
 const doRemoveUser = async (userId: string) => {
   if (!selectedGroup.value) return
-  if (!confirm('Remover usuário do grupo?')) return
-  await groupsApi.removeUser(selectedGroup.value.groupId, userId)
-  await selectGroup(selectedGroup.value)
+  const ok = await confirm({
+    title: 'Remover usuário do grupo?',
+    message: 'O usuário perde acesso a esse grupo. Ele continua no Keycloak.',
+    confirmText: 'Remover',
+    danger: true,
+  })
+  if (!ok) return
+  try {
+    await groupsApi.removeUser(selectedGroup.value.groupId, userId)
+    await selectGroup(selectedGroup.value)
+    toast.success('Usuário removido do grupo')
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao remover usuário.'))
+  }
 }
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })

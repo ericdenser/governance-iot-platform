@@ -16,6 +16,8 @@ import type {
   CreateFirmwareRequest
 } from '@/types/models'
 import { errorMessage, errorMessageFromBlob } from '@/utils/errors'
+import { confirm } from '@/composables/useConfirm'
+import { toast } from '@/composables/useToast'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -100,7 +102,7 @@ const openCreate = async (asProvisioning = false) => {
 
 const toggleSensor = (sensorId: string) => {
   const next = new Map(selectedSensors.value)
-  next.has(sensorId) ? next.delete(sensorId) : next.set(sensorId, 0)
+  if (next.has(sensorId)) next.delete(sensorId); else next.set(sensorId, 0)
   selectedSensors.value = next
 }
 
@@ -136,6 +138,7 @@ const doCreate = async () => {
     await firmwareApi.create(createFile.value, payload as unknown as Record<string, unknown>)
     showCreate.value = false
     await load()
+    toast.success(`Firmware "${payload.firmwareName}" criado (v${payload.initialVersion})`)
   } catch (e: unknown) {
     createError.value = errorMessage(e, 'Erro ao criar firmware.')
   } finally { creating.value = false }
@@ -143,11 +146,17 @@ const doCreate = async () => {
 
 // ── Set Provisioning ──────────────────────────────────────────────────────────
 const doSetProvisioning = async (id: string) => {
-  if (!confirm('Definir como firmware de provisionamento? O provisioning atual perderá esse status.')) return
+  const ok = await confirm({
+    title: 'Definir como firmware de provisionamento?',
+    message: 'O provisioning atual perderá esse status.',
+    confirmText: 'Definir',
+  })
+  if (!ok) return
   try {
     await firmwareApi.setProvisioning(id); await load()
+    toast.success('Firmware de provisionamento atualizado')
   } catch (e: unknown) {
-    alert(errorMessage(e, 'Erro ao definir firmware de provisioning.'))
+    toast.error(errorMessage(e, 'Erro ao definir firmware de provisioning.'))
   }
 }
 
@@ -187,6 +196,7 @@ const doGenerate = async () => {
     a.click()
     URL.revokeObjectURL(url)
     showPackage.value = false
+    toast.success(`Pacote de flash gerado para "${deviceName.trim()}"`)
   } catch (e: unknown) {
     generateError.value = await errorMessageFromBlob(e, 'Erro ao gerar pacote.')
   } finally { generating.value = false }

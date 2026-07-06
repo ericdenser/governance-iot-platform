@@ -1,9 +1,14 @@
 <script setup lang="ts">
-// A função que dispara o fluxo de login
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+
+const sessionExpired = computed(() => route.query.expired === '1')
+
+
 const fazerLogin = () => {
-  // Redireciona o navegador INTEIRO para o Spring Boot (BFF)
-  // O Spring vai interceptar isso e mandar para o Keycloak
-  window.location.href =  '/api/oauth2/authorization/keycloak'
+  window.location.href = '/api/oauth2/authorization/keycloak'
 }
 </script>
 
@@ -11,8 +16,13 @@ const fazerLogin = () => {
   <div class="login-container">
     <div class="login-card">
       <h1>Bem-vindo</h1>
-      <p>Prototipo de sistema seguro em desenvolvimento pelo laboratorio Mackleaps</p>
-      
+      <p class="subtitle">Governance IoT — plataforma de gerenciamento de dispositivos</p>
+
+      <div v-if="sessionExpired" class="expired-banner" role="alert">
+        <strong>Sua sessão expirou.</strong>
+        <span>Faça login novamente para continuar.</span>
+      </div>
+
       <button @click="fazerLogin" class="btn-login">
         Entrar com Keycloak
       </button>
@@ -25,45 +35,66 @@ const fazerLogin = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
-  background-color: #f4f7f6;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 100vh;
+  background: var(--bg);
+  padding: var(--space-4);
 }
 
 .login-card {
-  background: white;
-  padding: 40px;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: var(--space-10);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
   text-align: center;
   max-width: 400px;
   width: 100%;
 }
 
-h1 {
-  color: #2c3e50;
-  margin-bottom: 10px;
+.login-card h1 {
+  color: var(--text);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-2xl);
 }
 
-p {
-  color: #7f8c8d;
-  margin-bottom: 30px;
+.subtitle {
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-sm);
+}
+
+.expired-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--warning-dim);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+  text-align: left;
+  font-size: var(--text-sm);
+}
+
+.expired-banner span {
+  color: var(--text-secondary);
 }
 
 .btn-login {
-  background-color: #42b983; /* Verde clássico do Vue */
-  color: white;
+  background: var(--primary);
+  color: var(--text-inverse);
   border: none;
-  padding: 12px 24px;
-  font-size: 16px;
-  font-weight: bold;
-  border-radius: 6px;
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-base);
+  font-weight: 600;
+  border-radius: var(--radius-md);
   cursor: pointer;
   width: 100%;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.15s;
 }
 
 .btn-login:hover {
-  background-color: #3aa876;
+  background: var(--primary-hover);
 }
 </style>

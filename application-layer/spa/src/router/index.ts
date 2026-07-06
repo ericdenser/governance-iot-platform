@@ -21,6 +21,11 @@ const router = createRouter({
   ],
 })
 
+const NEXT_STORAGE_KEY = 'post_login_next'
+
+const isSafeInternalPath = (path: string): boolean =>
+  path.startsWith('/') && !path.startsWith('//') && !path.includes('..')
+
 router.beforeEach(async (to, _, next) => {
   const authStore = useAuthStore()
   await authStore.checkAuth()
@@ -28,6 +33,14 @@ router.beforeEach(async (to, _, next) => {
   if (to.name !== 'login' && !authStore.isAuthenticated) return next({ name: 'login' })
   if (to.name === 'login' && authStore.isAuthenticated) return next({ name: 'dashboard' })
   if (to.meta.requiresAdmin && !authStore.isAdmin) return next({ name: 'dashboard' })
+
+  if (to.name === 'dashboard' && authStore.isAuthenticated) {
+    const saved = sessionStorage.getItem(NEXT_STORAGE_KEY)
+    if (saved && isSafeInternalPath(saved) && saved !== '/home') {
+      sessionStorage.removeItem(NEXT_STORAGE_KEY)
+      return next(saved)
+    }
+  }
 
   next()
 })

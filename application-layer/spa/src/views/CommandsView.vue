@@ -8,7 +8,6 @@ import AppPagination from '@/components/AppPagination.vue'
 import { commandsApi } from '@/services/commands'
 import { devicesApi } from '@/services/devices'
 import { firmwareApi } from '@/services/firmware'
-import { useAuthStore } from '@/stores/auth'
 import type {
   CommandRecordResponseDTO,
   CommandRequest,
@@ -22,7 +21,6 @@ import { errorMessage } from '@/utils/errors'
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
-const authStore = useAuthStore()
 const commands = ref<CommandRecordResponseDTO[]>([])
 const loading = ref(true)
 const page = ref(0)
@@ -97,7 +95,7 @@ const finishDevices = () => {
 
 const toggleDevice = (deviceId: string) => {
   const next = new Set(selectedDeviceIds.value)
-  next.has(deviceId) ? next.delete(deviceId) : next.add(deviceId)
+  if (next.has(deviceId)) next.delete(deviceId); else next.add(deviceId)
   selectedDeviceIds.value = next
 }
 

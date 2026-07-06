@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
@@ -9,6 +9,9 @@ import AppPagination from '@/components/AppPagination.vue'
 import EventList from '@/components/EventList.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import { confirm } from '@/composables/useConfirm'
+import { toast } from '@/composables/useToast'
+import { errorMessage } from '@/utils/errors'
 import type {
   DeviceDetailDTO,
   DeviceStatus,
@@ -52,7 +55,7 @@ const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 const errExpanded = ref<Set<string>>(new Set())
 const toggleErrExpand = (id: string) => {
   const next = new Set(errExpanded.value)
-  next.has(id) ? next.delete(id) : next.add(id)
+  if (next.has(id)) next.delete(id); else next.add(id)
   errExpanded.value = next
 }
 
@@ -80,10 +83,21 @@ const switchTab = async (t: typeof tab.value) => {
 }
 
 const revoke = async () => {
-  if (!confirm('Revogar este dispositivo? Esta ação não pode ser desfeita.')) return
+  const ok = await confirm({
+    title: 'Revogar dispositivo?',
+    message: 'O certificado será marcado como inválido e o device perderá acesso ao broker. Esta ação não pode ser desfeita.',
+    confirmText: 'Revogar',
+    danger: true,
+  })
+  if (!ok) return
   revoking.value = true
-  try { await devicesApi.revoke(deviceId); await loadDevice() }
-  finally { revoking.value = false }
+  try {
+    await devicesApi.revoke(deviceId)
+    await loadDevice()
+    toast.success('Dispositivo revogado')
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao revogar dispositivo.'))
+  } finally { revoking.value = false }
 }
 
 const loadDevice = async () => {

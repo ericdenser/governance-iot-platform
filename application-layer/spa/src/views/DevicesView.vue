@@ -6,6 +6,7 @@ import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import type { DeviceSummaryDTO, DeviceStatus } from '@/types/models'
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
@@ -14,6 +15,7 @@ const authStore = useAuthStore()
 const devices = ref<DeviceSummaryDTO[]>([])
 const loading = ref(true)
 const search = ref('')
+const debouncedSearch = useDebouncedRef(search, 300)
 const statusFilter = ref<DeviceStatus | ''>('')
 const page = ref(0)
 const size = ref(50)
@@ -35,7 +37,7 @@ const load = async () => {
     const r = await devicesApi.list({
       page: page.value,
       size: size.value,
-      search: search.value.trim() || undefined,
+      search: debouncedSearch.value.trim() || undefined,
       status: statusFilter.value || undefined,
     })
     devices.value = r.data.content
@@ -46,13 +48,9 @@ const load = async () => {
   }
 }
 
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-watch(search, () => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    page.value = 0
-    load()
-  }, 300)
+watch(debouncedSearch, () => {
+  page.value = 0
+  load()
 })
 
 watch(statusFilter, () => {

@@ -8,6 +8,7 @@ import { sensorsApi } from '@/services/sensors'
 import { useAuthStore } from '@/stores/auth'
 import type { SensorResponseDTO } from '@/types/models'
 import { errorMessage } from '@/utils/errors'
+import { toast } from '@/composables/useToast'
 
 const authStore = useAuthStore()
 const sensors = ref<SensorResponseDTO[]>([])
@@ -28,6 +29,7 @@ const save = async () => {
   try {
     await sensorsApi.register(newName.value.trim())
     showForm.value = false; newName.value = ''; await load()
+    toast.success('Sensor cadastrado')
   } catch (e: unknown) {
     error.value = errorMessage(e, 'Erro ao cadastrar sensor.')
   } finally { saving.value = false }

@@ -20,6 +20,8 @@ import type {
   UploadVersionRequest
 } from '@/types/models'
 import { errorMessage } from '@/utils/errors'
+import { confirm } from '@/composables/useConfirm'
+import { toast } from '@/composables/useToast'
 
 const authStore = useAuthStore()
 const route = useRoute()
@@ -103,7 +105,7 @@ const openUpload = async () => {
 
 const toggleSensor = (sensorId: string) => {
   const next = new Map(selectedSensors.value)
-  next.has(sensorId) ? next.delete(sensorId) : next.set(sensorId, 0)
+  if (next.has(sensorId)) next.delete(sensorId); else next.set(sensorId, 0)
   selectedSensors.value = next
 }
 
@@ -131,6 +133,7 @@ const doUpload = async () => {
     await firmwareApi.uploadVersion(firmwareId, uploadFile.value, payload as unknown as Record<string, unknown>)
     showUpload.value = false
     await load()
+    toast.success(`Versão v${payload.version} publicada`)
   } catch (e: unknown) {
     uploadError.value = errorMessage(e, 'Erro ao subir nova versão.')
   } finally { uploading.value = false }
@@ -160,7 +163,7 @@ const openDeploy = async (versionSummary: FirmwareVersionSummaryDTO) => {
 
 const toggleDeployDevice = (id: string) => {
   const next = new Set(selectedDeployIds.value)
-  next.has(id) ? next.delete(id) : next.add(id)
+  if (next.has(id)) next.delete(id); else next.add(id)
   selectedDeployIds.value = next
 }
 
@@ -172,6 +175,7 @@ const doDeploy = async () => {
   try {
     await firmwareApi.deploy(deployVersionId.value, [...selectedDeployIds.value])
     showDeploy.value = false
+    toast.success(`Deploy v${deployVersionString.value} enviado para ${selectedDeployIds.value.size} device(s)`)
   } catch (e: unknown) {
     deployError.value = errorMessage(e, 'Erro ao enviar deploy.')
   } finally { deploying.value = false }
@@ -179,13 +183,18 @@ const doDeploy = async () => {
 
 // ── Deprecate version ────────────────────────────────────────────────────────
 const doDeprecate = async (v: FirmwareVersionSummaryDTO) => {
-  const msg = `Você tem certeza que quer marcar a versão v${v.version} como obsoleta?\n\n` +
-              `Esta ação é IRREVERSÍVEL. Para desfazer, será necessário subir uma nova versão com o fix.`
-  if (!confirm(msg)) return
+  const ok = await confirm({
+    title: `Deprecar versão v${v.version}?`,
+    message: 'Esta ação é IRREVERSÍVEL. Para desfazer, será necessário subir uma nova versão com o fix.',
+    confirmText: 'Deprecar',
+    danger: true,
+  })
+  if (!ok) return
   try {
     await firmwareApi.deprecate(v.versionId); await load()
+    toast.success(`Versão v${v.version} deprecada`)
   } catch (e: unknown) {
-    alert(errorMessage(e, 'Erro ao deprecar versão.'))
+    toast.error(errorMessage(e, 'Erro ao deprecar versão.'))
   }
 }
 
