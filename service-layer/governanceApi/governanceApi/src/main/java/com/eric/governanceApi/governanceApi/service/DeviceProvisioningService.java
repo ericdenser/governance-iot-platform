@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
@@ -100,7 +101,8 @@ public class DeviceProvisioningService {
 
         if (request.groupId() != null && !request.groupId().isBlank()) {
             DeviceGroup group = deviceGroupRepository.findByGroupId(request.groupId())
-                .orElseThrow(() -> new ResourceNotFoundException("Grupo " + request.groupId() + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.GROUP_NOT_FOUND,
+                    "Grupo " + request.groupId() + " não encontrado."));
 
             String[] actor = currentActor();
             deviceGroupMembershipRepository.save(new DeviceGroupMembership(newDevice, group, actor[0], actor[1]));
@@ -119,7 +121,8 @@ public class DeviceProvisioningService {
         log.info("Procurando token: {}", request.getProvisioningToken());
         // Se o token não foi emitido
         ProvisioningToken token = tokenRepository.findByToken(request.getProvisioningToken())
-            .orElseThrow(() -> new ResourceNotFoundException("Token not found."));
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PROVISIONING_TOKEN_INVALID,
+                "Token de provisionamento inválido."));
         
         token.validate(); 
 
@@ -161,7 +164,8 @@ public class DeviceProvisioningService {
         device.setStatus(DeviceStatus.PROVISIONING);
         device.setLastSeen(Instant.now());
         device.setFirmwareVersion(firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
-                .orElseThrow(() -> new ResourceNotFoundException("Nenhum firmware de provisioning registrado.")));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                    "Nenhum firmware de provisioning registrado.")));
 
         // Propaga o autor do token para o device: quem gerou o zip que originou esse provisioning
         device.setIssuedByActorId(token.getCreatedByActorId());

@@ -23,6 +23,7 @@ import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
@@ -98,7 +99,7 @@ public class FirmwareService {
         String ownerGroupId = resolveOwnerGroupIdForCreate(requestDTO);
 
         if (firmwareRepository.existsByNameInScope(requestDTO.firmwareName(), ownerGroupId)) {
-            throw new ConflictException(
+            throw new ConflictException(ErrorCode.FIRMWARE_NAME_DUPLICATE,
                 "Já existe um firmware chamado '" + requestDTO.firmwareName() + "' neste escopo.");
         }
 
@@ -132,7 +133,8 @@ public class FirmwareService {
     public FirmwareVersionResponseDTO uploadNewVersion(String firmwareId, MultipartFile file, UploadVersionRequestDTO requestDTO) throws Exception {
 
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
-            .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                "Firmware " + firmwareId + " não encontrado."));
 
         requireFirmwareManagement(fw);
 
@@ -142,7 +144,7 @@ public class FirmwareService {
         }
 
         if (firmwareVersionRepository.existsByFirmware_IdAndVersion(fw.getId(), requestDTO.version())) {
-            throw new ConflictException(
+            throw new ConflictException(ErrorCode.FIRMWARE_VERSION_DUPLICATE,
                 "Firmware '" + fw.getFirmwareName() + "' já possui versão v" + requestDTO.version() + ".");
         }
 
@@ -167,7 +169,8 @@ public class FirmwareService {
     @Transactional
     public FirmwareVersionResponseDTO deprecateVersion(String versionId) {
         FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
-            .orElseThrow(() -> new ResourceNotFoundException("Versão " + versionId + " não encontrada."));
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
+                "Versão " + versionId + " não encontrada."));
 
         requireFirmwareManagement(v.getFirmware());
 
@@ -189,7 +192,8 @@ public class FirmwareService {
     public CommandResultResponseDTO deploy(String versionId, List<String> targetDevices) throws Exception {
 
         FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
-            .orElseThrow(() -> new ResourceNotFoundException("Versão " + versionId + " não encontrada."));
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
+                "Versão " + versionId + " não encontrada."));
 
         requireFirmwareAccess(v.getFirmware());
 
@@ -269,7 +273,8 @@ public class FirmwareService {
         }
 
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
-            .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                "Firmware " + firmwareId + " não encontrado."));
 
         if (fw.getOwnerGroupId() != null) {
             throw new IllegalArgumentException(
@@ -278,7 +283,7 @@ public class FirmwareService {
 
         FirmwareVersion latest = firmwareVersionRepository
             .findFirstByFirmware_FirmwareIdOrderByUploadedAtDesc(firmwareId)
-            .orElseThrow(() -> new ResourceNotFoundException(
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
                 "Firmware " + firmwareId + " não tem versão registrada para ser provisionamento."));
 
         if (latest.getStatus() == FirmwareStatus.DEPRECATED) {
@@ -308,7 +313,8 @@ public class FirmwareService {
     @Transactional(readOnly = true)
     public FirmwareResponseDTO getByFirmwareId(String firmwareId) {
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
-                .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                "Firmware " + firmwareId + " não encontrado."));
 
         requireFirmwareAccess(fw);
 
@@ -322,7 +328,8 @@ public class FirmwareService {
     @Transactional(readOnly = true)
     public FirmwareVersionResponseDTO getByVersionId(String versionId) {
         FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Versão " + versionId + " não encontrada."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
+                "Versão " + versionId + " não encontrada."));
 
         requireFirmwareAccess(v.getFirmware());
         return FirmwareVersionResponseDTO.from(v);
@@ -332,7 +339,8 @@ public class FirmwareService {
     @Transactional(readOnly = true)
     public FirmwareVersion getProvisioningVersion() {
         return firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
-                .orElseThrow(() -> new ResourceNotFoundException("Nenhum firmware de provisioning disponível."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                    "Nenhum firmware de provisioning disponível."));
     }
 
     @Transactional(readOnly = true)
@@ -368,7 +376,8 @@ public class FirmwareService {
     @Transactional(readOnly = true)
     public List<FirmwareVersionSummaryDTO> listVersions(String firmwareId) {
         Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
-            .orElseThrow(() -> new ResourceNotFoundException("Firmware " + firmwareId + " não encontrado."));
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                "Firmware " + firmwareId + " não encontrado."));
 
         requireFirmwareAccess(fw);
 
@@ -421,7 +430,8 @@ public class FirmwareService {
         if (fw.getOwnerGroupId() == null) return; // firmware de plataforma é visível a todos
         List<String> groupIds = currentUserGroupIds();
         if (!groupIds.contains(fw.getOwnerGroupId())) {
-            throw new ResourceNotFoundException("Firmware " + fw.getFirmwareId() + " não encontrado.");
+            throw new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                "Firmware " + fw.getFirmwareId() + " não encontrado.");
         }
     }
 
@@ -442,7 +452,8 @@ public class FirmwareService {
                 throw new SecurityException("Apenas administradores podem criar firmware de provisionamento.");
             }
             if (firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
-                throw new ConflictException("Já existe firmware de provisionamento registrado.");
+                throw new ConflictException(ErrorCode.CONFLICT,
+                    "Já existe firmware de provisionamento registrado.");
             }
             return null;
         }
@@ -472,7 +483,8 @@ public class FirmwareService {
             Files.createDirectories(dest.getParent());
             Files.copy(file.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            throw new InfrastructureException("Erro ao salvar firmware no disco: " + e.getMessage());
+            throw new InfrastructureException(ErrorCode.STORAGE_UNAVAILABLE,
+                "Erro ao salvar firmware no disco: " + e.getMessage());
         }
         dest.toFile().setReadable(true, true);
         dest.toFile().setWritable(false);

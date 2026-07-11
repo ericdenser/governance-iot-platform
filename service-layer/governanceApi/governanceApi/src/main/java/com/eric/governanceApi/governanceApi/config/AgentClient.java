@@ -1,6 +1,7 @@
 package com.eric.governanceApi.governanceApi.config;
 
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.model.response.AgentBroadcastResultDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +39,8 @@ public class AgentClient {
                 .build();
         OAuth2AuthorizedClient authorizedClient = authorizedClientManager.authorize(authorizeRequest);
         if (authorizedClient == null || authorizedClient.getAccessToken() == null) {
-            throw new InfrastructureException("Não foi possível obter token OAuth2 para o agent-mqtt");
+            throw new InfrastructureException(ErrorCode.AGENT_UNREACHABLE,
+                "Não foi possível obter token OAuth2 para o agent-mqtt.");
         }
         return authorizedClient.getAccessToken().getTokenValue();
     }
@@ -65,12 +67,14 @@ public class AgentClient {
 
         } catch (ResourceAccessException e) {
             log.error("Agent offline: {}", e.getMessage());
-            throw new InfrastructureException("Agent offline. Comando cancelado.");
+            throw new InfrastructureException(ErrorCode.AGENT_UNREACHABLE,
+                "Agent offline. Comando cancelado.");
         } catch (InfrastructureException e) {
             throw e;
         } catch (Exception e) {
             log.error("Falha ao comunicar com Agent: {}", e.getMessage());
-            throw new InfrastructureException("Falha na comunicação com o Agent: " + e.getMessage());
+            throw new InfrastructureException(ErrorCode.AGENT_UNREACHABLE,
+                "Falha na comunicação com o Agent: " + e.getMessage());
         }
     }
 }

@@ -38,18 +38,18 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
             FROM Device d
             LEFT JOIN d.firmwareVersion v
             LEFT JOIN v.firmware fw
-            WHERE (:search IS NULL
-                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+            WHERE (CAST(:search AS string) IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
               AND (:status IS NULL OR d.status = :status)
             """,
             countQuery = """
             SELECT COUNT(d) FROM Device d
-            WHERE (:search IS NULL
-                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+            WHERE (CAST(:search AS string) IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
               AND (:status IS NULL OR d.status = :status)
             """)
     Page<DeviceSummaryProjection> findAllSummaries(@Param("search") String search,
@@ -75,10 +75,10 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
                     WHERE a.id.keycloakUserId = :actorId
                 )
             )
-              AND (:search IS NULL
-                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (CAST(:search AS string) IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
               AND (:status IS NULL OR d.status = :status)
             """,
             countQuery = """
@@ -90,10 +90,10 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
                     WHERE a.id.keycloakUserId = :actorId
                 )
             )
-              AND (:search IS NULL
-                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (CAST(:search AS string) IS NULL
+                   OR LOWER(d.name)       LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.deviceId)   LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
+                   OR LOWER(d.macAddress) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
               AND (:status IS NULL OR d.status = :status)
             """)
     Page<DeviceSummaryProjection> findSummariesByUserGroups(@Param("actorId") String actorId,

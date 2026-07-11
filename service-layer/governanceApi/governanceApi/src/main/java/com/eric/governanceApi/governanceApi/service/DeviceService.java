@@ -1,5 +1,6 @@
 package com.eric.governanceApi.governanceApi.service;
 
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
@@ -79,11 +80,11 @@ public class DeviceService {
     public DeviceDetailDTO getDevice(String deviceId) {
         // 1 query só (device + firmwareVersion + firmware) via @EntityGraph
         Device device = deviceRepository.findWithFirmwareByDeviceId(deviceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado."));
 
         if (!isAdmin() && !canAccessDevice(device)) {
             // 404 pra não vazar existência do device pra quem não tem acesso
-            throw new ResourceNotFoundException("Device " + deviceId + " não encontrado.");
+            throw new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado.");
         }
 
         return DeviceDetailDTO.from(device);
@@ -92,9 +93,9 @@ public class DeviceService {
     @Transactional(readOnly = true)
     public Page<CommandRecordResponseDTO> getCommands(String deviceId, Pageable pageable) {
         Device device = deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado."));
         if (!isAdmin() && !canAccessDevice(device)) {
-            throw new ResourceNotFoundException("Device " + deviceId + " não encontrado.");
+            throw new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado.");
         }
         return commandRecordRepository.findByTargetDevice_DeviceId(deviceId, pageable)
                 .map(CommandRecordResponseDTO::from);
@@ -103,9 +104,9 @@ public class DeviceService {
     @Transactional(readOnly = true)
     public Page<ErrorRecordResponseDTO> getErrors(String deviceId, Pageable pageable) {
         Device device = deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado."));
         if (!isAdmin() && !canAccessDevice(device)) {
-            throw new ResourceNotFoundException("Device " + deviceId + " não encontrado.");
+            throw new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado.");
         }
         return errorRecordRepository.findByDevice_DeviceId(deviceId, pageable)
                 .map(ErrorRecordResponseDTO::from);
@@ -114,9 +115,9 @@ public class DeviceService {
     @Transactional(readOnly = true)
     public Page<EventRegistryResponseDTO> getEvents(String deviceId, Pageable pageable) {
         Device device = deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado."));
         if (!isAdmin() && !canAccessDevice(device)) {
-            throw new ResourceNotFoundException("Device " + deviceId + " não encontrado.");
+            throw new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado.");
         }
         return eventRegistryRepository.findByDevice_DeviceIdOrderByOcurredAtDesc(deviceId, pageable)
                 .map(EventRegistryResponseDTO::from);
@@ -125,9 +126,10 @@ public class DeviceService {
     @Transactional(readOnly = true)
     public DeviceCertificateResponseDTO getCertificate(String deviceId) {
         Device device = deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado."));
         if (device.getCertificate() == null) {
-            throw new ResourceNotFoundException("Device " + deviceId + " não possui certificado.");
+            throw new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND,
+                "Device " + deviceId + " não possui certificado.");
         }
         return DeviceCertificateResponseDTO.from(device.getCertificate());
     }

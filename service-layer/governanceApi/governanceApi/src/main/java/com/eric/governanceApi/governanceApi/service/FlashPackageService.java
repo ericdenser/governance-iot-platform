@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
@@ -97,8 +98,8 @@ public class FlashPackageService {
 
     private FirmwareVersion resolveProvisioningFirmware() {
         return firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Nenhum firmware de provisioning registrado. Faça upload de um firmware com isProvisioning=true."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                    "Nenhum firmware de provisioning registrado. Faça upload de um firmware com isProvisioning=true."));
     }
 
     private Path resolveFirmwarePath(FirmwareVersion fw) throws IOException {

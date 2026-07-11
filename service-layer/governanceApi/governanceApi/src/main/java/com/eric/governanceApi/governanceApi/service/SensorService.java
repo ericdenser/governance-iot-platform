@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.model.entity.Sensor;
 import com.eric.governanceApi.governanceApi.model.request.SensorDTO;
@@ -38,7 +39,8 @@ public class SensorService {
     public SensorResponseDTO registerSensor(SensorDTO sensorDTO) {
 
         sensorRepository.findByName(sensorDTO.name()).ifPresent(sensor -> {
-            throw new ConflictException("Sensor " + sensor.getName() + " já existe");
+            throw new ConflictException(ErrorCode.SENSOR_NAME_DUPLICATE,
+                "Sensor " + sensor.getName() + " já existe.");
         });
 
         Sensor newSensor = new Sensor();

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
@@ -47,7 +48,8 @@ public class GroupService {
     @Transactional
     public DeviceGroupResponseDTO createGroup(CreateGroupRequest request) {
         if (groupRepository.existsByName(request.name())) {
-            throw new ConflictException("Grupo '" + request.name() + "' já existe.");
+            throw new ConflictException(ErrorCode.CONFLICT,
+                "Grupo '" + request.name() + "' já existe.");
         }
         DeviceGroup group = new DeviceGroup();
         group.setName(request.name());
@@ -90,10 +92,12 @@ public class GroupService {
 
         DeviceGroup group = findGroupOrThrow(groupId);
         Device device = deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND,
+                    "Device " + deviceId + " não encontrado."));
 
         if (membershipRepository.existsByDeviceDeviceIdAndGroupGroupId(deviceId, groupId)) {
-            throw new ConflictException("Device " + deviceId + " já pertence ao grupo " + groupId + ".");
+            throw new ConflictException(ErrorCode.GROUP_MEMBERSHIP_EXISTS,
+                "Device " + deviceId + " já pertence ao grupo " + groupId + ".");
         }
 
         String[] actor = currentActor();
@@ -108,7 +112,7 @@ public class GroupService {
 
         DeviceGroupMembership membership = membershipRepository
                 .findByDeviceDeviceIdAndGroupGroupId(deviceId, groupId)
-                .orElseThrow(() -> new ResourceNotFoundException(
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RESOURCE_NOT_FOUND,
                         "Device " + deviceId + " não pertence ao grupo " + groupId + "."));
         membershipRepository.delete(membership);
         log.info("Device {} removido do grupo {}", deviceId, groupId);
@@ -121,7 +125,7 @@ public class GroupService {
         if (!isAdmin()) {
             String actorId = currentActorId();
             if (actorId == null || !assignmentRepository.existsByIdKeycloakUserIdAndGroupGroupId(actorId, groupId)) {
-                throw new ResourceNotFoundException("Grupo " + groupId + " não encontrado.");
+                throw new ResourceNotFoundException(ErrorCode.GROUP_NOT_FOUND, "Grupo " + groupId + " não encontrado.");
             }
         }
 
@@ -167,7 +171,7 @@ public class GroupService {
 
         UserGroupAssignment target = assignmentRepository
                 .findByIdKeycloakUserIdAndGroupGroupId(keycloakUserId, groupId)
-                .orElseThrow(() -> new ResourceNotFoundException(
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND,
                         "Usuário " + keycloakUserId + " não pertence ao grupo " + groupId + "."));
 
         if (target.getRole() == GroupRole.OWNER && !isAdmin()) {
@@ -188,7 +192,7 @@ public class GroupService {
 
         UserGroupAssignment assignment = assignmentRepository
                 .findByIdKeycloakUserIdAndGroupGroupId(keycloakUserId, groupId)
-                .orElseThrow(() -> new ResourceNotFoundException(
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND,
                         "Usuário " + keycloakUserId + " não pertence ao grupo " + groupId + "."));
 
         if (assignment.getRole() == GroupRole.OWNER && !isAdmin()) {
@@ -208,7 +212,7 @@ public class GroupService {
         if (!isAdmin()) {
             String actorId = currentActorId();
             if (actorId == null || !assignmentRepository.existsByIdKeycloakUserIdAndGroupGroupId(actorId, groupId)) {
-                throw new ResourceNotFoundException("Grupo " + groupId + " não encontrado.");
+                throw new ResourceNotFoundException(ErrorCode.GROUP_NOT_FOUND, "Grupo " + groupId + " não encontrado.");
             }
         }
 
@@ -221,7 +225,7 @@ public class GroupService {
 
     private DeviceGroup findGroupOrThrow(String groupId) {
         return groupRepository.findByGroupId(groupId)
-                .orElseThrow(() -> new ResourceNotFoundException("Grupo " + groupId + " não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.GROUP_NOT_FOUND, "Grupo " + groupId + " não encontrado."));
     }
 
     private boolean isAdmin() {

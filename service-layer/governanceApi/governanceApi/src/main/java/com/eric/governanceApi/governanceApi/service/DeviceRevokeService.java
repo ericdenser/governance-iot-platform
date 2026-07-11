@@ -15,6 +15,7 @@ import org.springframework.web.client.RestClient;
 
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
+import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
@@ -52,12 +53,14 @@ public class DeviceRevokeService {
 
         log.info("Iniciando processo de revogação para o dispositivo ID: {}", deviceId);
         Device device = deviceRepository.findByDeviceId(deviceId)
-            .orElseThrow(() -> new ResourceNotFoundException("Device " + deviceId + " not found"));
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND,
+                "Device " + deviceId + " não encontrado."));
 
         
         if (device.getStatus() == DeviceStatus.REVOKED) {
             log.warn("Device {} already revoked.", deviceId);
-            throw new ConflictException("Device " + deviceId + " ja revogado");
+            throw new ConflictException(ErrorCode.INVALID_STATE_TRANSITION,
+                "Device " + deviceId + " já revogado.");
         }
 
         device.setStatus(DeviceStatus.REVOKED);
@@ -94,7 +97,8 @@ public class DeviceRevokeService {
             log.info("Broker updated.");
         } catch (ResourceAccessException e) {
             log.error("Container infra-executor (Go) está offline ou inacessível. Causa raiz: {}", e.getMessage());
-            throw new InfrastructureException("O serviço de infraestrutura do Broker está offline. A revogação foi cancelada para manter a consistência.");
+            throw new InfrastructureException(ErrorCode.INFRASTRUCTURE_UNAVAILABLE,
+                "O serviço de infraestrutura do Broker está offline. A revogação foi cancelada para manter a consistência.");
             
         } catch (Exception e) {
             log.error("Falha inesperada ao tentar comunicar com GO:", e);

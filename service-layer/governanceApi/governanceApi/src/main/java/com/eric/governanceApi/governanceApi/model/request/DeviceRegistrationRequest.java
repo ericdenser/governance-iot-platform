@@ -19,6 +19,7 @@ public class DeviceRegistrationRequest {
     private String publicKey;
 
     @NotBlank
-    @Pattern(regexp = ValidationPatterns.UUID_REGEX, message = "provisioningToken " + ValidationPatterns.UUID_MESSAGE)
+    @Pattern(regexp = ValidationPatterns.PROVISIONING_TOKEN_REGEX,
+             message = "provisioningToken " + ValidationPatterns.PROVISIONING_TOKEN_MESSAGE)
     private String provisioningToken;
 }
