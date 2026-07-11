@@ -1,0 +1,114 @@
+menu "WiFi Manager Configuration"
+
+    config WIFI_SSID
+        string "Main SSID"
+        default "Myssid"
+
+    config WIFI_PASSWORD
+        string "Main Password"
+        default "Mypassword"
+
+    config WIFI_MAX_RETRIES
+        int "Max Retries"
+        default 5
+
+    choice WIFI_FAILURE_STRATEGY
+        prompt "Recovery Strategy on Failure"
+        default WIFI_RECOVERY_RESET
+        help
+            Define o comportamento quando o número máximo de tentativas é atingido.
+
+        config WIFI_RECOVERY_RESET
+            bool "System Reset"
+            help
+                Reinicia o ESP32 automaticamente (esp_restart).
+
+        config WIFI_RECOVERY_SWAP
+            bool "Swap SSID (Try Backup Network)"
+            help
+                Tenta conectar em uma rede secundária definida abaixo.
+                Se a rede secundária também falhar, o sistema reinicia.
+
+        config WIFI_RECOVERY_NONE
+            bool "Keep Idle (Manual Handling)"
+            help
+                Apenas para o driver e define o estado como FAILED.
+                A aplicação deve decidir o que fazer.
+    endchoice
+
+    # CREDENCIAIS DE BACKUP (Só aparecem se SWAP for escolhido)
+    config WIFI_BACKUP_SSID
+        string "Backup SSID"
+        depends on WIFI_RECOVERY_SWAP
+        default "Backup_Network"
+
+    config WIFI_BACKUP_PASSWORD
+        string "Backup Password"
+        depends on WIFI_RECOVERY_SWAP
+        default ""
+
+endmenu
+
+menu "Governance IoT"
+
+    config GOV_MQTT_BROKER_URI
+        string "MQTT Broker URI"
+        default "mqtts://xxx.xxx.xx.xx:8883"
+        help
+            URI completa do broker MQTT. O esquema define o transporte:
+              mqtts://host:8883        — TLS direto
+              mqtt://host:1883         — sem TLS
+            Exemplos:
+              mqtts://xxx.xxx.xx.xx:8883
+              mqtts://iot.mackenzie.br:8883
+
+    config GOV_GPS_POWER_PIN
+        int "GPS power control GPIO"
+        default 5
+        help
+            GPIO que controla o transistor PNP de alimentação do módulo GPS.
+            Level 1 = GPS ligado, level 0 = desligado.
+
+    config GOV_GPS_UART_TX_PIN
+        int "GPS UART TX GPIO (ESP TX → GPS RX)"
+        default 17
+
+    config GOV_GPS_UART_RX_PIN
+        int "GPS UART RX GPIO (ESP RX ← GPS TX)"
+        default 18
+
+    config GOV_GPS_UART_PORT
+        int "GPS UART port number"
+        default 1
+
+    config GOV_TELEMETRY_INTERVAL_MS
+        int "Telemetry publish interval (ms)"
+        default 5000
+
+    config GOV_STATUS_INTERVAL_MS
+        int "Status publish interval (ms)"
+        default 30000
+
+    config GOV_MAX_WIFI_RETRIES
+        int "Max WiFi connect retries antes de setar erro"
+        default 10
+
+    config GOV_MAX_CRASH_COUNT
+        int "Max crash count antes de invalidar firmware"
+        default 3
+
+    config GOV_GPS_SYNC_EVERY_N_BOOTS
+        int "Corrigir DS3231 com GPS a cada N boots"
+        default 24
+
+    config GOV_EXTERNAL_TIME_TIMEOUT_MS
+        int "Timeout do get_external_time hook (ms)"
+        default 45000
+        help
+            Tempo máximo que o hook get_external_time tem pra obter hora.
+            Cold start de GPS pode passar de 30s. Aumenta se GPS demora
+            demais no boot inicial (ou considera ligar o GPS antes de
+            governance_core_init pra warm start).
+
+endmenu
+

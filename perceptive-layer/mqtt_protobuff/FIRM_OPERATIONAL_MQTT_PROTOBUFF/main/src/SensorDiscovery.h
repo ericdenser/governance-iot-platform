@@ -8,10 +8,11 @@
 #define I2C_SCL_PIN      GPIO_NUM_9
 #define I2C_FREQ_HZ      100000
 
-#define GPS_UART_PORT    UART_NUM_1
-#define GPS_UART_RX_PIN  GPIO_NUM_18  // NEO TX → ESP RX
-#define GPS_UART_TX_PIN  GPIO_NUM_17  // NEO RX → ESP TX
-#define GPS_POWER_PIN    GPIO_NUM_5  // NPN base (via 1kΩ) → corta VCC do GPS pelo PNP
+// GPS: vem do Kconfig do governance_core (menu Governance IoT)
+#define GPS_UART_PORT    ((uart_port_t)CONFIG_GOV_GPS_UART_PORT)
+#define GPS_UART_RX_PIN  ((gpio_num_t)CONFIG_GOV_GPS_UART_RX_PIN)  // NEO TX → ESP RX
+#define GPS_UART_TX_PIN  ((gpio_num_t)CONFIG_GOV_GPS_UART_TX_PIN)  // NEO RX → ESP TX
+#define GPS_POWER_PIN    ((gpio_num_t)CONFIG_GOV_GPS_POWER_PIN)    // NPN base → corta VCC do GPS
 
 // ---- Endereços I2C conhecidos ------------------------------------------------
 #define I2C_ADDR_BMP280_A  0x76  // SDO = GND
