@@ -11,15 +11,15 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
-import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
-import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.util.matcher.RequestHeaderRequestMatcher;
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.DefaultCookieSerializer;
 
 @EnableWebSecurity
 @Configuration
@@ -30,12 +30,25 @@ public class SecurityConfig {
     @Autowired
     private ClientRegistrationRepository clientRegistrationRepository;
 
+    @Autowired
+    private AdminOnlyFilter adminOnlyFilter;
+
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
     @Bean
-    public OAuth2AuthorizedClientRepository authorizedClientRepository() {
-        return new HttpSessionOAuth2AuthorizedClientRepository();
+    public CookieSerializer cookieSerializer() {
+        DefaultCookieSerializer serializer = new DefaultCookieSerializer();
+        serializer.setCookieName("SESSION");
+        serializer.setSameSite("Lax");
+        return serializer;
+    }
+
+    @Bean
+    public CookieCsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repo = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repo.setCookieCustomizer(cookie -> cookie.sameSite("Strict"));
+        return repo;
     }
 
     @Bean
@@ -59,10 +72,11 @@ public class SecurityConfig {
                 ))
             )
             .csrf(csrf -> csrf
-                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                .spa()
+                .csrfTokenRepository(csrfTokenRepository())
             )
             .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
+            .addFilterAfter(adminOnlyFilter, UsernamePasswordAuthenticationFilter.class)
             .exceptionHandling(ex -> ex
                 .defaultAuthenticationEntryPointFor(
                     new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
@@ -93,10 +107,32 @@ public class SecurityConfig {
     }
 
     private LogoutSuccessHandler oidcLogoutSuccessHandler() {
-        OidcClientInitiatedLogoutSuccessHandler handler =
+        OidcClientInitiatedLogoutSuccessHandler oidcHandler =
                 new OidcClientInitiatedLogoutSuccessHandler(this.clientRegistrationRepository);
-        handler.setPostLogoutRedirectUri(frontendUrl + "/");
-        handler.setDefaultTargetUrl(frontendUrl + "/");
-        return handler;
+        oidcHandler.setPostLogoutRedirectUri(frontendUrl + "/");
+        oidcHandler.setDefaultTargetUrl(frontendUrl + "/");
+
+        // XHR (SPA) → 200 JSON com logoutUrl; navegação normal → 302 tradicional
+        return (request, response, authentication) -> {
+            String requestedWith = request.getHeader("X-Requested-With");
+            boolean isXhr = "XMLHttpRequest".equals(requestedWith);
+
+            if (!isXhr) {
+                oidcHandler.onLogoutSuccess(request, response, authentication);
+                return;
+            }
+
+            // Reusa a lógica do OidcClientInitiatedLogoutSuccessHandler pra montar a URL
+            // sem redirecionar: wrap num response fake que só coleta o Location.
+            LocationCapturingResponse capture = new LocationCapturingResponse(response);
+            oidcHandler.onLogoutSuccess(request, capture, authentication);
+
+            String logoutUrl = capture.getCapturedLocation();
+            if (logoutUrl == null) logoutUrl = frontendUrl + "/";
+
+            response.setStatus(HttpStatus.OK.value());
+            response.setContentType("application/json");
+            response.getWriter().write("{\"logoutUrl\":\"" + logoutUrl.replace("\"", "\\\"") + "\"}");
+        };
     }
 }
