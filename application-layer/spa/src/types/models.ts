@@ -269,6 +269,33 @@ export interface KeycloakUserDTO {
   keycloakUserId: string
   username: string
   email: string | null
+  firstName: string | null
+  lastName: string | null
+  enabled: boolean
+  emailVerified: boolean
+}
+
+export interface CreateUserRequest {
+  username: string
+  email?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  enabled?: boolean
+  emailVerified?: boolean
+  temporaryPassword?: string | null
+}
+
+export interface UpdateUserRequest {
+  email?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  enabled?: boolean
+  emailVerified?: boolean
+}
+
+export interface ResetPasswordRequest {
+  newPassword: string
+  temporary?: boolean
 }
 
 // ── Spring Data Page envelope ───────────────────────────────────────────────

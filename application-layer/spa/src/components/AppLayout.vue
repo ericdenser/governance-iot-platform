@@ -40,6 +40,7 @@ const navItems = computed(() => {
     { to: '/groups',   icon: 'users',          label: 'Grupos' },
   ]
   if (authStore.isAdmin) {
+    items.push({ to: '/users', icon: 'user-plus', label: 'Usuários' })
     items.push({ to: '/audit', icon: 'file-text', label: 'Auditoria' })
   }
   return items
@@ -47,21 +48,27 @@ const navItems = computed(() => {
 
 const isActive = (path: string) => route.path === path || route.path.startsWith(path + '/')
 
-const fazerLogout = () => {
+const fazerLogout = async () => {
   const match = document.cookie.match(new RegExp('(^| )XSRF-TOKEN=([^;]+)'))
-  const csrfToken = match ? match[2] : ''
-  const form = document.createElement('form')
-  form.method = 'POST'
-  form.action = '/api/logout'
-  if (csrfToken) {
-    const input = document.createElement('input')
-    input.type = 'hidden'
-    input.name = '_csrf'
-    input.value = csrfToken
-    form.appendChild(input)
+  const csrfToken = match ? decodeURIComponent(match[2]) : ''
+  try {
+    const res = await fetch('/api/logout', {
+      method: 'POST',
+      headers: {
+        'X-XSRF-TOKEN': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      window.location.href = '/'
+      return
+    }
+    const { logoutUrl } = await res.json()
+    window.location.href = logoutUrl || '/'
+  } catch {
+    window.location.href = '/'
   }
-  document.body.appendChild(form)
-  form.submit()
 }
 </script>
 
@@ -335,6 +342,10 @@ const fazerLogout = () => {
 .nav-icon[data-icon="users"] {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+}
+.nav-icon[data-icon="user-plus"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpath d='M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='8.5' cy='7' r='4'/%3E%3Cline x1='20' y1='8' x2='20' y2='14'/%3E%3Cline x1='23' y1='11' x2='17' y2='11'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpath d='M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='8.5' cy='7' r='4'/%3E%3Cline x1='20' y1='8' x2='20' y2='14'/%3E%3Cline x1='23' y1='11' x2='17' y2='11'/%3E%3C/svg%3E");
 }
 .nav-icon[data-icon="file-text"] {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpath d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/%3E%3Cpolyline points='14 2 14 8 20 8'/%3E%3Cline x1='16' y1='13' x2='8' y2='13'/%3E%3Cline x1='16' y1='17' x2='8' y2='17'/%3E%3Cpolyline points='10 9 9 9 8 9'/%3E%3C/svg%3E");
