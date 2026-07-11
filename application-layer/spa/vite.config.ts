@@ -17,14 +17,28 @@ export default defineConfig({
   },
 
   server: {
+    headers: {
+      'Content-Security-Policy':
+        "default-src 'self'; " +
+        "script-src 'self'; " +
+        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
+        "img-src 'self' data:; " +
+        "connect-src 'self' ws: wss:; " +
+        "object-src 'none'; " +
+        "base-uri 'self'; " +
+        "form-action 'self'; " +
+        "frame-ancestors 'none'",
+      'Referrer-Policy': 'same-origin',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+    },
     proxy: {
-      // Toda requisição que o Vue fizer começando com '/api'
       '/api': {
         target: 'http://localhost:8083',
         changeOrigin: true,
-        // Remove o '/api' antes de entregar pro Spring
-        rewrite: (path) => path.replace(/^\/api/, '') 
-      }
-    }
-  }
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
 })
