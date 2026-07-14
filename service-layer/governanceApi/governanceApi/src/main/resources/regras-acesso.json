@@ -55,6 +55,10 @@
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
 
+  "/realtime/stream": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+
   "/error": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
