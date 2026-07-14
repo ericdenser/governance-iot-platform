@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
@@ -22,35 +23,43 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class TransitionDetector {
 
-    SnapshotRepository snapshotRepository;
-    
+    private final SnapshotRepository snapshotRepository;
+
+    // Último estado conhecido por device, em memória.
+    private final Map<String, CachedState> lastKnown = new ConcurrentHashMap<>();
+
     public TransitionDetector (SnapshotRepository snapshotRepository) {
         this.snapshotRepository = snapshotRepository;
     }
 
 
-    public DeviceEvent process(StatusDTO dto) {
+    // synchronized: a thread do container e a do PEL sweep podem processar
+    // status do mesmo device ao mesmo tempo; serializar evita evento duplicado.
+    public synchronized DeviceEvent process(StatusDTO dto) {
 
-        DeviceSnapshot deviceSnapshot =
-                snapshotRepository.findById(dto.deviceId()).orElse(null);
-
-        if (deviceSnapshot == null) {
-
-            log.info("Nenhum snapshot encontrado para device_id {}", dto.deviceId());
-
-            deviceSnapshot = new DeviceSnapshot();
-            deviceSnapshot.setDeviceId(dto.deviceId());
+        CachedState previous = lastKnown.get(dto.deviceId());
+        if (previous == null) {
+            // única leitura do Postgres por device após boot
+            previous = snapshotRepository.findById(dto.deviceId())
+                    .map(CachedState::from)
+                    .orElseGet(() -> {
+                        log.info("Nenhum snapshot encontrado para device_id {}", dto.deviceId());
+                        return CachedState.MISSING;
+                    });
         }
 
-        // Busca ultimo estado
-        DeviceState previousState = deviceSnapshot.getStatus();
-        String previousSensors = deviceSnapshot.getActiveSensors();
-        
-        // Atualiza ultimo estado
-        deviceSnapshot.updateFrom(dto);
+        DeviceState previousState = previous.status();
+        String previousSensors = previous.activeSensors();
 
-        // Persiste
-        snapshotRepository.save(deviceSnapshot);
+        // Persiste só quando algo relevante mudou
+        CachedState current = CachedState.from(dto);
+        if (!current.equals(previous)) {
+            DeviceSnapshot deviceSnapshot = new DeviceSnapshot();
+            deviceSnapshot.setDeviceId(dto.deviceId());
+            deviceSnapshot.updateFrom(dto);
+            snapshotRepository.save(deviceSnapshot);
+        }
+        lastKnown.put(dto.deviceId(), current);
 
         // Check transição
         DeviceEvent stateEvent = detectTransition(dto, previousState);
@@ -198,7 +207,22 @@ public class TransitionDetector {
 
 
 
+ // Campos comparados pra decidir se o snapshot precisa ir pro Postgres.
+    private record CachedState(DeviceState status, String activeSensors,
+                               String firmwareVersion, String ssid, String mac) {
 
+        static final CachedState MISSING = new CachedState(null, null, null, null, null);
+
+        static CachedState from(DeviceSnapshot s) {
+            return new CachedState(s.getStatus(), s.getActiveSensors(),
+                    s.getFirmwareVersion(), s.getSsid(), s.getMac());
+        }
+
+        static CachedState from(StatusDTO dto) {
+            return new CachedState(dto.status(), dto.activeSensors(),
+                    dto.firmwareVersion(), dto.ssid(), dto.mac());
+        }
+    }
 
     
 }
