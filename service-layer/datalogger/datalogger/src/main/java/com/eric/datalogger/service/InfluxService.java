@@ -66,18 +66,34 @@ public class InfluxService {
     //  Write
     // -------------------------------------------------------------------------
 
-    public void writeTelemetry(TelemetryDTO dto) {
-        if (dto.readings() == null || dto.readings().isEmpty()) return;
+    /**
+     * Grava um lote inteiro em 1 request HTTP (writePoints manda tudo num
+     * único body line-protocol). Ponto a ponto era 1 request por mensagem —
+     * a 2k msg/s o consumer não acompanha e o MAXLEN do stream começa a
+     * descartar mensagens ainda não lidas.
+     *
+     * Reescrever o mesmo ponto (measurement + tag + timestamp iguais) é
+     * overwrite no Influx, então reprocessar um batch via PEL sweep é seguro.
+     */
+    public void writeTelemetryBatch(List<TelemetryDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) return;
 
-        try {
+        List<Point> points = new ArrayList<>(dtos.size());
+        for (TelemetryDTO dto : dtos) {
+            if (dto.readings() == null || dto.readings().isEmpty()) continue;
+
             Instant ts = dto.deviceTimestamp() != null ? dto.deviceTimestamp() : Instant.now();
             Point point = Point.measurement("telemetry")
                 .addTag("device_id", dto.deviceId())
                 .time(ts, WritePrecision.NS);
 
             dto.readings().forEach((key, value) -> point.addField(key, value));
+            points.add(point);
+        }
+        if (points.isEmpty()) return;
 
-            writeApi.writePoint(point);
+        try {
+            writeApi.writePoints(points);
         } catch (InfluxException e) {
             throw new RuntimeException(e);
         }

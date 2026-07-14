@@ -46,12 +46,19 @@ public class TelemetryStreamConsumer {
     private static final long MAX_DELIVERIES = 5;
     private static final Duration SWEEP_MIN_IDLE = Duration.ofSeconds(60);
 
+    private static final int FLUSH_MAX_POINTS = 500;
+
     private final RedisConnectionFactory connectionFactory;
     private final StringRedisTemplate redisTemplate;
     private final InfluxService influxService;
     private final ObjectMapper objectMapper;
 
     private final String consumerName;
+
+    // Buffer do micro-batch: acumula pontos e ACKs até o flush.
+    private final Object bufferLock = new Object();
+    private final List<TelemetryDTO> bufferDtos = new ArrayList<>();
+    private final List<RecordId> bufferIds = new ArrayList<>();
 
     private StreamMessageListenerContainer<String, MapRecord<String, String, String>> container;
     private Subscription subscription;
@@ -104,12 +111,38 @@ public class TelemetryStreamConsumer {
             return;
         }
 
-        // Erro transitório (Influx fora do ar etc.) — sem ACK, o sweep reentrega.
+        // Micro-batch: acumula e grava em lote (1 request HTTP por flush).
+        // O ACK só acontece após o flush bem-sucedido — se o Influx cair,
+        // as mensagens ficam no PEL e o sweep reentrega.
+        synchronized (bufferLock) {
+            bufferDtos.add(dto);
+            bufferIds.add(record.getId());
+            if (bufferDtos.size() >= FLUSH_MAX_POINTS) {
+                flushLocked();
+            }
+        }
+    }
+
+    // Drena batches parciais quando o tráfego é baixo 
+    @Scheduled(fixedDelay = 1000)
+    public void flushBuffered() {
+        synchronized (bufferLock) {
+            if (!bufferDtos.isEmpty()) flushLocked();
+        }
+    }
+
+    private void flushLocked() {
         try {
-            influxService.writeTelemetry(dto);
-            redisTemplate.opsForStream().acknowledge(GROUP, record);
+            influxService.writeTelemetryBatch(bufferDtos);
+            redisTemplate.opsForStream()
+                    .acknowledge(STREAM, GROUP, bufferIds.toArray(RecordId[]::new));
         } catch (Exception e) {
-            log.error("Falha processando telemetry id={}: {}", record.getId(), e.getMessage());
+            // Sem ACK: o lote inteiro continua no PEL e o sweep reentrega.
+            // Reescrita no Influx é idempotente (mesmo timestamp+tag = overwrite).
+            log.error("Falha gravando batch de {} pontos no Influx: {}", bufferDtos.size(), e.getMessage());
+        } finally {
+            bufferDtos.clear();
+            bufferIds.clear();
         }
     }
 
@@ -187,6 +220,8 @@ public class TelemetryStreamConsumer {
     public void stop() {
         if (subscription != null) subscription.cancel();
         if (container != null) container.stop();
+        // drena o que sobrou no buffer; se falhar, o PEL cobre no próximo boot
+        flushBuffered();
     }
 
 
