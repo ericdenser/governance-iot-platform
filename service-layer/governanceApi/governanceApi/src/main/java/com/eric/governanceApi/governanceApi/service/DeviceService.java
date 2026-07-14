@@ -80,13 +80,12 @@ public class DeviceService {
         ));
     }
 
-    /**
-     * Payload minimal pro mapa em tempo real. Retorna só devices com coord válida
-     * (lat e lon presentes no Hash). RBAC igual ao listAll.
-     *
-     * Sem paginação — mapa consome tudo do escopo. Se o escopo do actor tiver
-     * ~10k devices, ainda é 1 pipeline Redis + 1 query Postgres.
-     */
+    
+    // Payload minimal pro mapa em tempo real. Retorna só devices com coord válida
+    // (lat e lon presentes no Hash). RBAC igual ao listAll.
+     
+     // Sem paginação — mapa consome tudo do escopo. Se o escopo do actor tiver
+     // ~10k devices, ainda é 1 pipeline Redis + 1 query Postgres. Pensar em solucao melhor 
     @Transactional(readOnly = true)
     public java.util.List<DeviceMapPositionDTO> listMapPositions() {
         java.util.List<String> deviceIds;

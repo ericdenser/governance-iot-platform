@@ -41,6 +41,14 @@ spring:
 govapi:
   url: ${GOVAPI_URL:http://localhost:8082}
 
+app:
+  streams:
+    # Identidade estável do consumer no grupo (sem PID) — herda o próprio PEL no restart.
+    # Se escalar horizontal, cada réplica precisa de um REPLICA_ID distinto.
+    replica-id: ${REPLICA_ID:0}
+    # Intervalo do sweeper que reivindica mensagens pendentes órfãs (XPENDING + XCLAIM)
+    sweep-interval-ms: 60000
+
 # Configuração do webhook dispatcher
 webhook:
   timeout-ms: 5000

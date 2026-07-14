@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 
 import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
 import com.eric.eventhandler.event_handler.repository.EventLogRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.lettuce.core.RedisBusyException;
@@ -41,30 +42,35 @@ public class StatusStreamConsumer {
     private static final String STREAM = "stream:status";
     private static final String GROUP = "eventhandler-group";
 
+    private static final int SWEEP_BATCH = 100;
+    private static final long MAX_DELIVERIES = 5;
+    private static final Duration SWEEP_MIN_IDLE = Duration.ofSeconds(60);
+
     private final ObjectMapper objectMapper;
     private final EventLogRepository eventLogRepository;
     private final StringRedisTemplate redisTemplate;
-    private final RedisConnectionFactory redisConnectionFactory; 
+    private final RedisConnectionFactory redisConnectionFactory;
     private final EventManagerService eventManagerService;
+
+    private final String consumerName;
 
     private StreamMessageListenerContainer<String, MapRecord<String, String, String>> container;
     private Subscription subscription;
-    private String consumerName;
 
 
-    public StatusStreamConsumer(EventLogRepository eventLogRepository, RedisConnectionFactory redisConnectionFactory, StringRedisTemplate redisTemplate, EventManagerService eventManagerService, ObjectMapper objectMapper) {
+    public StatusStreamConsumer(EventLogRepository eventLogRepository, RedisConnectionFactory redisConnectionFactory, StringRedisTemplate redisTemplate, EventManagerService eventManagerService, ObjectMapper objectMapper,
+                                @Value("${app.streams.replica-id:0}") String replicaId) {
         this.objectMapper = objectMapper;
         this.eventLogRepository = eventLogRepository;
         this.redisTemplate = redisTemplate;
         this.redisConnectionFactory = redisConnectionFactory;
         this.eventManagerService = eventManagerService;
-
+        this.consumerName = "eventhandler-status-" + replicaId;
     }
-    
+
     @PostConstruct
     private void start() {
         createGroupIfMissing();
-        consumerName = buildConsumerName();
 
         var options = StreamMessageListenerContainer
                     .StreamMessageListenerContainerOptions.builder()
@@ -92,9 +98,24 @@ public class StatusStreamConsumer {
             return;
         }
 
-        String payload = record.getValue().get("payload");
+        // Erro permanente (payload inválido) — retentar nunca vai dar certo,
+        // então ACK direto pra mensagem não voltar via sweep.
+        StatusDTO dto;
         try {
-            StatusDTO dto = objectMapper.readValue(payload, StatusDTO.class);
+            dto = objectMapper.readValue(record.getValue().get("payload"), StatusDTO.class);
+        } catch (JsonProcessingException e) {
+            log.warn("Payload status inválido, descartando id={}: {}", messageId, e.getMessage());
+            redisTemplate.opsForStream().acknowledge(GROUP, record);
+            return;
+        }
+        if (dto.deviceId() == null || dto.deviceId().isBlank()) {
+            log.warn("Status sem deviceId (formato legado?), descartando id={} mac={}", messageId, dto.mac());
+            redisTemplate.opsForStream().acknowledge(GROUP, record);
+            return;
+        }
+
+        // erro transitorio, sweep reentrega
+        try {
             eventManagerService.handleStatus(dto, messageId);
             redisTemplate.opsForStream().acknowledge(GROUP, record);
         } catch (Exception e) {
@@ -115,11 +136,44 @@ public class StatusStreamConsumer {
         }
     }
 
-    private String buildConsumerName() {
+
+    @Scheduled(fixedDelayString = "${app.streams.sweep-interval-ms:60000}", initialDelay = 15000)
+    public void sweepPendingMessages() {
         try {
-            return InetAddress.getLocalHost().getHostName() + "-" + ProcessHandle.current().pid();
+            StreamOperations<String, String, String> ops = redisTemplate.opsForStream();
+            PendingMessages pending = ops.pending(STREAM, GROUP, Range.unbounded(), SWEEP_BATCH);
+            if (pending == null || pending.isEmpty()) return;
+
+            List<RecordId> toClaim = new ArrayList<>();
+            for (PendingMessage pm : pending) {
+                if (pm.getElapsedTimeSinceLastDelivery().compareTo(SWEEP_MIN_IDLE) < 0) continue;
+                if (pm.getTotalDeliveryCount() > MAX_DELIVERIES) {
+                    log.error("Msg {} descartada após {} entregas (poison)", pm.getId(), pm.getTotalDeliveryCount());
+                    ops.acknowledge(STREAM, GROUP, pm.getId());
+                    continue;
+                }
+                toClaim.add(pm.getId());
+            }
+            if (toClaim.isEmpty()) return;
+
+            List<MapRecord<String, String, String>> claimed = ops.claim(STREAM, GROUP, consumerName,
+                    XClaimOptions.minIdle(SWEEP_MIN_IDLE).ids(toClaim));
+
+            // id pedido mas não retornado = entrada já trimada do stream (MAXLEN) — ACK limpa o PEL
+            Set<RecordId> returned = new HashSet<>();
+            for (MapRecord<String, String, String> record : claimed) {
+                returned.add(record.getId());
+            }
+            for (RecordId id : toClaim) {
+                if (!returned.contains(id)) ops.acknowledge(STREAM, GROUP, id);
+            }
+
+            claimed.forEach(this::handleRecord);
+            if (!claimed.isEmpty()) {
+                log.info("PEL sweep: {} mensagens reivindicadas e reprocessadas em {}", claimed.size(), STREAM);
+            }
         } catch (Exception e) {
-            return "consumer-" + UUID.randomUUID();
+            log.warn("PEL sweep falhou em {}: {}", STREAM, e.getMessage());
         }
     }
 

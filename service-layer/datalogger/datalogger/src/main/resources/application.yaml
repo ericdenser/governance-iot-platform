@@ -19,3 +19,11 @@ spring:
           max-active: 16
           max-idle: 8
           min-idle: 2
+
+app:
+  streams:
+    # Identidade estável do consumer no grupo (sem PID) — herda o próprio PEL no restart.
+    # Se escalar horizontal, cada réplica precisa de um REPLICA_ID distinto.
+    replica-id: ${REPLICA_ID:0}
+    # Intervalo do sweeper que reivindica mensagens pendentes órfãs (XPENDING + XCLAIM)
+    sweep-interval-ms: 60000

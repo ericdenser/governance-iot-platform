@@ -1,22 +1,33 @@
 package com.eric.eventhandler.event_handler.service;
 
-import java.net.InetAddress;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStreamCommands.XClaimOptions;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.PendingMessage;
+import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.stream.StreamMessageListenerContainer;
 import org.springframework.data.redis.stream.Subscription;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.annotation.PostConstruct;
@@ -36,28 +47,35 @@ public class HotStateProjector {
     private static final String HASH_PREFIX = "device:";
     private static final String HASH_SUFFIX = ":last";
 
+    private static final int SWEEP_BATCH = 100;
+    private static final long MAX_DELIVERIES = 5;
+    private static final Duration SWEEP_MIN_IDLE = Duration.ofSeconds(60);
+
     private final RedisConnectionFactory connectionFactory;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
+    // Estável entre restarts (sem PID) — herda o próprio PEL ao subir de novo.
+    private final String consumerName;
+
     private StreamMessageListenerContainer<String, MapRecord<String, String, String>> container;
     private Subscription statusSubscription;
     private Subscription telemetrySubscription;
-    private String consumerName;
 
     public HotStateProjector(RedisConnectionFactory connectionFactory,
                              StringRedisTemplate redisTemplate,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             @Value("${app.streams.replica-id:0}") String replicaId) {
         this.connectionFactory = connectionFactory;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.consumerName = "eventhandler-hotstate-" + replicaId;
     }
 
     @PostConstruct
     public void start() {
         ensureGroup(STREAM_STATUS);
         ensureGroup(STREAM_TELEMETRY);
-        consumerName = buildConsumerName();
 
         var options = StreamMessageListenerContainer
                 .StreamMessageListenerContainerOptions.builder()
@@ -87,10 +105,9 @@ public class HotStateProjector {
     private void handleStatus(MapRecord<String, String, String> record) {
         String payload = record.getValue().get("payload");
         String envelopeTimestamp = record.getValue().get("timestamp");
+        Map<String, Object> dto = parseOrDiscard(payload, record);
+        if (dto == null) return;
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> dto = objectMapper.readValue(payload, Map.class);
-
             String deviceId = strOrNull(dto.get("deviceId"));
             if (deviceId == null) {
                 redisTemplate.opsForStream().acknowledge(GROUP, record);
@@ -113,10 +130,9 @@ public class HotStateProjector {
     private void handleTelemetry(MapRecord<String, String, String> record) {
         String payload = record.getValue().get("payload");
         String envelopeTimestamp = record.getValue().get("timestamp");
+        Map<String, Object> dto = parseOrDiscard(payload, record);
+        if (dto == null) return;
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> dto = objectMapper.readValue(payload, Map.class);
-
             String deviceId = strOrNull(dto.get("deviceId"));
             if (deviceId == null) {
                 redisTemplate.opsForStream().acknowledge(GROUP, record);
@@ -139,6 +155,20 @@ public class HotStateProjector {
             redisTemplate.opsForStream().acknowledge(GROUP, record);
         } catch (Exception e) {
             log.error("Falha projetando telemetry id={}: {}", record.getId(), e.getMessage());
+        }
+    }
+
+    // Payload inválido é erro permanente: ACK e descarta.
+    // Retorna null quando descartou.
+    private Map<String, Object> parseOrDiscard(String payload, MapRecord<String, String, String> record) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> dto = objectMapper.readValue(payload, Map.class);
+            return dto;
+        } catch (JsonProcessingException e) {
+            log.warn("Payload inválido, descartando id={}: {}", record.getId(), e.getMessage());
+            redisTemplate.opsForStream().acknowledge(GROUP, record);
+            return null;
         }
     }
 
@@ -172,11 +202,51 @@ public class HotStateProjector {
         }
     }
 
-    private String buildConsumerName() {
+    // Recupera mensagens presas no PEL (entregues sem ACK) dos dois streams.
+    // Poison messages (> MAX_DELIVERIES) são descartadas com ACK.
+    @Scheduled(fixedDelayString = "${app.streams.sweep-interval-ms:60000}", initialDelay = 15000)
+    public void sweepPendingMessages() {
+        sweepStream(STREAM_STATUS, this::handleStatus);
+        sweepStream(STREAM_TELEMETRY, this::handleTelemetry);
+    }
+
+    private void sweepStream(String stream,
+                             java.util.function.Consumer<MapRecord<String, String, String>> handler) {
         try {
-            return InetAddress.getLocalHost().getHostName() + "-" + ProcessHandle.current().pid();
+            StreamOperations<String, String, String> ops = redisTemplate.opsForStream();
+            PendingMessages pending = ops.pending(stream, GROUP, Range.unbounded(), SWEEP_BATCH);
+            if (pending == null || pending.isEmpty()) return;
+
+            List<RecordId> toClaim = new ArrayList<>();
+            for (PendingMessage pm : pending) {
+                if (pm.getElapsedTimeSinceLastDelivery().compareTo(SWEEP_MIN_IDLE) < 0) continue;
+                if (pm.getTotalDeliveryCount() > MAX_DELIVERIES) {
+                    log.error("Msg {} descartada após {} entregas (poison)", pm.getId(), pm.getTotalDeliveryCount());
+                    ops.acknowledge(stream, GROUP, pm.getId());
+                    continue;
+                }
+                toClaim.add(pm.getId());
+            }
+            if (toClaim.isEmpty()) return;
+
+            List<MapRecord<String, String, String>> claimed = ops.claim(stream, GROUP, consumerName,
+                    XClaimOptions.minIdle(SWEEP_MIN_IDLE).ids(toClaim));
+
+            // id pedido mas não retornado = entrada já trimada do stream (MAXLEN) — ACK limpa o PEL
+            Set<RecordId> returned = new HashSet<>();
+            for (MapRecord<String, String, String> record : claimed) {
+                returned.add(record.getId());
+            }
+            for (RecordId id : toClaim) {
+                if (!returned.contains(id)) ops.acknowledge(stream, GROUP, id);
+            }
+
+            claimed.forEach(handler);
+            if (!claimed.isEmpty()) {
+                log.info("PEL sweep: {} mensagens reivindicadas e reprocessadas em {}", claimed.size(), stream);
+            }
         } catch (Exception e) {
-            return "consumer-" + UUID.randomUUID();
+            log.warn("PEL sweep falhou em {}: {}", stream, e.getMessage());
         }
     }
 

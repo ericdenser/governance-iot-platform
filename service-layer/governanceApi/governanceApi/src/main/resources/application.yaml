@@ -79,8 +79,13 @@ govapi:
 
 app:
   hotstate:
-    # Intervalo do HotStatePersistenceScheduler (consolida Redis Hash -> cmdb)
+    # Intervalo do HotStatePersistenceScheduler 
     persist-interval-ms: 300000
+  streams:
+    
+    replica-id: ${REPLICA_ID:0}
+    # Intervalo do sweeper que reivindica mensagens pendentes órfãs (XPENDING + XCLAIM)
+    sweep-interval-ms: 60000
 
 provisioning:
   nvs-python-path: ${NVS_PYTHON_PATH:python3}

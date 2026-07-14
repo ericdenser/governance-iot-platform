@@ -91,11 +91,6 @@ public class InfluxService {
         "5s", "15s", "30s", "1m", "5m", "15m", "30m", "1h"
     );
 
-    /**
-     * Retorna telemetria de um device agregada por janela de tempo.
-     * {@code resolution} controla o tamanho da janela (ex: "1m", "5m", "1h").
-     * Regra de ouro: minutes / resolution ≤ ~300 pontos para não sobrecarregar a rede.
-     */
     public List<TelemetryPointDTO> queryTelemetry(String deviceId, int minutes, String resolution) {
         validateDeviceId(deviceId);
         if (!VALID_RESOLUTIONS.contains(resolution)) {

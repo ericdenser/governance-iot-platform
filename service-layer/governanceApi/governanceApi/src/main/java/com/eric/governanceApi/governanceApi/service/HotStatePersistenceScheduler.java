@@ -17,22 +17,11 @@ import com.eric.governanceApi.governanceApi.service.HotStateService.LiveState;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Consolida periodicamente o hot state (Redis Hash device:{id}:last) no cmdb:
- * last_seen, last_latitude, last_longitude e last_seen_persisted_at.
- *
- * Estratégia (Obj 11 Fase D4): sem SELECT de comparação no Postgres — um device
- * é "sujo" quando o last_seen do Hash é >= cutoff (timestamp do último run
- * bem-sucedido). No primeiro run pós-boot o cutoff é null e tudo que tem hot
- * state é persistido (full sync), o que auto-corrige restarts do govApi.
- *
- * Escrita via UPDATE cirúrgico em batch (JDBC) — nunca via entidade JPA, pra
- * não sobrescrever mudanças concorrentes de status/firmware feitas pelos
- * handlers de evento.
- *
- * Assume instância única do govApi. Se escalar horizontal, precisa de lock
- * distribuído (ex: ShedLock).
- */
+// Consolida periodicamente o hot state (Redis Hash device:{id}:last) no cmdb:
+// last_seen, last_latitude, last_longitude e last_seen_persisted_at.
+
+//(ShedLock futuramente para mais instancias).
+ 
 @Component
 @Slf4j
 public class HotStatePersistenceScheduler {

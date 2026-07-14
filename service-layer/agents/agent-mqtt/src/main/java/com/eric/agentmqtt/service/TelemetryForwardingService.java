@@ -6,10 +6,7 @@ import com.eric.agentmqtt.model.TelemetryDTO;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Publica DeviceTelemetry em stream:telemetry (Redis).
- * Antes: POST /datalogger/ingest no datalogger. Migrado para Redis Streams no Obj 11 (Fase B).
- */
+
 @Service
 @Slf4j
 public class TelemetryForwardingService {

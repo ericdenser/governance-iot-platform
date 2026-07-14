@@ -49,12 +49,6 @@
     			<groupId>org.springframework.boot</groupId>
     			<artifactId>spring-boot-starter-data-redis</artifactId>
 		</dependency>
-		<!--
-		  Jackson 2.x explícito. Spring Boot 4.0.5 já traz Jackson 3.x (tools.jackson),
-		  mas o código todo importa `com.fasterxml.jackson.*` — mantido pra evitar
-		  refactor massivo de imports em todos os serviços.
-		  Dívida técnica: unificar pra Jackson 3.x quando possível.
-		-->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>

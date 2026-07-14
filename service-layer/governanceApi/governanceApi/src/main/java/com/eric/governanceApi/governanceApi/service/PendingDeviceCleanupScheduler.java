@@ -26,11 +26,8 @@ public class PendingDeviceCleanupScheduler {
     private final DeviceRepository deviceRepository;
     private final DeviceGroupMembershipRepository membershipRepository;
 
-    /**
-     * Roda a cada 5 minutos. Remove devices criados no generate-package cujo token
-     * expirou sem que o ESP32 tenha completado o provisioning (status ainda PENDING).
-     * Tokens usados (used=true) apontam para devices já provisionados, não são tocados.
-     */
+    // Roda a cada 5 minutos. Remove devices criados no generate-package cujo token
+    // expirou sem que o ESP32 tenha completado o provisioning (status ainda PENDING).
     @Scheduled(fixedDelayString = "${provisioning.cleanup-interval-ms:300000}")
     @Transactional
     public void cleanupExpiredPendingDevices() {
@@ -54,11 +51,8 @@ public class PendingDeviceCleanupScheduler {
             log.info("Removendo device fantasma {} ('{}') — token expirou sem provisioning.",
                     device.getDeviceId(), device.getName());
 
-            // 1. Remove memberships primeiro (sem cascade do lado de Device)
             membershipRepository.deleteByDeviceId(device.getId());
 
-            // 2. Remove o device — cascata apaga: ProvisioningToken, DeviceCertificate,
-            //    CommandRecords, device_sensors_status
             deviceRepository.delete(device);
         }
     }

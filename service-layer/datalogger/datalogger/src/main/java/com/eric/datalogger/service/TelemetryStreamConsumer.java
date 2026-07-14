@@ -1,23 +1,34 @@
 package com.eric.datalogger.service;
 
-import java.net.InetAddress;
 import java.time.Duration;
-import java.util.UUID;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Range;
 import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStreamCommands.XClaimOptions;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.PendingMessage;
+import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.stream.StreamMessageListenerContainer;
 import org.springframework.data.redis.stream.Subscription;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import lombok.extern.slf4j.Slf4j;
 
 import com.eric.datalogger.model.TelemetryDTO;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.lettuce.core.RedisBusyException;
@@ -31,28 +42,34 @@ public class TelemetryStreamConsumer {
     private static final String STREAM = "stream:telemetry";
     private static final String GROUP = "datalogger-group";
 
+    private static final int SWEEP_BATCH = 100;
+    private static final long MAX_DELIVERIES = 5;
+    private static final Duration SWEEP_MIN_IDLE = Duration.ofSeconds(60);
+
     private final RedisConnectionFactory connectionFactory;
     private final StringRedisTemplate redisTemplate;
     private final InfluxService influxService;
     private final ObjectMapper objectMapper;
 
+    private final String consumerName;
+
     private StreamMessageListenerContainer<String, MapRecord<String, String, String>> container;
     private Subscription subscription;
-    private String consumerName;
 
     public TelemetryStreamConsumer(RedisConnectionFactory connectionFactory, StringRedisTemplate redisTemplate,
-                                    InfluxService influxService, ObjectMapper objectMapper) {
+                                    InfluxService influxService, ObjectMapper objectMapper,
+                                    @Value("${app.streams.replica-id:0}") String replicaId) {
 
             this.connectionFactory = connectionFactory;
             this.redisTemplate = redisTemplate;
             this.influxService = influxService;
             this.objectMapper = objectMapper;
+            this.consumerName = "datalogger-" + replicaId;
     }
 
     @PostConstruct
     public void start() {
         createGroupIfMissing();
-        consumerName = buildConsumerName();
 
         var options = StreamMessageListenerContainer
                     .StreamMessageListenerContainerOptions.builder()
@@ -72,9 +89,23 @@ public class TelemetryStreamConsumer {
     }
 
     private void handleRecord(MapRecord<String, String, String> record) {
-        String payload = record.getValue().get("payload");
+        // Erro permanente (payload inválido) — ACK direto pra não voltar via sweep.
+        TelemetryDTO dto;
         try {
-            TelemetryDTO dto = objectMapper.readValue(payload, TelemetryDTO.class);
+            dto = objectMapper.readValue(record.getValue().get("payload"), TelemetryDTO.class);
+        } catch (JsonProcessingException e) {
+            log.warn("Payload telemetry inválido, descartando id={}: {}", record.getId(), e.getMessage());
+            redisTemplate.opsForStream().acknowledge(GROUP, record);
+            return;
+        }
+        if (dto.deviceId() == null || dto.deviceId().isBlank()) {
+            log.warn("Telemetry sem deviceId, descartando id={}", record.getId());
+            redisTemplate.opsForStream().acknowledge(GROUP, record);
+            return;
+        }
+
+        // Erro transitório (Influx fora do ar etc.) — sem ACK, o sweep reentrega.
+        try {
             influxService.writeTelemetry(dto);
             redisTemplate.opsForStream().acknowledge(GROUP, record);
         } catch (Exception e) {
@@ -111,12 +142,44 @@ public class TelemetryStreamConsumer {
         
     }
 
-    // escalavel, cada datalogger tem um name unico, redis balanceia e entrega entre elas
-    private String buildConsumerName() {
+
+    @Scheduled(fixedDelayString = "${app.streams.sweep-interval-ms:60000}", initialDelay = 15000)
+    public void sweepPendingMessages() {
         try {
-            return InetAddress.getLocalHost().getHostName() + "-" + ProcessHandle.current().pid();
+            StreamOperations<String, String, String> ops = redisTemplate.opsForStream();
+            PendingMessages pending = ops.pending(STREAM, GROUP, Range.unbounded(), SWEEP_BATCH);
+            if (pending == null || pending.isEmpty()) return;
+
+            List<RecordId> toClaim = new ArrayList<>();
+            for (PendingMessage pm : pending) {
+                if (pm.getElapsedTimeSinceLastDelivery().compareTo(SWEEP_MIN_IDLE) < 0) continue;
+                if (pm.getTotalDeliveryCount() > MAX_DELIVERIES) {
+                    log.error("Msg {} descartada após {} entregas (poison)", pm.getId(), pm.getTotalDeliveryCount());
+                    ops.acknowledge(STREAM, GROUP, pm.getId());
+                    continue;
+                }
+                toClaim.add(pm.getId());
+            }
+            if (toClaim.isEmpty()) return;
+
+            List<MapRecord<String, String, String>> claimed = ops.claim(STREAM, GROUP, consumerName,
+                    XClaimOptions.minIdle(SWEEP_MIN_IDLE).ids(toClaim));
+
+            // id pedido mas não retornado = entrada já trimada do stream (MAXLEN) — ACK limpa o PEL
+            Set<RecordId> returned = new HashSet<>();
+            for (MapRecord<String, String, String> record : claimed) {
+                returned.add(record.getId());
+            }
+            for (RecordId id : toClaim) {
+                if (!returned.contains(id)) ops.acknowledge(STREAM, GROUP, id);
+            }
+
+            claimed.forEach(this::handleRecord);
+            if (!claimed.isEmpty()) {
+                log.info("PEL sweep: {} mensagens reivindicadas e reprocessadas em {}", claimed.size(), STREAM);
+            }
         } catch (Exception e) {
-            return "consumer-" + UUID.randomUUID();
+            log.warn("PEL sweep falhou em {}: {}", STREAM, e.getMessage());
         }
     }
 

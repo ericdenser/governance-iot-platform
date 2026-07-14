@@ -13,18 +13,7 @@ import org.springframework.stereotype.Service;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Leitura O(1) do estado ao vivo dos devices (Redis Hash).
- *
- * O Hash "device:{id}:last" é populado pelo HotStateProjector do event-handler
- * (Obj 11 Fase D1) a partir dos streams. Contém: last_seen (epoch ms),
- * status, lat, lon. Fields podem estar ausentes se device nunca publicou
- * o dado correspondente (ex: sem GPS fix → sem lat/lon).
- *
- * govApi lê aqui pra enriquecer respostas de /devices sem tocar Postgres.
- * O HotStatePersistenceScheduler (Fase D4) usa isso pra decidir o que
- * consolidar no cmdb periodicamente.
- */
+// Leitura do estado ao vivo dos devices (Redis Hash).
 @Service
 @Slf4j
 public class HotStateService {

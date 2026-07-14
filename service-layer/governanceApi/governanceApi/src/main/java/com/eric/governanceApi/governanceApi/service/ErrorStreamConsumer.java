@@ -26,6 +26,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.eric.governanceApi.governanceApi.model.request.DeviceErrorDTO;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.annotation.PostConstruct;
@@ -113,9 +114,18 @@ public class ErrorStreamConsumer {
             return;
         }
 
-        String payload = record.getValue().get("payload");
+        // Erro permanente (payload inválido) — ACK direto pra não voltar via sweep.
+        DeviceErrorDTO dto;
         try {
-            DeviceErrorDTO dto = objectMapper.readValue(payload, DeviceErrorDTO.class);
+            dto = objectMapper.readValue(record.getValue().get("payload"), DeviceErrorDTO.class);
+        } catch (JsonProcessingException e) {
+            log.warn("Payload error inválido, descartando id={}: {}", messageId, e.getMessage());
+            redisTemplate.opsForStream().acknowledge(GROUP, record);
+            return;
+        }
+
+        // Erro transitório — sem ACK, o sweep reentrega.
+        try {
             errorDispatcherService.dispatch(dto);
             redisTemplate.opsForStream().acknowledge(GROUP, record);
         } catch (Exception e) {

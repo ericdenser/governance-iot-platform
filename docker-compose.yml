@@ -52,6 +52,29 @@ services:
     networks:
       - iot-net
 
+  redis-streams:
+    image: redis:7-alpine
+    container_name: iot_redis_streams
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_streams_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - iot-net
+  
+
   influxdb:
     image: influxdb:2.7
     container_name: iot_influxdb
@@ -117,3 +140,4 @@ volumes:
   postgres_data:
   redis_data:
   influxdb_data:
+  redis_streams_data:
