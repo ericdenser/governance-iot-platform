@@ -36,7 +36,7 @@ public class DeviceSnapshot {
     public void updateFrom(StatusDTO dto) {
         this.mac = dto.mac();
         this.status = dto.status();
-        this.firmwareVersion = dto.firmware_version();
+        this.firmwareVersion = dto.firmwareVersion();
         this.ssid = dto.ssid();
         this.lastSeen = dto.deviceTimestamp() != null ? dto.deviceTimestamp() : Instant.now();
         this.activeSensors = dto.activeSensors();

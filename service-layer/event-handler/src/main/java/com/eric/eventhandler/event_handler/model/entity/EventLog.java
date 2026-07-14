@@ -36,6 +36,9 @@ public class EventLog {
     @Column(nullable = false)
     private String deviceId;
 
+    @Column(name = "source_message_id", unique = true, length = 64)
+    private String sourceMessageId;
+
     @Column(length = 2000)
     private String payload;
 

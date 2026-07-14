@@ -32,14 +32,14 @@ public class TransitionDetector {
     public DeviceEvent process(StatusDTO dto) {
 
         DeviceSnapshot deviceSnapshot =
-                snapshotRepository.findById(dto.device_id()).orElse(null);
+                snapshotRepository.findById(dto.deviceId()).orElse(null);
 
         if (deviceSnapshot == null) {
 
-            log.info("Nenhum snapshot encontrado para device_id {}", dto.device_id());
+            log.info("Nenhum snapshot encontrado para device_id {}", dto.deviceId());
 
             deviceSnapshot = new DeviceSnapshot();
-            deviceSnapshot.setDeviceId(dto.device_id());
+            deviceSnapshot.setDeviceId(dto.deviceId());
         }
 
         // Busca ultimo estado
@@ -134,9 +134,9 @@ public class TransitionDetector {
 
                 if (modified) {
                     StatusDTO newDto = new StatusDTO(
-                        dto.device_id(),
+                        dto.deviceId(),
                         dto.mac(),
-                        dto.firmware_version(),
+                        dto.firmwareVersion(),
                         dto.ssid(),
                         currentState,
                         params,
@@ -184,11 +184,11 @@ public class TransitionDetector {
     private DeviceEvent buildEvent(EventType type, StatusDTO dto,
                                 DeviceState previousStatus, DeviceState newStatus) {
     log.info("Evento detectado: {} | DeviceID: {} | {} → {}",
-                type, dto.device_id(), previousStatus, newStatus);
+                type, dto.deviceId(), previousStatus, newStatus);
 
     return DeviceEvent.builder()
             .eventType(type)
-            .deviceId(dto.device_id())
+            .deviceId(dto.deviceId())
             .previousStatus(previousStatus)
             .newStatus(newStatus)
             .deviceInfo(dto)

@@ -21,9 +21,9 @@ public class EventManagerService {
         this.detector = detector;
     }
 
-    public void handleStatus(StatusDTO statusDto) {
+    public void handleStatus(StatusDTO statusDto, String messageId) {
             log.info("Status recebido: Device = {} MAC={} status={} fw=v{} params={} activeSensors={}",
-                statusDto.device_id(), statusDto.mac(), statusDto.status(), statusDto.firmware_version(), statusDto.params(), statusDto.activeSensors());
+                statusDto.deviceId(), statusDto.mac(), statusDto.status(), statusDto.firmwareVersion(), statusDto.params(), statusDto.activeSensors());
 
         // Procura se transição atual dispara algum evento predefindo
         DeviceEvent event = detector.process(statusDto);
@@ -35,7 +35,7 @@ public class EventManagerService {
         }
 
         // Transição disparou um evento
-        dispatcher.dispatch(event);
+        dispatcher.dispatch(event, messageId);
         return;
     }
 }

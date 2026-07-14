@@ -34,13 +34,13 @@ public class EventDispatcher {
         this.mapper = mapper;
     }
 
-    public void dispatch(DeviceEvent event) {
+    public void dispatch(DeviceEvent event, String messageId) {
         log.info("Dispachando evento: {}", event.getEventType());
-        persistLog(event);
+        persistLog(event, messageId);
         deliverToSubscribers(event);
     }
 
-    private void persistLog(DeviceEvent event) {
+    private void persistLog(DeviceEvent event, String messageId) {
         
         try {
             EventLog newLog = new EventLog();
@@ -50,6 +50,7 @@ public class EventDispatcher {
             newLog.setPayload(mapper.writeValueAsString(event));
             newLog.setPreviousStatus(event.getPreviousStatus());
             newLog.setNewStatus(event.getNewStatus());
+            newLog.setSourceMessageId(messageId);
 
             eventLogRepository.save(newLog);
 

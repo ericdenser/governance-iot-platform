@@ -13,13 +13,13 @@ import jakarta.validation.constraints.NotNull;
 public record StatusDTO(
 
     @NotBlank(message = "device_id cannot be blank")
-    String device_id,
+    String deviceId,
 
     @NotBlank(message = "macAddress cannot be blank")
     String mac,
 
     @NotNull(message = "firm version cannot be null")
-    String firmware_version,
+    String firmwareVersion,
 
     @NotBlank(message = "ssid cannot be blank")
     String ssid,

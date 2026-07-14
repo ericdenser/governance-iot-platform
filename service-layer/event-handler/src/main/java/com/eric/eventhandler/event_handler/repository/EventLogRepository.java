@@ -15,4 +15,6 @@ public interface EventLogRepository extends JpaRepository<EventLog, Long> {
  
     List<EventLog> findTop50ByOrderByTimestampDesc();
 
+    boolean existsBySourceMessageId(String sourceMessageId);
+
 }

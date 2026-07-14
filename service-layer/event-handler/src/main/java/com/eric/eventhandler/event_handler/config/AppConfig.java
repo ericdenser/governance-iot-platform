@@ -56,7 +56,6 @@ public class AppConfig {
     @Bean
     public ObjectMapper objectMapper() {
         return new ObjectMapper()
-            // Configuração original que você já tinha:
             .enable(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE)
             
             // Adicionando suporte a java.time.* (Instant, LocalDateTime, etc)

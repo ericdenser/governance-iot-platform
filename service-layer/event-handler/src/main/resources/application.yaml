@@ -8,6 +8,17 @@ spring:
     url: jdbc:postgresql://localhost:5432/event_handler
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+  data:                         
+    redis:
+      host: ${REDIS_STREAMS_HOST:localhost}
+      port: ${REDIS_STREAMS_PORT:6380}
+      # password: ${REDIS_STREAMS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
   jpa:
     hibernate:
       ddl-auto: create
