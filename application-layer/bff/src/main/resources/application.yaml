@@ -1,6 +1,18 @@
 spring:
+
   application:
     name: bff
+
+  threads:
+    virtual:
+      enabled: true
+
+  # SSE relay: o fim da resposta vem do upstream (timeout de 30min do govApi)
+  # ou da desconexão do cliente — sem isso o AsyncRequestTimeoutException cairia
+  # no GlobalExceptionHandler e reproduziria o 406.
+  mvc:
+    async:
+      request-timeout: -1
 
   data:
     redis:
