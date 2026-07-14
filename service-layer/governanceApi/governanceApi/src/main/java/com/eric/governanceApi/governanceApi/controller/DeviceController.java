@@ -5,6 +5,7 @@ import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceCertificateResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceDetailDTO;
+import com.eric.governanceApi.governanceApi.model.response.DeviceMapPositionDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceSummaryDTO;
 import com.eric.governanceApi.governanceApi.model.response.ErrorRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.EventRegistryResponseDTO;
@@ -44,6 +45,15 @@ public class DeviceController {
             @PathVariable String deviceId,
             HttpServletRequest httpRequest) {
         return ResponseEntity.ok(ApiResponse.success(deviceService.getDevice(deviceId), httpRequest.getRequestURI()));
+    }
+
+    /** Payload minimal pro mapa: só devices com coord válida no escopo do actor. */
+    @GetMapping("/map-positions")
+    public ResponseEntity<ApiResponse<java.util.List<DeviceMapPositionDTO>>> listMapPositions(
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(ApiResponse.success(
+                deviceService.listMapPositions(),
+                httpRequest.getRequestURI()));
     }
 
     @GetMapping("/{deviceId}/commands")

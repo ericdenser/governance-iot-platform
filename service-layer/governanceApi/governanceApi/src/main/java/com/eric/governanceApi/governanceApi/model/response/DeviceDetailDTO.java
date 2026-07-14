@@ -7,6 +7,7 @@ import java.util.Map;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
+import com.eric.governanceApi.governanceApi.service.HotStateService.LiveState;
 
 public record DeviceDetailDTO(
     String deviceId,
@@ -19,9 +20,11 @@ public record DeviceDetailDTO(
     FirmwareVersionSummaryDTO firmwareVersion,
     Map<String, Boolean> sensorStatus,
     String issuedByActorId,
-    String issuedByUsername
+    String issuedByUsername,
+    Double lastLatitude,
+    Double lastLongitude
 ) {
-    public static DeviceDetailDTO from(Device device) {
+    public static DeviceDetailDTO from(Device device, LiveState liveState) {
         FirmwareVersion v = device.getFirmwareVersion();
 
         return new DeviceDetailDTO(
@@ -30,12 +33,19 @@ public record DeviceDetailDTO(
             device.getStatus(),
             device.getMacAddress(),
             device.getCreatedAt(),
-            device.getLastSeen(),
+            preferLive(liveState.lastSeen(), device.getLastSeen()),
             v != null ? FirmwareSummaryDTO.from(v.getFirmware()) : null,
             v != null ? FirmwareVersionSummaryDTO.from(v) : null,
             new HashMap<>(device.getSensorStatus()),
             device.getIssuedByActorId(),
-            device.getIssuedByUsername()
+            device.getIssuedByUsername(),
+            preferLive(liveState.latitude(), device.getLastLatitude()),
+            preferLive(liveState.longitude(), device.getLastLongitude())
+
         );
+    }
+
+     private static <T> T preferLive(T live, T fallback) {
+        return live != null ? live : fallback;
     }
 }

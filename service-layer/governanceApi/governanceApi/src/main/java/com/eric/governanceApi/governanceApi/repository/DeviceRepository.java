@@ -22,6 +22,22 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
 
     Optional<Device> findByDeviceId(String deviceId);
 
+    @Query("SELECT d.deviceId FROM Device d")
+    List<String> findAllDeviceIds();
+
+    /** Non-admin: IDs de todos os devices dos grupos do actor. Sem paginação (mapa carrega tudo do escopo). */
+    @Query("""
+            SELECT d.deviceId FROM Device d
+            WHERE d.id IN (
+                SELECT m.device.id FROM DeviceGroupMembership m
+                WHERE m.group.id IN (
+                    SELECT a.group.id FROM UserGroupAssignment a
+                    WHERE a.id.keycloakUserId = :actorId
+                )
+            )
+            """)
+    List<String> findDeviceIdsByUserGroups(@Param("actorId") String actorId);
+
     /** Detail — carrega firmwareVersion e firmware em 1 query só. */
     @EntityGraph(attributePaths = {"firmwareVersion", "firmwareVersion.firmware", "sensorStatus"})
     Optional<Device> findWithFirmwareByDeviceId(String deviceId);

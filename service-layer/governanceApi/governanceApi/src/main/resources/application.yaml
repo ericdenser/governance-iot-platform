@@ -11,6 +11,18 @@ spring:
   web:
     resources:
       static-locations: "file:${FIRMWARE_STORAGE_PATH},classpath:/static/"
+
+  data:                          
+    redis:
+      host: ${REDIS_STREAMS_HOST:localhost}
+      port: ${REDIS_STREAMS_PORT:6380}
+      # password: ${REDIS_STREAMS_PASSWORD:}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
   datasource:
     url: jdbc:postgresql://localhost:5432/cmdb_iot
     username: ${DB_USERNAME}
@@ -64,6 +76,11 @@ event:
 
 govapi:
   self-url: ${GOVAPI_SELF_URL:http://localhost:8082}
+
+app:
+  hotstate:
+    # Intervalo do HotStatePersistenceScheduler (consolida Redis Hash -> cmdb)
+    persist-interval-ms: 300000
 
 provisioning:
   nvs-python-path: ${NVS_PYTHON_PATH:python3}

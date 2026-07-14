@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
-
 import lombok.Data;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.CollectionTable;
@@ -51,7 +50,7 @@ public class Device {
     @JoinColumn(name = "previous_firmware_version_id")
     private FirmwareVersion previousFirmwareVersion;
 
-    // Versão alvo de um OTA em andamento — set no deploy, cleared no sucesso/rollback/timeout
+    // Target version of a ongoing OTA — set on deploy, cleared on success/rollback/timeout
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "attempted_firmware_version_id")
     private FirmwareVersion attemptedFirmwareVersion;
@@ -69,16 +68,29 @@ public class Device {
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 
-    /** Sub UUID of the operator who generated the flash package that provisioned this device. */
+    // Sub UUID of the operator who generated the flash package that provisioned this device. 
     @Column(name = "issued_by_actor_id", length = 36)
     private String issuedByActorId;
 
-    /** Username snapshot of that operator at provisioning time. */
+    // Username snapshot of that operator at provisioning time. 
     @Column(name = "issued_by_username", length = 150)
     private String issuedByUsername;
 
     @Column(name = "last_seen")
     private Instant lastSeen;
+
+    //========= LiveState via Redis Hash on HotStatePersistenceScheduler.
+    // Updated each 5 min 
+    @Column(name = "last_latitude")
+    private Double lastLatitude;
+
+    @Column(name = "last_longitude")
+    private Double lastLongitude;
+
+    @Column(name = "last_seen_persisted_at")
+    private Instant lastSeenPersistedAt;
+    //=======================================
+
 
     @OneToMany(mappedBy = "targetDevice", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CommandRecord> commandRecords = new ArrayList<>();
@@ -116,5 +128,6 @@ public class Device {
         this.commandRecords.remove(command);
         command.setTargetDevice(null);
     }
+
 
 }

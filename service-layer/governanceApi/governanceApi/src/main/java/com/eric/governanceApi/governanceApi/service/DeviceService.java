@@ -8,6 +8,7 @@ import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjec
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceCertificateResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceDetailDTO;
+import com.eric.governanceApi.governanceApi.model.response.DeviceMapPositionDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceSummaryDTO;
 import com.eric.governanceApi.governanceApi.model.response.ErrorRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.EventRegistryResponseDTO;
@@ -16,6 +17,8 @@ import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepo
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
+import com.eric.governanceApi.governanceApi.service.HotStateService.LiveState;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,17 +37,18 @@ public class DeviceService {
     private final ErrorRecordRepository errorRecordRepository;
     private final EventRegistryRepository eventRegistryRepository;
     private final DeviceGroupMembershipRepository membershipRepository;
-
+    private final HotStateService hotStateService;
     public DeviceService(DeviceRepository deviceRepository,
                          CommandRecordRepository commandRecordRepository,
                          ErrorRecordRepository errorRecordRepository,
                          EventRegistryRepository eventRegistryRepository,
-                         DeviceGroupMembershipRepository membershipRepository) {
+                         DeviceGroupMembershipRepository membershipRepository, HotStateService hotStateService) {
         this.deviceRepository = deviceRepository;
         this.commandRecordRepository = commandRecordRepository;
         this.errorRecordRepository = errorRecordRepository;
         this.eventRegistryRepository = eventRegistryRepository;
         this.membershipRepository = membershipRepository;
+        this.hotStateService = hotStateService;
     }
     
     @Transactional(readOnly = true)
@@ -76,6 +80,37 @@ public class DeviceService {
         ));
     }
 
+    /**
+     * Payload minimal pro mapa em tempo real. Retorna só devices com coord válida
+     * (lat e lon presentes no Hash). RBAC igual ao listAll.
+     *
+     * Sem paginação — mapa consome tudo do escopo. Se o escopo do actor tiver
+     * ~10k devices, ainda é 1 pipeline Redis + 1 query Postgres.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<DeviceMapPositionDTO> listMapPositions() {
+        java.util.List<String> deviceIds;
+        if (isAdmin()) {
+            deviceIds = deviceRepository.findAllDeviceIds();
+        } else {
+            String actorId = currentActorId();
+            if (actorId == null) return java.util.List.of();
+            deviceIds = deviceRepository.findDeviceIdsByUserGroups(actorId);
+        }
+        if (deviceIds.isEmpty()) return java.util.List.of();
+
+        java.util.Map<String, LiveState> live = hotStateService.getLiveBulk(deviceIds);
+
+        return live.entrySet().stream()
+                .filter(e -> e.getValue().latitude() != null && e.getValue().longitude() != null)
+                .map(e -> new DeviceMapPositionDTO(
+                        e.getKey(),
+                        e.getValue().latitude(),
+                        e.getValue().longitude(),
+                        e.getValue().lastSeen()))
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public DeviceDetailDTO getDevice(String deviceId) {
         // 1 query só (device + firmwareVersion + firmware) via @EntityGraph
@@ -87,7 +122,9 @@ public class DeviceService {
             throw new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado.");
         }
 
-        return DeviceDetailDTO.from(device);
+        LiveState live = hotStateService.getLive(deviceId);
+
+        return DeviceDetailDTO.from(device, live);
     }
 
     @Transactional(readOnly = true)
