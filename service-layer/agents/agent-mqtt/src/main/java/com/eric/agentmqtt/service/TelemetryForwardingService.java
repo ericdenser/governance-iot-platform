@@ -1,35 +1,28 @@
 package com.eric.agentmqtt.service;
 
-import com.eric.agentmqtt.model.TelemetryDTO;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 
+import com.eric.agentmqtt.model.TelemetryDTO;
+
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Publica DeviceTelemetry em stream:telemetry (Redis).
+ * Antes: POST /datalogger/ingest no datalogger. Migrado para Redis Streams no Obj 11 (Fase B).
+ */
 @Service
 @Slf4j
 public class TelemetryForwardingService {
 
-    private final RestClient restClient;
+    private final RedisStreamPublisher publisher;
 
-    @Value("${datalogger.url}")
-    private String dataloggerUrl;
-
-    public TelemetryForwardingService(RestClient restClient) {
-        this.restClient = restClient;
+    public TelemetryForwardingService(RedisStreamPublisher publisher) {
+        this.publisher = publisher;
     }
 
     public void forwardTelemetryToDataLogger(TelemetryDTO dto) {
-        log.info("Encaminhando telemetria ao DataLogger: device={}, readings={}",
+        log.debug("XADD stream:telemetry device={} readings={}",
                 dto.deviceId(), dto.readings().keySet());
-        try {
-            restClient.post()
-                    .uri(dataloggerUrl + "/datalogger/ingest")
-                    .body(dto)
-                    .retrieve()
-                    .toBodilessEntity();
-        } catch (Exception e) {
-            log.error("Falha ao encaminhar telemetria: {}", e.getMessage());
-        }
+        publisher.publish(RedisStreamPublisher.STREAM_TELEMETRY, dto.deviceId(), "TELEMETRY", dto);
     }
 }

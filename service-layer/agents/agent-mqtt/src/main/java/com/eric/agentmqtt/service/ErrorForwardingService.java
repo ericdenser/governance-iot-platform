@@ -1,34 +1,31 @@
 package com.eric.agentmqtt.service;
 
-import com.eric.agentmqtt.model.ErrorDTO;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 
+import com.eric.agentmqtt.model.ErrorDTO;
+
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Publica DeviceError em stream:error (Redis).
+ * Antes: POST /error/ingest no govApi. Migrado para Redis Streams no Obj 11 (Fase B).
+ *
+ * Nota: contrato (docs/REDIS_STREAMS_CONTRACT.md) atribui esse stream ao eventhandler-group.
+ * O consumer na Fase C decide o destino final (event-handler pode processar direto ou
+ * reencaminhar para govApi via HTTP interno).
+ */
 @Service
 @Slf4j
 public class ErrorForwardingService {
 
-    private final RestClient restClient;
+    private final RedisStreamPublisher publisher;
 
-    @Value("${govapi.url}")
-    private String govApiUrl;
-
-    public ErrorForwardingService(RestClient restClient) {
-        this.restClient = restClient;
+    public ErrorForwardingService(RedisStreamPublisher publisher) {
+        this.publisher = publisher;
     }
 
     public void fowardErrorToEventHandler(ErrorDTO dto) {
-        log.info("Encaminhando erro para govApi: {}", dto);
-        try {
-            restClient.post()
-                .uri(govApiUrl + "/error/ingest")
-                .body(dto)
-                .retrieve()
-                .toBodilessEntity();
-        } catch (Exception e) {
-            log.error("Falha ao encaminhar erro: {}", e.getMessage());
-        }
+        log.debug("XADD stream:error device={} code={}", dto.device_id(), dto.errorCode());
+        publisher.publish(RedisStreamPublisher.STREAM_ERROR, dto.device_id(), "ERROR", dto);
     }
 }

@@ -1,34 +1,25 @@
 package com.eric.agentmqtt.service;
 
-import com.eric.agentmqtt.model.StatusDTO;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
+
+import com.eric.agentmqtt.model.StatusDTO;
+
+import lombok.extern.slf4j.Slf4j;
+
+// Publica DeviceStatus em stream:status (Redis).
 
 @Service
 @Slf4j
 public class StatusForwardingService {
 
-    private final RestClient restClient;
+    private final RedisStreamPublisher publisher;
 
-    @Value("${event-handler.url}")
-    private String eventHandlerUrl;
-
-    public StatusForwardingService(RestClient restClient) {
-        this.restClient = restClient;
+    public StatusForwardingService(RedisStreamPublisher publisher) {
+        this.publisher = publisher;
     }
 
     public void fowardStatusToEventHandler(StatusDTO dto) {
-        log.info("Encaminhando status ao event-handler: {}", dto);
-        try {
-            restClient.post()
-                .uri(eventHandlerUrl + "/events/ingest")
-                .body(dto)
-                .retrieve()
-                .toBodilessEntity();
-        } catch (Exception e) {
-            log.error("Falha ao encaminhar status: {}", e.getMessage());
-        }
+        log.debug("XADD stream:status device={} status={}", dto.deviceId(), dto.status());
+        publisher.publish(RedisStreamPublisher.STREAM_STATUS, dto.deviceId(), "STATUS", dto);
     }
 }
