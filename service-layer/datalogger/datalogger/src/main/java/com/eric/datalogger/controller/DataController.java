@@ -1,7 +1,6 @@
 package com.eric.datalogger.controller;
 
 import com.eric.datalogger.model.LastPositionDTO;
-import com.eric.datalogger.model.TelemetryDTO;
 import com.eric.datalogger.model.TelemetryFieldsDTO;
 import com.eric.datalogger.model.TelemetryPointDTO;
 import com.eric.datalogger.service.InfluxService;
@@ -23,16 +22,17 @@ public class DataController {
     // -------------------------------------------------------------------------
     //  Ingest
     // -------------------------------------------------------------------------
-
-    @PostMapping("/ingest")
-    public ResponseEntity<String> ingestTelemetry(@RequestBody TelemetryDTO dto) {
-        try {
-            influxService.writeTelemetry(dto);
-            return ResponseEntity.ok("Telemetry ingested");
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Error while ingesting telemetry: " + e);
-        }
-    }
+    // CONTROLLER LEGADO DA ARQUITETURA USANDO HTTP INTERNO
+    
+    // @PostMapping("/ingest")
+    // public ResponseEntity<String> ingestTelemetry(@RequestBody TelemetryDTO dto) {
+    //     try {
+    //         influxService.writeTelemetry(dto);
+    //         return ResponseEntity.ok("Telemetry ingested");
+    //     } catch (Exception e) {
+    //         return ResponseEntity.internalServerError().body("Error while ingesting telemetry: " + e);
+    //     }
+    // }
 
     // -------------------------------------------------------------------------
     //  Query

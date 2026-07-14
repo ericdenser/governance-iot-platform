@@ -6,3 +6,16 @@ influxdb:
   token: ${INFLUX_TOKEN} 
   org: mackenzie
   bucket: telemetry_bucket
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_STREAMS_HOST:localhost}
+      port: ${REDIS_STREAMS_PORT:6380}
+      # password: ${REDIS_STREAMS_PASSWORD:}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
