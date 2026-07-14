@@ -56,7 +56,10 @@
 			<artifactId>bcprov-jdk18on</artifactId>
 			<version>1.78</version>
 		</dependency>
-
+		<dependency>
+    			<groupId>org.springframework.boot</groupId>
+    			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
@@ -67,9 +70,21 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
+		<!--
+		  Jackson 2.x explícito. Spring Boot 4.0.5+ traz Jackson 3.x (tools.jackson),
+		  mas o código usa `com.fasterxml.jackson.*`. Dep pinada + jsr310 pra que
+		  findAndRegisterModules() consiga registrar JavaTimeModule (Instant, etc).
+		  Dívida técnica: unificar todos serviços pra Jackson 3.x.
+		-->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
+			<version>2.21.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-jsr310</artifactId>
+			<version>2.21.2</version>
 		</dependency>
 
 		<dependency>
