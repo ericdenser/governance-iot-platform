@@ -1,18 +1,33 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
+import LiveIndicator from '@/components/LiveIndicator.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import { useLiveStateStore } from '@/stores/liveState'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import type { DeviceSummaryDTO, DeviceStatus } from '@/types/models'
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const authStore = useAuthStore()
+const liveStore = useLiveStateStore()
 const devices = ref<DeviceSummaryDTO[]>([])
+
+const mergedDevices = computed(() =>
+  devices.value.map((d) => {
+    const lv = liveStore.devices.get(d.deviceId)
+    if (!lv) return d
+    return {
+      ...d,
+      status: (lv.status as DeviceStatus) ?? d.status,
+      lastSeen: lv.lastSeen ?? d.lastSeen,
+    }
+  }),
+)
 const loading = ref(true)
 const search = ref('')
 const debouncedSearch = useDebouncedRef(search, 300)
@@ -84,6 +99,7 @@ onMounted(load)
           <option v-for="s in STATUS_OPTIONS" :key="s" :value="s">{{ s }}</option>
         </select>
         <span class="count text-muted text-sm">{{ totalElements }} dispositivos</span>
+        <LiveIndicator />
       </div>
 
       <div v-if="loading" class="empty">Carregando...</div>
@@ -100,7 +116,7 @@ onMounted(load)
           </tr>
         </thead>
         <tbody>
-          <tr v-for="d in devices" :key="d.deviceId" class="tbl-row"
+          <tr v-for="d in mergedDevices" :key="d.deviceId" class="tbl-row"
               @click="$router.push(`/devices/${d.deviceId}`)">
             <td class="font-medium">{{ d.name }}</td>
             <td class="mono text-sm">{{ d.deviceId }}</td>

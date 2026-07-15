@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
@@ -7,8 +7,10 @@ import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import EventList from '@/components/EventList.vue'
+import LiveIndicator from '@/components/LiveIndicator.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import { useLiveStateStore } from '@/stores/liveState'
 import { confirm } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
 import { errorMessage } from '@/utils/errors'
@@ -29,9 +31,14 @@ const router = useRouter()
 const authStore = useAuthStore()
 const deviceId = route.params.id as string
 
+const liveStore = useLiveStateStore()
 const device = ref<DeviceDetailDTO | null>(null)
 const tab = ref<'info' | 'commands' | 'events' | 'errors'>('info')
 const loading = ref(true)
+
+const liveState = computed(() => liveStore.devices.get(deviceId))
+const liveStatus = computed(() => (liveState.value?.status as DeviceStatus) ?? device.value?.status)
+const liveLastSeen = computed(() => liveState.value?.lastSeen ?? device.value?.lastSeen ?? '')
 
 const commands = ref<CommandRecordResponseDTO[]>([])
 const events = ref<EventRegistryResponseDTO[]>([])
@@ -121,8 +128,9 @@ onMounted(async () => {
           <button class="back-btn" @click="$router.push('/devices')">← Dispositivos</button>
           <h1 class="device-name">{{ device.name }}</h1>
           <div class="device-meta">
-            <AppBadge :variant="statusVariant(device.status)" dot>{{ device.status }}</AppBadge>
+            <AppBadge v-if="liveStatus" :variant="statusVariant(liveStatus)" dot>{{ liveStatus }}</AppBadge>
             <span class="mono text-muted text-sm">{{ device.deviceId }}</span>
+            <LiveIndicator />
           </div>
         </div>
         <AppButton v-if="authStore.isAdmin && device.status !== 'REVOKED'"
@@ -152,7 +160,7 @@ onMounted(async () => {
             <span v-else class="text-muted">—</span>
           </div>
           <div class="info-row"><span class="info-label">Criado em</span><span>{{ fmt(device.createdAt) }}</span></div>
-          <div class="info-row"><span class="info-label">Última atividade</span><span>{{ fmt(device.lastSeen) }}</span></div>
+          <div class="info-row"><span class="info-label">Última atividade</span><span>{{ fmt(liveLastSeen) }}</span></div>
           <div class="info-row"><span class="info-label">Provisionado por</span>
             <span v-if="device.issuedByUsername">
               {{ device.issuedByUsername }}
