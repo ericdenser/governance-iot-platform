@@ -13,6 +13,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -124,6 +125,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({ClientAbortException.class, IOException.class})
     public void handleClientAbortException(Exception ex) {
         log.warn("Download de firmware interrompido. Cliente desconectou abruptamente: {}", ex.getMessage());
+    }
+
+    // Recycle normal do SseEmitter (timeout de 30min): resposta text/event-stream
+    // já comprometida — não dá pra escrever ApiResponse, o cliente reconecta sozinho
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    public void handleAsyncRequestTimeout(HttpServletRequest request) {
+        log.debug("SSE emitter expirou (recycle normal) em {}", request.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)
