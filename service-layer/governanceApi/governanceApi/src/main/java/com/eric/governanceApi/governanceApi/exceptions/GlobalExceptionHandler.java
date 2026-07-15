@@ -127,8 +127,7 @@ public class GlobalExceptionHandler {
         log.warn("Download de firmware interrompido. Cliente desconectou abruptamente: {}", ex.getMessage());
     }
 
-    // Recycle normal do SseEmitter (timeout de 30min): resposta text/event-stream
-    // já comprometida — não dá pra escrever ApiResponse, o cliente reconecta sozinho
+    // Recycle normal do SseEmitter (timeout de 30min): o cliente reconecta sozinho
     @ExceptionHandler(AsyncRequestTimeoutException.class)
     public void handleAsyncRequestTimeout(HttpServletRequest request) {
         log.debug("SSE emitter expirou (recycle normal) em {}", request.getRequestURI());

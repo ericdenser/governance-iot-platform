@@ -1,6 +1,5 @@
 package com.eric.governanceApi.governanceApi.controller;
 
-import java.io.IOException;
 import java.util.Set;
 import java.util.UUID;
 
@@ -43,8 +42,9 @@ public class SseController {
             try {
                 sseEmitter.send(SseEmitter.event().name("connected")
                         .data("{\"clientId\":\"" + clientId + "\",\"devices\":" + visibleDeviceIds.size() + "}"));
-            } catch (IOException e) {
-                log.debug("Falha ao enviar evento inicial clientId={}", clientId);
+                log.info("SSE evento connected enfileirado clientId={}", clientId);
+            } catch (Exception e) {
+                log.warn("Falha ao enviar evento inicial clientId={}: {}", clientId, e.toString());
             }
 
             log.info("SSE client conectado clientId={} scope={} devices={}", clientId, scope, visibleDeviceIds.size());

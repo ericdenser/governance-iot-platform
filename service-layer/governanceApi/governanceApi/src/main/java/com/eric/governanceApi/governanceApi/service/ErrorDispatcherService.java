@@ -43,7 +43,7 @@ public class ErrorDispatcherService {
         }
         error = DeviceError.fromCode(errorDTO.errorCode());
 
-        // Mapeou, vemos se existe uma logica de negocio implementada para este evento
+        // Mapeou, vemos se existe uma logica de negocio implementada para este erro
         ErrorHandlerInterface handler = handlers.get(error);
 
 

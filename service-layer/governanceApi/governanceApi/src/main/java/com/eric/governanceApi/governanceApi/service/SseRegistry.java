@@ -34,7 +34,7 @@ public class SseRegistry {
             log.debug("SSE error clientId={}, {}", clientId, e.getMessage());
         });
 
-        log.info("SSE registered clientId={} scope{}", clientId, visibleDeviceIds.size());
+        log.info("SSE registered clientId={} visibleDevices={}", clientId, visibleDeviceIds.size());
     }
 
     public void broadcast(String deviceId, String payloadJson) {
@@ -59,7 +59,7 @@ public class SseRegistry {
                 entry.getValue().emitter().send(SseEmitter.event().comment("heartbeat"));
             } catch (IOException | IllegalStateException e) {
                 clients.remove(entry.getKey());
-                log.debug("SSE removed clientId={} on heartbeat failure", entry.getKey());
+                log.info("SSE removed clientId={} on heartbeat failure: {}", entry.getKey(), e.toString());
             }
         }
     }

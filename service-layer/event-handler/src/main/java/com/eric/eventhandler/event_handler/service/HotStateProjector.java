@@ -188,8 +188,6 @@ public class HotStateProjector {
     }
 
     // Traduz o estado operacional do firmware pro vocabulário de status do CMDB
-    // (mesmo usado nos badges/filtros do SPA). Estados transitórios (HTTP_*, UNKNOWN)
-    // retornam null: não sobrescrevem o status, só o last_seen avança.
     private String toCmdbStatus(DeviceState state) {
         return switch (state) {
             case OPERATIONAL, PROVISIONING_SUCCESS, OTA_SUCCESSFUL, BOOT_AUDIT, COMMAND_COMPLETE -> "ACTIVE";

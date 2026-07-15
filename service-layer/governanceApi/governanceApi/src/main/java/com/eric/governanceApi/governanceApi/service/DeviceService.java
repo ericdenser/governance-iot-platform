@@ -4,6 +4,7 @@ import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
+import com.eric.governanceApi.governanceApi.model.projection.DeviceIdNameProjection;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceCertificateResponseDTO;
@@ -20,6 +21,14 @@ import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 import com.eric.governanceApi.governanceApi.service.HotStateService.LiveState;
 
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -87,26 +96,31 @@ public class DeviceService {
      // Sem paginação — mapa consome tudo do escopo. Se o escopo do actor tiver
      // ~10k devices, ainda é 1 pipeline Redis + 1 query Postgres. Pensar em solucao melhor 
     @Transactional(readOnly = true)
-    public java.util.List<DeviceMapPositionDTO> listMapPositions() {
-        java.util.List<String> deviceIds;
+    public List<DeviceMapPositionDTO> listMapPositions() {
+        List<DeviceIdNameProjection> scope;
         if (isAdmin()) {
-            deviceIds = deviceRepository.findAllDeviceIds();
+            scope = deviceRepository.findAllIdAndNames();
         } else {
             String actorId = currentActorId();
-            if (actorId == null) return java.util.List.of();
-            deviceIds = deviceRepository.findDeviceIdsByUserGroups(actorId);
+            if (actorId == null) return List.of();
+            scope = deviceRepository.findIdAndNamesByUserGroups(actorId);
         }
-        if (deviceIds.isEmpty()) return java.util.List.of();
+        if (scope.isEmpty()) return List.of();
 
-        java.util.Map<String, LiveState> live = hotStateService.getLiveBulk(deviceIds);
+        Map<String, String> nameById = new HashMap<>();
+        for (DeviceIdNameProjection p : scope) nameById.put(p.deviceId(), p.name());
+
+        Map<String, LiveState> live = hotStateService.getLiveBulk(List.copyOf(nameById.keySet()));
 
         return live.entrySet().stream()
                 .filter(e -> e.getValue().latitude() != null && e.getValue().longitude() != null)
                 .map(e -> new DeviceMapPositionDTO(
                         e.getKey(),
+                        nameById.get(e.getKey()),
                         e.getValue().latitude(),
                         e.getValue().longitude(),
-                        e.getValue().lastSeen()))
+                        e.getValue().lastSeen(),
+                        e.getValue().status()))
                 .toList();
     }
 
@@ -124,6 +138,19 @@ public class DeviceService {
         LiveState live = hotStateService.getLive(deviceId);
 
         return DeviceDetailDTO.from(device, live);
+    }
+
+    @Transactional(readOnly = true)
+    public Set<String> getAccessibleDeviceIds() {
+        List<String> ids;
+        if (isAdmin()) {
+            ids = deviceRepository.findAllDeviceIds();
+        } else {
+            String actorId = currentActorId();
+            if (actorId == null) return Collections.emptySet();
+            ids = deviceRepository.findDeviceIdsByUserGroups(actorId);
+        }
+        return new HashSet<>(ids);
     }
 
     @Transactional(readOnly = true)

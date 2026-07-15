@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
+import com.eric.governanceApi.governanceApi.model.projection.DeviceIdNameProjection;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
 
 public interface DeviceRepository extends JpaRepository<Device, Long>{
@@ -37,6 +38,22 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
             )
             """)
     List<String> findDeviceIdsByUserGroups(@Param("actorId") String actorId);
+
+    @Query("SELECT new com.eric.governanceApi.governanceApi.model.projection.DeviceIdNameProjection(d.deviceId, d.name) FROM Device d")
+    List<DeviceIdNameProjection> findAllIdAndNames();
+
+    @Query("""
+            SELECT new com.eric.governanceApi.governanceApi.model.projection.DeviceIdNameProjection(d.deviceId, d.name)
+            FROM Device d
+            WHERE d.id IN (
+                SELECT m.device.id FROM DeviceGroupMembership m
+                WHERE m.group.id IN (
+                    SELECT a.group.id FROM UserGroupAssignment a
+                    WHERE a.id.keycloakUserId = :actorId
+                )
+            )
+            """)
+    List<DeviceIdNameProjection> findIdAndNamesByUserGroups(@Param("actorId") String actorId);
 
     /** Detail — carrega firmwareVersion e firmware em 1 query só. */
     @EntityGraph(attributePaths = {"firmwareVersion", "firmwareVersion.firmware", "sensorStatus"})

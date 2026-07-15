@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -40,17 +41,17 @@ public class HotStateService {
 
     // Estado ao vivo de múltiplos devices via pipeline
     // Retorna map deviceId -> LiveState. Devices sem entrada no Hash
-    // retornam LiveState vazio (isPresent() == false).
+    // retornam LiveState vazio .
     public Map<String, LiveState> getLiveBulk(Collection<String> deviceIds) {
         if (deviceIds == null || deviceIds.isEmpty()) {
             return Collections.emptyMap();
         }
         List<String> ids = List.copyOf(deviceIds);
 
-        // Os comandos precisam ir pela connection do callback — usar o template
+        // Os comandos precisam ir pela connection do callback, usar o template
         // aqui dentro abre outra conexão e o pipeline retorna vazio.
         List<Object> results = redisTemplate.executePipelined(
-                (org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
+                (RedisCallback<Object>) connection -> {
                     for (String id : ids) {
                         connection.hashCommands()
                                 .hGetAll(hashKey(id).getBytes(StandardCharsets.UTF_8));

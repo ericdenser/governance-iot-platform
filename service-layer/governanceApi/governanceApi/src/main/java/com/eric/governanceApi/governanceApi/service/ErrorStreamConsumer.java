@@ -33,17 +33,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Consome stream:error do Redis e delega ao ErrorDispatcherService.
- *
- * Bypass do event-handler: erros iam agent-mqtt → event-handler HTTP → govApi.
- * Agora vão direto agent-mqtt → stream:error → govApi. Sem hop intermediário
- * porque event-handler não faz nada sobre erro além de reencaminhar.
- *
- * Idempotência via SET-NX com TTL — dispensa migration em ErrorRecord.
- * Trade-off: dedupe fica em memória Redis (perdido em restart do redis-streams).
- * Janela de 1h cobre replay de bug em consumer.
- */
+// Consome stream:error do Redis e delega ao ErrorDispatcherService.
 @Service
 @Slf4j
 public class ErrorStreamConsumer {
@@ -158,9 +148,7 @@ public class ErrorStreamConsumer {
     }
 
     /**
-     * Recupera mensagens presas no PEL (entregues sem ACK). O handler já trata
-     * a reentrega: em falha ele deleta a chave de dedupe, então o reprocesso
-     * via sweep passa pelo SET-NX de novo. Poison messages (> MAX_DELIVERIES)
+     * Recupera mensagens presas no PEL (entregues sem ACK). Poison messages (> MAX_DELIVERIES)
      * são descartadas com ACK.
      */
     @Scheduled(fixedDelayString = "${app.streams.sweep-interval-ms:60000}", initialDelay = 15000)
