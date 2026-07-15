@@ -26,6 +26,9 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
     @Query("SELECT d.deviceId FROM Device d")
     List<String> findAllDeviceIds();
 
+    @Query("SELECT d.name FROM Device d WHERE d.deviceId = :deviceId")
+    Optional<String> findNameByDeviceId(@Param("deviceId") String deviceId);
+
     /** Non-admin: IDs de todos os devices dos grupos do actor. Sem paginação (mapa carrega tudo do escopo). */
     @Query("""
             SELECT d.deviceId FROM Device d
