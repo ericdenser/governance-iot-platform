@@ -27,6 +27,7 @@ import org.springframework.data.redis.stream.Subscription;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.eric.eventhandler.event_handler.enums.DeviceState;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -46,6 +47,10 @@ public class HotStateProjector {
     private static final String STREAM_TELEMETRY = "stream:telemetry";
     private static final String HASH_PREFIX = "device:";
     private static final String HASH_SUFFIX = ":last";
+
+    // Canal de broadcast do estado ao vivo pra SSE do govApi
+    // Após cada HSET, publicamos o estado completo agregado do device
+    private static final String CHANNEL_DEVICE_LIVE = "channel:device-live";
 
     private static final int SWEEP_BATCH = 100;
     private static final long MAX_DELIVERIES = 5;
@@ -117,9 +122,14 @@ public class HotStateProjector {
             Map<String, String> fields = new HashMap<>();
             fields.put("last_seen", envelopeTimestamp);
             Object status = dto.get("status");
-            if (status != null) fields.put("status", String.valueOf(status));
+            if (status != null) {
+                // Vem como número do protobuf ("5"); converte pro vocabulário do CMDB
+                String mapped = toCmdbStatus(DeviceState.fromValue(String.valueOf(status)));
+                if (mapped != null) fields.put("status", mapped);
+            }
 
             redisTemplate.opsForHash().putAll(hashKey(deviceId), fields);
+            publishLive(deviceId);
             redisTemplate.opsForStream().acknowledge(GROUP, record);
         } catch (Exception e) {
             log.error("Falha projetando status id={}: {}", record.getId(), e.getMessage());
@@ -145,13 +155,14 @@ public class HotStateProjector {
             // TelemetryDTO.readings = Map<String, Float> — extrai lat/lon se presentes
             Object readings = dto.get("readings");
             if (readings instanceof Map<?, ?> map) {
-                Object lat = map.get("lat");
-                Object lon = map.get("lon");
-                if (lat != null) fields.put("lat", String.valueOf(lat));
-                if (lon != null) fields.put("lon", String.valueOf(lon));
+                Object lat = map.get("latitude");
+                Object lon = map.get("longitude");
+                if (lat != null) fields.put("latitude", String.valueOf(lat));
+                if (lon != null) fields.put("longitude", String.valueOf(lon));
             }
 
             redisTemplate.opsForHash().putAll(hashKey(deviceId), fields);
+            publishLive(deviceId);
             redisTemplate.opsForStream().acknowledge(GROUP, record);
         } catch (Exception e) {
             log.error("Falha projetando telemetry id={}: {}", record.getId(), e.getMessage());
@@ -174,6 +185,41 @@ public class HotStateProjector {
 
     private String hashKey(String deviceId) {
         return HASH_PREFIX + deviceId + HASH_SUFFIX;
+    }
+
+    // Traduz o estado operacional do firmware pro vocabulário de status do CMDB
+    // (mesmo usado nos badges/filtros do SPA). Estados transitórios (HTTP_*, UNKNOWN)
+    // retornam null: não sobrescrevem o status, só o last_seen avança.
+    private String toCmdbStatus(DeviceState state) {
+        return switch (state) {
+            case OPERATIONAL, PROVISIONING_SUCCESS, OTA_SUCCESSFUL, BOOT_AUDIT, COMMAND_COMPLETE -> "ACTIVE";
+            case OTA_FOUND, OTA_DOWNLOADING, FIRMWARE_ROLLBACK, REBOOTING -> "COMMAND_PENDING";
+            case NVS_INIT, WIFI_AP_MODE, WIFI_CONNECTING, TIME_SYNC, PROVISIONING,
+                 MQTT_WAITING_CONNECT, MQTT_INIT -> "PROVISIONING";
+            case ERROR -> "ERROR";
+            default -> null;
+        };
+    }
+
+    // Publica o estado completo agregado do device no channel Redis pub/sub.
+    // govApi (SseController) assina esse channel e broadcast pros clientes SSE
+    private void publishLive(String deviceId) {
+        try {
+            Map<Object, Object> raw = redisTemplate.opsForHash().entries(hashKey(deviceId));
+            if (raw == null || raw.isEmpty()) return;
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("deviceId", deviceId);
+            if (raw.get("last_seen") != null) payload.put("lastSeen", raw.get("last_seen"));
+            if (raw.get("status") != null) payload.put("status", raw.get("status"));
+            if (raw.get("latitude") != null) payload.put("lat", raw.get("latitude"));
+            if (raw.get("longitude") != null) payload.put("lon", raw.get("longitude"));
+
+            String json = objectMapper.writeValueAsString(payload);
+            redisTemplate.convertAndSend(CHANNEL_DEVICE_LIVE, json);
+        } catch (Exception e) {
+            log.warn("Falha publicando live state device={}: {}", deviceId, e.getMessage());
+        }
     }
 
     private String strOrNull(Object o) {
