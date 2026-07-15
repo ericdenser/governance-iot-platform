@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 
 export interface DeviceLiveState {
   deviceId: string
+  name?: string
   lastSeen?: string
   status?: string
   lat?: number
@@ -55,6 +56,7 @@ export const useLiveStateStore = defineStore('liveState', {
           this.devices.set(p.deviceId, {
             ...prev,
             deviceId: p.deviceId,
+            name: p.name ?? prev?.name,
             lastSeen: toIso(p.lastSeen) ?? prev?.lastSeen,
             status: p.status ?? prev?.status,
             lat: toNum(p.lat) ?? prev?.lat,

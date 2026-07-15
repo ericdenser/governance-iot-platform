@@ -59,7 +59,7 @@ const merged = computed<DeviceMapPositionDTO[]>(() => {
     const base = byId.get(id)
     byId.set(id, {
       deviceId: id,
-      name: base?.name ?? null, // SSE não carrega nome; vem do baseline REST
+      name: lv.name ?? base?.name ?? null,
       latitude: lv.lat,
       longitude: lv.lon,
       lastSeen: lv.lastSeen ?? base?.lastSeen ?? null,
@@ -96,7 +96,7 @@ const popupContent = (deviceId: string): HTMLElement => {
   if (!p) return el
   el.innerHTML =
     `<div class="dmp-title">${esc(p.name ?? p.deviceId)}</div>` +
-    `<div class="dmp-row dmp-mono">${esc(p.deviceId)}</div>` +
+    (p.name ? `<div class="dmp-row dmp-mono">${esc(p.deviceId)}</div>` : '') +
     `<div class="dmp-row"><span class="dmp-dot" style="background:${statusColor(p.status)}"></span>${esc(p.status)}</div>` +
     `<div class="dmp-row dmp-mono">${p.latitude.toFixed(6)}, ${p.longitude.toFixed(6)}</div>` +
     `<div class="dmp-row">Visto: ${esc(fmtSeen(p.lastSeen))}</div>` +
