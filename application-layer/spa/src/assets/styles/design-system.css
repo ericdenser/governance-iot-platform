@@ -25,6 +25,16 @@
   --danger-dim:      rgba(239, 68, 68, 0.12);
   --info:            #3b82f6;
   --info-dim:        rgba(59, 130, 246, 0.12);
+  --primary-border:  rgba(6, 182, 212, 0.3);
+
+  /* Device status (badges, chips, markers do mapa) */
+  --status-active:          var(--success);
+  --status-pending:         var(--warning);
+  --status-provisioning:    var(--info);
+  --status-command-pending: var(--info);
+  --status-revoked:         var(--danger);
+  --status-error:           var(--danger);
+  --status-unknown:         var(--text-muted);
 
   /* Text */
   --text:            #e8edf5;

@@ -61,7 +61,7 @@ public class SecurityConfig {
                     "script-src 'self'; " +
                     "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; " +
                     "font-src 'self' https://fonts.gstatic.com; " +
-                    "img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; " +
+                    "img-src 'self' data: https://*.basemaps.cartocdn.com; " +
                     "connect-src 'self'; " +
                     "object-src 'none'; " +
                     "base-uri 'self'; " +

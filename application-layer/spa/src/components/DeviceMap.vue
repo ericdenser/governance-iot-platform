@@ -22,15 +22,26 @@ const props = withDefaults(defineProps<{
 
 const CLUSTER_THRESHOLD = 200
 
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: '#22c55e',
-  PENDING: '#eab308',
-  PROVISIONING: '#3b82f6',
-  COMMAND_PENDING: '#3b82f6',
-  REVOKED: '#ef4444',
-  ERROR: '#ef4444',
+// Markers são SVG desenhado pelo Leaflet: precisa da cor resolvida, não de
+// var() — então os tokens do design system são lidos via getComputedStyle.
+const STATUS_TOKENS: Record<string, string> = {
+  ACTIVE: '--status-active',
+  PENDING: '--status-pending',
+  PROVISIONING: '--status-provisioning',
+  COMMAND_PENDING: '--status-command-pending',
+  REVOKED: '--status-revoked',
+  ERROR: '--status-error',
 }
-const statusColor = (s: string | null | undefined) => STATUS_COLORS[s ?? ''] ?? '#6b7280'
+const statusColors: Record<string, string> = {}
+let unknownColor = '#6b7e9a'
+const resolveStatusColors = () => {
+  const cs = getComputedStyle(document.documentElement)
+  unknownColor = cs.getPropertyValue('--status-unknown').trim() || unknownColor
+  for (const [status, token] of Object.entries(STATUS_TOKENS)) {
+    statusColors[status] = cs.getPropertyValue(token).trim() || unknownColor
+  }
+}
+const statusColor = (s: string | null | undefined) => statusColors[s ?? ''] || unknownColor
 
 const router = useRouter()
 const liveStore = useLiveStateStore()
@@ -194,15 +205,17 @@ watch(() => liveStore.connectionStatus, (s) => {
 })
 
 onMounted(() => {
+  resolveStatusColors()
   map = L.map(mapEl.value!, {
     center: [-14.235, -51.925], // Brasil
     zoom: 4,
     scrollWheelZoom: props.scrollWheelZoom,
   })
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    referrerPolicy: 'origin',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  // Basemap CARTO dark matter (mesmo estilo do geomap do Grafana)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20,
+    subdomains: 'abcd',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(map)
   markerLayer = L.layerGroup().addTo(map)
 

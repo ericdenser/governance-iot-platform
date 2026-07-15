@@ -279,16 +279,16 @@ onMounted(async () => {
 .chip.active {
   color: var(--primary);
   background: var(--primary-dim);
-  border-color: rgba(6, 182, 212, 0.3);
+  border-color: var(--primary-border);
 }
 
-.chip-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
-.chip[data-status="ACTIVE"] .chip-dot { background: #22c55e; }
-.chip[data-status="PENDING"] .chip-dot { background: #eab308; }
-.chip[data-status="PROVISIONING"] .chip-dot,
-.chip[data-status="COMMAND_PENDING"] .chip-dot { background: #3b82f6; }
-.chip[data-status="REVOKED"] .chip-dot,
-.chip[data-status="ERROR"] .chip-dot { background: #ef4444; }
+.chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-unknown); }
+.chip[data-status="ACTIVE"] .chip-dot { background: var(--status-active); }
+.chip[data-status="PENDING"] .chip-dot { background: var(--status-pending); }
+.chip[data-status="PROVISIONING"] .chip-dot { background: var(--status-provisioning); }
+.chip[data-status="COMMAND_PENDING"] .chip-dot { background: var(--status-command-pending); }
+.chip[data-status="REVOKED"] .chip-dot { background: var(--status-revoked); }
+.chip[data-status="ERROR"] .chip-dot { background: var(--status-error); }
 
 .autofit-toggle {
   display: inline-flex;
