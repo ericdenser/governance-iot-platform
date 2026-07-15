@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
-// https://vite.dev/config/
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -23,7 +23,7 @@ export default defineConfig({
         "script-src 'self'; " +
         "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; " +
         "font-src 'self' https://fonts.gstatic.com; " +
-        "img-src 'self' data:; " +
+        "img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; " +
         "connect-src 'self' ws: wss:; " +
         "object-src 'none'; " +
         "base-uri 'self'; " +

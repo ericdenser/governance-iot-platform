@@ -9,6 +9,7 @@ const router = createRouter({
     { path: '/home',     name: 'dashboard',  meta: { title: 'Dashboard' },    component: () => import('../views/DashboardView.vue') },
     { path: '/devices',  name: 'devices',    meta: { title: 'Dispositivos' }, component: () => import('../views/DevicesView.vue') },
     { path: '/devices/:id', name: 'device-detail', meta: { title: 'Dispositivo' }, component: () => import('../views/DeviceDetailView.vue') },
+    { path: '/map',      name: 'map',        meta: { title: 'Mapa' },         component: () => import('../views/MapView.vue') },
     { path: '/firmware', name: 'firmware',   meta: { title: 'Firmware' },     component: () => import('../views/FirmwareView.vue') },
     { path: '/firmware/:firmwareId', name: 'firmware-detail', meta: { title: 'Firmware' }, component: () => import('../views/FirmwareDetailView.vue') },
     { path: '/sensors',  name: 'sensors',    meta: { title: 'Sensores' },     component: () => import('../views/SensorsView.vue') },

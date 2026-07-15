@@ -4,6 +4,7 @@ import type {
   DeviceDetailDTO,
   DeviceStatus,
   DeviceCertificateResponseDTO,
+  DeviceMapPositionDTO,
   CommandRecordResponseDTO,
   EventRegistryResponseDTO,
   ErrorRecordResponseDTO,
@@ -33,6 +34,7 @@ export const devicesApi = {
     const r = await api.get<Page<DeviceSummaryDTO>>('/devices?page=0&size=1000&sort=name')
     return r.data.content
   },
+  mapPositions: () => api.get<DeviceMapPositionDTO[]>('/devices/map-positions'),
   get: (id: string) => api.get<DeviceDetailDTO>(`/devices/${id}`),
   getCommands: (id: string, page = 0) =>
     api.get<Page<CommandRecordResponseDTO>>(`/devices/${id}/commands?page=${page}&size=10&sort=sentAt,desc`),

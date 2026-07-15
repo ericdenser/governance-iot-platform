@@ -144,6 +144,15 @@ export interface DeviceDetailDTO {
   issuedByUsername: string | null
 }
 
+export interface DeviceMapPositionDTO {
+  deviceId: string
+  name: string | null
+  latitude: number
+  longitude: number
+  lastSeen: string | null
+  status: string | null
+}
+
 export interface DeviceCertificateResponseDTO {
   deviceId: string
   serialNumber: string
