@@ -29,6 +29,14 @@ public class DeviceController {
                 .toEntity(String.class);
     }
 
+    @GetMapping("/map-positions")
+    public ResponseEntity<String> listMapPositions() {
+        return restClient.get()
+                .uri(govApiUrl + "/devices/map-positions")
+                .retrieve()
+                .toEntity(String.class);
+    }
+
     @GetMapping("/{deviceId}")
     public ResponseEntity<String> getDevice(@PathVariable String deviceId) {
         return restClient.get()

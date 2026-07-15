@@ -18,6 +18,7 @@ import org.springframework.security.web.authentication.logout.LogoutSuccessHandl
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.util.matcher.RequestHeaderRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.session.web.http.CookieSerializer;
 import org.springframework.session.web.http.DefaultCookieSerializer;
 
@@ -60,7 +61,7 @@ public class SecurityConfig {
                     "script-src 'self'; " +
                     "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; " +
                     "font-src 'self' https://fonts.gstatic.com; " +
-                    "img-src 'self' data:; " +
+                    "img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; " +
                     "connect-src 'self'; " +
                     "object-src 'none'; " +
                     "base-uri 'self'; " +
@@ -81,6 +82,12 @@ public class SecurityConfig {
                 .defaultAuthenticationEntryPointFor(
                     new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
                     new RequestHeaderRequestMatcher("X-Requested-With", "XMLHttpRequest")
+                )
+                // EventSource não envia X-Requested-With; sem sessão levaria 302
+                // pro Keycloak (cross-origin) e o SSE falharia sem status
+                .defaultAuthenticationEntryPointFor(
+                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                    PathPatternRequestMatcher.withDefaults().matcher("/realtime/**")
                 )
             )
             .authorizeHttpRequests(req -> req

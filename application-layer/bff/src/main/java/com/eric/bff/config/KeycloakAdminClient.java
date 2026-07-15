@@ -48,7 +48,7 @@ public class KeycloakAdminClient {
                 .body(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    /** Cria user no Keycloak. Retorna o ID gerado (extraído do header Location). */
+    /** Cria user no Keycloak. Retorna o ID gerado  */
     public String createUser(Map<String, Object> representation) {
         String token = fetchClientCredentialsToken();
         ResponseEntity<Void> response = restClient.post()

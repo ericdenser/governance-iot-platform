@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
@@ -21,13 +20,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+
 
 @RestController
 @RequestMapping("/realtime")
@@ -43,88 +40,80 @@ public class SseRelayController {
         this.authorizedClientManager = authorizedClientManager;
     }
 
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> stream(
-            @RequestParam(required = false, defaultValue = "map") String scope) {
+    @GetMapping("/stream")
+    public void stream(@RequestParam(required = false, defaultValue = "map") String scope,
+                       HttpServletRequest request,
+                       HttpServletResponse response) throws IOException {
 
-        // O token precisa ser resolvido na thread da request: dentro do
-        // StreamingResponseBody não há SecurityContext nem RequestContext.
-        String accessToken = resolveAccessToken();
+        String accessToken = resolveAccessToken(request, response);
         if (accessToken == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            response.sendError(HttpStatus.UNAUTHORIZED.value());
+            return;
         }
 
-        StreamingResponseBody body = outputStream -> relay(scope, accessToken, outputStream);
+        response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache");
+        response.setHeader("X-Accel-Buffering", "no");
 
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .header(HttpHeaders.CACHE_CONTROL, "no-cache")
-                .header("X-Accel-Buffering", "no")
-                .body(body);
-    }
-
-
-    private void relay(String scope, String accessToken, OutputStream out) {
+        OutputStream out = response.getOutputStream();
         try {
+            
+            out.write(": relay aberto\n\n".getBytes(StandardCharsets.UTF_8));
+            response.flushBuffer();
+
+            log.info("SSE relay: conectando no upstream scope={}", scope);
             sseRestClient.get()
                     .uri(uri -> uri.path("/realtime/stream").queryParam("scope", scope).build())
                     .accept(MediaType.TEXT_EVENT_STREAM)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                    .exchange((request, response) -> {
-                        if (!response.getStatusCode().is2xxSuccessful()) {
-                            log.warn("SSE upstream respondeu {}", response.getStatusCode());
-                            writeEvent(out, "relay-error",
-                                    "{\"status\":" + response.getStatusCode().value() + "}");
+                    .exchange((req, res) -> {
+                        log.info("SSE relay: upstream status={}", res.getStatusCode());
+                        if (!res.getStatusCode().is2xxSuccessful()) {
+                            writeEvent(out, response, "relay-error",
+                                    "{\"status\":" + res.getStatusCode().value() + "}");
                             return null;
                         }
-                        pipe(response.getBody(), out);
+                        pipe(res.getBody(), out, response);
                         return null;
                     });
         } catch (Exception e) {
-            log.debug("SSE relay encerrado: {}", e.getMessage());
+            log.info("SSE relay encerrado: {}", e.toString());
         }
     }
 
-    private void pipe(InputStream in, OutputStream out) throws IOException {
+    private void pipe(InputStream in, OutputStream out, HttpServletResponse response) throws IOException {
         byte[] buffer = new byte[8192];
         int n;
         while ((n = in.read(buffer)) != -1) {
             out.write(buffer, 0, n);
-            out.flush();
+            response.flushBuffer();
         }
     }
 
-    private void writeEvent(OutputStream out, String event, String data) {
+    private void writeEvent(OutputStream out, HttpServletResponse response, String event, String data) {
         try {
             out.write(("event: " + event + "\ndata: " + data + "\n\n")
                     .getBytes(StandardCharsets.UTF_8));
-            out.flush();
+            response.flushBuffer();
         } catch (IOException ignored) {
             // cliente já desconectou
         }
     }
 
-    private String resolveAccessToken() {
+    private String resolveAccessToken(HttpServletRequest request, HttpServletResponse response) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
             return null;
         }
 
-        OAuth2AuthorizeRequest.Builder requestBuilder = OAuth2AuthorizeRequest
+        OAuth2AuthorizeRequest authorizeRequest = OAuth2AuthorizeRequest
                 .withClientRegistrationId(oauthToken.getAuthorizedClientRegistrationId())
-                .principal(authentication);
+                .principal(authentication)
+                .attribute(HttpServletRequest.class.getName(), request)
+                .attribute(HttpServletResponse.class.getName(), response)
+                .build();
 
-        
-        ServletRequestAttributes attrs =
-                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attrs != null) {
-            requestBuilder
-                    .attribute(HttpServletRequest.class.getName(), attrs.getRequest())
-                    .attribute(HttpServletResponse.class.getName(), attrs.getResponse());
-        }
-
-        OAuth2AuthorizedClient authorizedClient =
-                authorizedClientManager.authorize(requestBuilder.build());
+        OAuth2AuthorizedClient authorizedClient = authorizedClientManager.authorize(authorizeRequest);
         if (authorizedClient == null || authorizedClient.getAccessToken() == null) {
             return null;
         }
