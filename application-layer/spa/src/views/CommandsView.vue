@@ -9,6 +9,8 @@ import { commandsApi } from '@/services/commands'
 import { devicesApi } from '@/services/devices'
 import { firmwareApi } from '@/services/firmware'
 import type {
+  CommandAggregateStatus,
+  CommandBatchDTO,
   CommandRecordResponseDTO,
   CommandRequest,
   CommandResultResponseDTO,
@@ -21,10 +23,14 @@ import { errorMessage } from '@/utils/errors'
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
-const commands = ref<CommandRecordResponseDTO[]>([])
+const batches = ref<CommandBatchDTO[]>([])
 const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
+
+const expanded = ref<Set<string>>(new Set())
+const recordsByBatch = ref<Record<string, CommandRecordResponseDTO[]>>({})
+const loadingRecords = ref<Set<string>>(new Set())
 
 // ── Wizard state ──────────────────────────────────────────────────────────────
 type Step = 'command' | 'firmware' | 'devices' | 'params' | 'result'
@@ -141,14 +147,72 @@ const doSend = async () => {
 // ── History table ─────────────────────────────────────────────────────────────
 
 const statusVariant = (s: CommandStatus): BadgeVariant =>
-  (({ PENDING: 'warning', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
+  (({
+    PENDING: 'warning',
+    COMPLETED_SUCCESS: 'success',
+    FAILED: 'danger',
+    TIMEOUT: 'danger',
+    PUBLISH_FAILED: 'danger',
+    SKIPPED: 'muted',
+  } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
 
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const aggregateVariant = (s: CommandAggregateStatus): BadgeVariant =>
+  (({
+    IN_PROGRESS: 'warning',
+    SUCCESS: 'success',
+    PARTIAL: 'warning',
+    FAILED: 'danger',
+  } as Record<CommandAggregateStatus, BadgeVariant>)[s] ?? 'muted')
+
+const AGGREGATE_LABEL: Record<CommandAggregateStatus, string> = {
+  IN_PROGRESS: 'EM ANDAMENTO',
+  SUCCESS: 'SUCESSO',
+  PARTIAL: 'PARCIAL',
+  FAILED: 'FALHOU',
+}
+
+const countsSummary = (b: CommandBatchDTO) => {
+  const parts: string[] = []
+  if (b.success) parts.push(`${b.success} ok`)
+  if (b.pending) parts.push(`${b.pending} pendente(s)`)
+  if (b.failed) parts.push(`${b.failed} falhou/falharam`)
+  if (b.skipped) parts.push(`${b.skipped} pulado(s)`)
+  if (b.notFound) parts.push(`${b.notFound} não encontrado(s)`)
+  return parts.join(' · ') || '—'
+}
+
+const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+
+const toggleExpand = async (batchId: string) => {
+  const next = new Set(expanded.value)
+  if (next.has(batchId)) {
+    next.delete(batchId)
+    expanded.value = next
+    return
+  }
+  next.add(batchId)
+  expanded.value = next
+  if (!recordsByBatch.value[batchId]) {
+    loadingRecords.value = new Set(loadingRecords.value).add(batchId)
+    try {
+      const r = await commandsApi.records(batchId)
+      recordsByBatch.value = { ...recordsByBatch.value, [batchId]: r.data ?? [] }
+    } catch {
+      recordsByBatch.value = { ...recordsByBatch.value, [batchId]: [] }
+    } finally {
+      const ld = new Set(loadingRecords.value)
+      ld.delete(batchId)
+      loadingRecords.value = ld
+    }
+  }
+}
 
 const load = async () => {
   const r = await commandsApi.list(page.value)
-  commands.value = r.data.content ?? []
+  batches.value = r.data.content ?? []
   totalPages.value = r.data.page?.totalPages ?? 1
+  expanded.value = new Set()
+  recordsByBatch.value = {}
 }
 const changePage = (p: number) => { page.value = p; load() }
 
@@ -181,20 +245,47 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <table v-else class="tbl">
         <thead>
           <tr>
-            <th>Tipo</th><th>Status</th><th>Dispositivo</th>
-            <th>Enviado por</th><th>Enviado em</th><th>Concluído em</th>
+            <th></th><th>Tipo</th><th>Status</th><th>Resultado</th>
+            <th>Enviado por</th><th>Enviado em</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="c in commands" :key="c.commandId">
-            <td class="mono text-sm">{{ c.commandType }}</td>
-            <td><AppBadge :variant="statusVariant(c.status)">{{ c.status }}</AppBadge></td>
-            <td class="text-sm">{{ c.deviceName ?? c.deviceId ?? '—' }}</td>
-            <td class="text-sm">{{ c.createdByUsername ?? '—' }}</td>
-            <td class="text-muted text-sm">{{ fmt(c.sentAt) }}</td>
-            <td class="text-muted text-sm">{{ fmt(c.completedAt) }}</td>
-          </tr>
-          <tr v-if="!commands.length"><td colspan="6" class="empty">Nenhum comando encontrado</td></tr>
+          <template v-for="b in batches" :key="b.batchId">
+            <tr class="batch-row" @click="toggleExpand(b.batchId)">
+              <td class="chevron-cell">
+                <span class="chevron" :class="{ open: expanded.has(b.batchId) }">›</span>
+              </td>
+              <td class="mono text-sm">
+                {{ b.commandType }}<span v-if="b.targetVersionLabel" class="text-muted"> v{{ b.targetVersionLabel }}</span>
+              </td>
+              <td><AppBadge :variant="aggregateVariant(b.aggregateStatus)">{{ AGGREGATE_LABEL[b.aggregateStatus] ?? b.aggregateStatus }}</AppBadge></td>
+              <td class="text-muted text-sm">{{ countsSummary(b) }}</td>
+              <td class="text-sm">{{ b.createdByUsername ?? '—' }}</td>
+              <td class="text-muted text-sm">{{ fmt(b.sentAt) }}</td>
+            </tr>
+            <tr v-if="expanded.has(b.batchId)" class="detail-row">
+              <td colspan="6">
+                <div v-if="loadingRecords.has(b.batchId)" class="empty">Carregando devices...</div>
+                <table v-else class="subtbl">
+                  <thead>
+                    <tr><th>Dispositivo</th><th>Status</th><th>Razão</th><th>Concluído em</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="c in recordsByBatch[b.batchId] ?? []" :key="c.commandId">
+                      <td class="text-sm">{{ c.deviceName ?? c.deviceId ?? '—' }}</td>
+                      <td><AppBadge :variant="statusVariant(c.status)">{{ c.status }}</AppBadge></td>
+                      <td class="text-muted text-sm">{{ c.errorMessage ?? '—' }}</td>
+                      <td class="text-muted text-sm">{{ fmt(c.completedAt) }}</td>
+                    </tr>
+                    <tr v-if="!(recordsByBatch[b.batchId] ?? []).length">
+                      <td colspan="4" class="empty">Nenhum device visível neste batch</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          </template>
+          <tr v-if="!batches.length"><td colspan="6" class="empty">Nenhum comando encontrado</td></tr>
         </tbody>
       </table>
 
@@ -340,6 +431,17 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .text-sm { font-size: var(--text-sm); }
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
+
+/* ── Batch expansion ─────────────────────────────────────────────────────── */
+.batch-row { cursor: pointer; }
+.batch-row:hover td { background: var(--panel); }
+.chevron-cell { width: 24px; }
+.chevron { display: inline-block; font-size: var(--text-lg); color: var(--text-muted); transition: transform var(--transition); }
+.chevron.open { transform: rotate(90deg); }
+.detail-row td { background: var(--panel); padding: var(--space-3) var(--space-4); }
+.subtbl { width: 100%; border-collapse: collapse; }
+.subtbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-2) 0; text-align: left; }
+.subtbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); }
 
 /* ── Modal shell ─────────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }

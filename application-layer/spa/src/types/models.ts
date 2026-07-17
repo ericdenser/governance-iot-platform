@@ -9,7 +9,14 @@ export type DeviceStatus =
   | 'COMMAND_PENDING'
   | 'REVOKED'
   | 'ERROR'
-export type CommandStatus = 'PENDING' | 'COMPLETED_SUCCESS' | 'FAILED' | 'TIMEOUT'
+export type CommandStatus =
+  | 'PENDING'
+  | 'COMPLETED_SUCCESS'
+  | 'FAILED'
+  | 'TIMEOUT'
+  | 'SKIPPED'
+  | 'PUBLISH_FAILED'
+export type CommandAggregateStatus = 'IN_PROGRESS' | 'SUCCESS' | 'PARTIAL' | 'FAILED'
 export type DeviceCommands = 'UPDATE' | 'REBOOT' | 'DEEP_SLEEP' | 'FIRMWARE_ROLLBACK'
 export type ErrorStatus = 'PENDING' | 'FIXED' | 'RETRY_FAILED' | 'NOT_FIXABLE'
 export type GroupRole = 'VIEWER' | 'MEMBER' | 'OWNER'
@@ -67,7 +74,6 @@ export interface FirmwareVersionResponseDTO {
   originalFilename: string
   sha256: string
   sizeBytes: number
-  downloadUrl: string
   releaseNotes: string | null
   status: FirmwareStatus
   sensorConfigs: FirmwareSensorConfigResponseDTO[]
@@ -202,6 +208,21 @@ export interface CommandRecordResponseDTO {
   deviceName: string | null
   createdByActorId: string | null
   createdByUsername: string | null
+}
+
+export interface CommandBatchDTO {
+  batchId: string
+  commandType: DeviceCommands
+  targetVersionLabel: string | null
+  sentAt: string
+  createdByUsername: string | null
+  aggregateStatus: CommandAggregateStatus
+  total: number
+  success: number
+  pending: number
+  failed: number
+  skipped: number
+  notFound: number
 }
 
 export interface CommandResultResponseDTO {
