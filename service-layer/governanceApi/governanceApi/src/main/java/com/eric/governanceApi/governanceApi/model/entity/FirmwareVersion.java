@@ -60,9 +60,6 @@ public class FirmwareVersion extends AuthoredEntity {
     @Column(nullable = false)
     private long sizeBytes;
 
-    @Column(nullable = false)
-    private String downloadUrl;        // URL pública para o ESP baixar
-
     @Column(length = 1000)
     private String releaseNotes;      
 

@@ -1,6 +1,5 @@
 package com.eric.governanceApi.governanceApi.exceptions;
 
-import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -101,7 +100,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
         Class<?> requiredType = ex.getRequiredType();
         String typeName = requiredType != null ? requiredType.getSimpleName() : "?";
-        String msg = String.format("O parâmetro '%s' deve ser do tipo '%s'. Valor recebido: '%s'.",
+        String msg = String.format("Parameter '%s' must be of type '%s'. Type received: '%s'.",
                 ex.getName(), typeName, ex.getValue());
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -113,7 +112,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleNoHandlerFound(
             NoHandlerFoundException ex,
             HttpServletRequest request) {
-        log.warn("Endpoint não encontrado: {} {}", ex.getHttpMethod(), ex.getRequestURL());
+        log.warn("Endpoint not found: {} {}", ex.getHttpMethod(), ex.getRequestURL());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(ApiResponse.error(
@@ -122,9 +121,9 @@ public class GlobalExceptionHandler {
                         request.getRequestURI()));
     }
 
-    @ExceptionHandler({ClientAbortException.class, IOException.class})
-    public void handleClientAbortException(Exception ex) {
-        log.warn("Download de firmware interrompido. Cliente desconectou abruptamente: {}", ex.getMessage());
+    @ExceptionHandler(ClientAbortException.class)
+    public void handleClientAbortException(Exception e) {
+        log.warn("Download interruped. Client disconnected: {}", e.getMessage());
     }
 
     // Recycle normal do SseEmitter (timeout de 30min): o cliente reconecta sozinho
@@ -135,7 +134,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex, HttpServletRequest request, HttpServletResponse response) {
-        log.error("Erro não tratado em {}", request.getRequestURI(), ex);
+        log.error("Error not treated in {}", request.getRequestURI(), ex);
 
         request.removeAttribute(HandlerMapping.PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
         if (!response.isCommitted()) {
@@ -148,4 +147,6 @@ public class GlobalExceptionHandler {
                         "Erro interno do servidor.",
                         request.getRequestURI()));
     }
+
+  
 }

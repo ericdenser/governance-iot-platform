@@ -6,12 +6,6 @@ spring:
       multipart:
         max-file-size: 10MB
         max-request-size: 10MB
-  mvc:
-    static-path-pattern: /firmwares/**
-  web:
-    resources:
-      static-locations: "file:${FIRMWARE_STORAGE_PATH},classpath:/static/"
-
   data:                          
     redis:
       host: ${REDIS_STREAMS_HOST:localhost}
@@ -64,10 +58,6 @@ mqtt:
   client-id: governance-api-publisher
   crl-path: ../../mosquitto/config/certs/revoked.crl
 
-ota:
-  firmware-storage-path: ${FIRMWARE_STORAGE_PATH}
-  public-base-url: http://${HOST_IP}:8082/firmwares
-
 agent:
   url: ${AGENT_URL}
 
@@ -76,6 +66,14 @@ event:
 
 govapi:
   self-url: ${GOVAPI_SELF_URL:http://localhost:8082}
+
+minio:
+  endpoint: ${MINIO_ENDPOINT}
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  bucket: ${MINIO_BUCKET}
+  region: ${MINIO_REGION}
 
 app:
   hotstate:
@@ -91,8 +89,6 @@ provisioning:
   nvs-python-path: ${NVS_PYTHON_PATH:python3}
   nvs-script-path: ${NVS_SCRIPT_PATH}
   nvs-partition-size: "0x5000"
-  bootloader-bin-path: ${PROVISIONING_BOOTLOADER_BIN_PATH}
-  partition-table-bin-path: ${PROVISIONING_PARTITION_TABLE_BIN_PATH}
   token-ttl-seconds: 86400
   # Intervalo em ms para o job de limpeza de devices fantasma (padrão: 5 min)
   cleanup-interval-ms: 300000

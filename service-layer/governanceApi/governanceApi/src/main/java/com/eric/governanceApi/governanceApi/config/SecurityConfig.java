@@ -36,10 +36,6 @@ public class SecurityConfig {
                 // apenas agent-mqtt (service account com ROLE_AGENT_MQTT) pode alimentar erros
                 .requestMatchers("/error/ingest").hasRole("AGENT_MQTT")
 
-                // Download de firmware pelo ESP32 via OTA — sem autenticação
-                // TODO: garantir uma prova de identidade do esp antes de permitir o download do .bin
-                .requestMatchers("/firmwares/**").permitAll()
-
                 // Todo o resto é validado pelo RoleManager via regras-acesso.json
                 .anyRequest().access(roleManager)
             )
