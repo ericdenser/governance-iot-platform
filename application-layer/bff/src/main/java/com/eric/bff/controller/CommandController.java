@@ -37,6 +37,14 @@ public class CommandController {
                 .toEntity(String.class);
     }
 
+    @GetMapping("/{batchId}")
+    public ResponseEntity<String> getBatchRecords(@PathVariable String batchId) {
+        return restClient.get()
+                .uri(govApiUrl + "/commands/{batchId}", batchId)
+                .retrieve()
+                .toEntity(String.class);
+    }
+
     private String queryString(HttpServletRequest request) {
         String qs = request.getQueryString();
         return qs != null ? "?" + qs : "";
