@@ -116,6 +116,18 @@ public class DeviceProvisioningService {
         return provisioningToken;
     }
 
+    // Compensação do generatePackage: se a geração do pacote falhar depois do
+    // registro, remove device+token na hora em vez de esperar o token expirar (24h).
+    @Transactional
+    public void discardPendingDevice(String deviceId) {
+        deviceRepository.findByDeviceId(deviceId).ifPresent(device -> {
+            if (device.getStatus() != DeviceStatus.PENDING) return;
+            deviceGroupMembershipRepository.deleteByDeviceId(device.getId());
+            deviceRepository.delete(device);
+            log.info("Device PENDING {} descartado após falha na geração do flash package.", deviceId);
+        });
+    }
+
     @Transactional
     public String processDeviceRegistration(DeviceRegistrationRequest request) {
         log.info("Procurando token: {}", request.getProvisioningToken());
