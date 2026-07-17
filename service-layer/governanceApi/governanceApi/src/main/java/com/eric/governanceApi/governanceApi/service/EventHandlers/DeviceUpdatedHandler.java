@@ -88,7 +88,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
 
         // Resolve o firmware alvo pelo firmwareId gravado no CommandRecord 
         FirmwareVersion current_firmware = null;
-        String current_firmware_version = event.deviceInfo().firmware_version();
+        String current_firmware_version = event.deviceInfo().firmwareVersion();
 
         Optional<CommandRecord> pendingForFirmware = commandRecordRepository
                 .findFirstByTargetDevice_DeviceIdAndStatus(device.getDeviceId(), CommandStatus.PENDING);

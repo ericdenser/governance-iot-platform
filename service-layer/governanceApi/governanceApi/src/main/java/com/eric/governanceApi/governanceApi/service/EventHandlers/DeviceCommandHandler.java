@@ -103,7 +103,7 @@ public class DeviceCommandHandler implements DeviceEventHandler{
                 }
             }
 
-            String reportedVersion = event.deviceInfo().firmware_version(); // versão que o esp está agora (reportado em seu payload)
+            String reportedVersion = event.deviceInfo().firmwareVersion(); // versão que o esp está agora (reportado em seu payload)
             FirmwareVersion rolledBackTo = null;
 
             if (previousFirmware != null && previousFirmware.getVersion().equals(reportedVersion)) {

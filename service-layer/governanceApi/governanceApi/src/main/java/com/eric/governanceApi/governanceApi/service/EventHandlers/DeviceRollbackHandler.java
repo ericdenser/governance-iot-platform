@@ -70,7 +70,7 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         FirmwareVersion previousVersion  = device.getPreviousFirmwareVersion();
         FirmwareVersion attemptedVersion = device.getAttemptedFirmwareVersion();
 
-        String reportedVersion = event.deviceInfo().firmware_version();
+        String reportedVersion = event.deviceInfo().firmwareVersion();
         Map<String, Object> params = event.deviceInfo().params();
         String reason = params.get("reason") != null ? params.get("reason").toString() : null;
 
