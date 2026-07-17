@@ -2,12 +2,11 @@ package com.eric.governanceApi.governanceApi.service;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,12 +24,15 @@ import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.GroupRole;
+import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.InfrastructureException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
+import com.eric.governanceApi.governanceApi.model.entity.CommandBatch;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
+import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
@@ -44,6 +46,7 @@ import com.eric.governanceApi.governanceApi.model.response.CommandResultResponse
 import com.eric.governanceApi.governanceApi.model.response.FirmwareResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.FirmwareVersionResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.FirmwareVersionSummaryDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandBatchRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareVersionRepository;
@@ -52,6 +55,7 @@ import com.eric.governanceApi.governanceApi.repository.UserGroupAssignmentReposi
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.extern.slf4j.Slf4j;
+import software.amazon.awssdk.core.exception.SdkException;
 
 @Slf4j
 @Service
@@ -63,14 +67,10 @@ public class FirmwareService {
     private final AgentClient agentClient;
     private final SensorRepository sensorRepository;
     private final UserGroupAssignmentRepository assignmentRepository;
+    private final FirmwareStorageService storageService;
+    private final CommandBatchRepository commandBatchRepository;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    
-    @Value("${ota.firmware-storage-path}")
-    private String storagePath;
-
-    @Value("${ota.public-base-url}")
-    private String publicBaseUrl;
 
     @Value("${ota.max-firmware-size-mb:4}")
     private int maxSizeMb;
@@ -80,13 +80,16 @@ public class FirmwareService {
                            DeviceRepository deviceRepository,
                            AgentClient agentClient,
                            SensorRepository sensorRepository,
-                           UserGroupAssignmentRepository assignmentRepository) {
+                           UserGroupAssignmentRepository assignmentRepository, FirmwareStorageService storageService,
+                           CommandBatchRepository commandBatchRepository) {
         this.firmwareRepository = firmwareRepository;
         this.firmwareVersionRepository = firmwareVersionRepository;
         this.deviceRepository = deviceRepository;
         this.agentClient = agentClient;
         this.sensorRepository = sensorRepository;
         this.assignmentRepository = assignmentRepository;
+        this.storageService = storageService;
+        this.commandBatchRepository = commandBatchRepository;
     }
 
 
@@ -202,32 +205,50 @@ public class FirmwareService {
                 "Versão v" + v.getVersion() + " está DEPRECATED e não pode ser deployada.");
         }
 
+        // Presigned url for object storage 
+        String signedUrl = storageService.presignDownloadUrl(v.getFilename(), Duration.ofMinutes(10));
+
         Map<String, Object> payload = Map.of(
             "version", v.getVersion(),
-            "url",     v.getDownloadUrl()
+            "url",     signedUrl
         );
 
         List<String> activeDevs = new ArrayList<>();
         List<String> skipped    = new ArrayList<>();
+        List<String> notFound   = new ArrayList<>();
+        Map<String, CommandRecord> pendingByDeviceId = new HashMap<>();
 
         String payloadJson = MAPPER.writeValueAsString(payload);
+
+        CommandBatch batch = new CommandBatch();
+        batch.setCommandType(DeviceCommands.UPDATE);
+        batch.setTargetVersionId(v.getFirmwareVersionId());
+        batch.setTargetVersionLabel(v.getVersion());
+        batch.setPayload(payloadJson);
+        commandBatchRepository.save(batch);
 
         for (String devId : targetDevices) {
             deviceRepository.findByDeviceId(devId).ifPresentOrElse(
                 device -> {
                     if (device.getStatus() == DeviceStatus.COMMAND_PENDING) {
                         skipped.add(devId);
+                        addSkippedRecord(device, batch, payloadJson, v.getFirmwareVersionId(),
+                            "Já existe um comando pendente em execução.");
                         log.warn("Device {} ignorado. Já existe um comando pendente em execução.", devId);
                         return;
                     }
                     if (device.getStatus() != DeviceStatus.ACTIVE) {
                         skipped.add(devId);
+                        addSkippedRecord(device, batch, payloadJson, v.getFirmwareVersionId(),
+                            "Device não está ACTIVE (status=" + device.getStatus() + ").");
                         log.info("Device de ID {} não está ACTIVE, skippando...", devId);
                         return;
                     }
                     FirmwareVersion currentVer = device.getFirmwareVersion();
                     if (currentVer != null && currentVer.getFirmwareVersionId().equals(v.getFirmwareVersionId())) {
                         skipped.add(devId);
+                        addSkippedRecord(device, batch, payloadJson, v.getFirmwareVersionId(),
+                            "Já está na versão v" + v.getVersion() + ".");
                         log.warn("Device {} ignorado. Já está na versão v{}", devId, v.getVersion());
                         return;
                     }
@@ -235,16 +256,24 @@ public class FirmwareService {
                     record.setCommandType(DeviceCommands.UPDATE);
                     record.setPayload(payloadJson);
                     record.setTargetVersionId(v.getFirmwareVersionId());
+                    record.setBatch(batch);
                     device.addCommandRecord(record);
                     device.setAttemptedFirmwareVersion(v);  // marca OTA em andamento
                     device.setStatus(DeviceStatus.COMMAND_PENDING);
                     activeDevs.add(devId);
+                    pendingByDeviceId.put(devId, record);
                     log.info("Device de ID {} válido, status alterado para COMMAND_PENDING", devId);
                     deviceRepository.save(device);
                 }, () -> {
                     skipped.add(devId);
+                    notFound.add(devId);
                     log.info("Device de ID {} não encontrado, skippando...", devId);
                 });
+        }
+
+        if (!notFound.isEmpty()) {
+            batch.setNotFoundIds(String.join(",", notFound));
+            commandBatchRepository.save(batch);
         }
 
         if (activeDevs.isEmpty()) {
@@ -258,11 +287,40 @@ public class FirmwareService {
 
         AgentBroadcastResultDTO agentResult = agentClient.broadcastCommands(DeviceCommands.UPDATE, payload, activeDevs);
 
+        // Devices que o agent não conseguiu publicar: fecha o record e libera o device
+        for (String devId : agentResult.failed()) {
+            CommandRecord record = pendingByDeviceId.get(devId);
+            if (record == null) continue;
+            record.setStatus(CommandStatus.PUBLISH_FAILED);
+            record.setCompletedAt(Instant.now());
+            record.setErrorMessage("Falha ao publicar no broker MQTT (agent).");
+            deviceRepository.findByDeviceId(devId).ifPresent(device -> {
+                device.setStatus(DeviceStatus.ACTIVE);
+                device.setAttemptedFirmwareVersion(null);
+                deviceRepository.save(device);
+            });
+            log.warn("Device {}: publish falhou no agent — record marcado PUBLISH_FAILED e device liberado.", devId);
+        }
+
         return new CommandResultResponseDTO(
             DeviceCommands.UPDATE.toString(),
             agentResult.publishedTo(),
             agentResult.failed(),
             skipped);
+    }
+
+    private void addSkippedRecord(Device device, CommandBatch batch, String payloadJson,
+                                  String targetVersionId, String reason) {
+        CommandRecord record = new CommandRecord();
+        record.setCommandType(DeviceCommands.UPDATE);
+        record.setPayload(payloadJson);
+        record.setTargetVersionId(targetVersionId);
+        record.setBatch(batch);
+        record.setStatus(CommandStatus.SKIPPED);
+        record.setCompletedAt(Instant.now());
+        record.setErrorMessage(reason);
+        device.addCommandRecord(record);
+        deviceRepository.save(device);
     }
 
     @Auditable(action = AuditAction.FIRMWARE_SET_PROVISIONING, targetType = "FIRMWARE", targetIdArg = 0)
@@ -478,16 +536,14 @@ public class FirmwareService {
 
     private String persistBinary(MultipartFile file, String version, String sha256) {
         String filename = "firmware_v" + version + "_" + sha256.substring(0, 12) + ".bin";
-        Path dest = Paths.get(storagePath, filename);
+        
         try {
-            Files.createDirectories(dest.getParent());
-            Files.copy(file.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
+            storageService.store(filename, file.getInputStream(), file.getSize());
+        } catch (IOException | SdkException e) {
             throw new InfrastructureException(ErrorCode.STORAGE_UNAVAILABLE,
-                "Erro ao salvar firmware no disco: " + e.getMessage());
+                "Error while sending the firmware to the storage: " + e.getMessage());
         }
-        dest.toFile().setReadable(true, true);
-        dest.toFile().setWritable(false);
+        
         return filename;
     }
 
@@ -501,7 +557,7 @@ public class FirmwareService {
         v.setOriginalFilename(originalFilename);
         v.setSha256(sha256);
         v.setSizeBytes(sizeBytes);
-        v.setDownloadUrl(publicBaseUrl + "/" + filename);
+        // v.setDownloadUrl(publicBaseUrl + "/" + filename);
         v.setReleaseNotes(releaseNotes);
         v.setStatus(FirmwareStatus.STAGED);
         attachSensors(v, sensors);

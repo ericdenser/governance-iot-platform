@@ -10,6 +10,7 @@ public enum ErrorCode {
     SENSOR_NOT_FOUND,
     USER_NOT_FOUND,
     ENDPOINT_NOT_FOUND,
+    COMMAND_NOT_FOUND,
     RESOURCE_NOT_FOUND,
 
     // 409 — conflict

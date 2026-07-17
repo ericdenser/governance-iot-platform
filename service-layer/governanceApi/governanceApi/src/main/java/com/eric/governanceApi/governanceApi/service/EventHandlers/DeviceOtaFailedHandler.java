@@ -7,10 +7,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.enums.EventType;
+import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 
@@ -24,6 +26,7 @@ public class DeviceOtaFailedHandler implements DeviceEventHandler {
 
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
+    private final CommandRecordRepository commandRecordRepository;
 
     @Override
     public EventType handles() { return EventType.DEVICE_UPDATE_FAILED; }
@@ -63,7 +66,17 @@ public class DeviceOtaFailedHandler implements DeviceEventHandler {
 
         log.warn("Device [{}] falhou ao atualizar para v{} — reason: {}", event.deviceId(), failedVersion, reason);
 
+        // Fecha o CommandRecord PENDING do UPDATE para o batch não ficar IN_PROGRESS eterno
+        commandRecordRepository
+                .findFirstByTargetDevice_DeviceIdAndStatus(event.deviceId(), CommandStatus.PENDING)
+                .ifPresent(record -> {
+                    record.setStatus(CommandStatus.FAILED);
+                    record.setCompletedAt(event.timestamp());
+                    record.setErrorMessage("OTA falhou (reason: " + reason + ").");
+                });
+
         device.setStatus(DeviceStatus.ACTIVE);
+        device.setAttemptedFirmwareVersion(null);
 
         eventRegistry.setResultMessage(String.format(
                 "OTA para v%.0f falhou no device [%s] (reason: %s). Device retornou para ACTIVE.",

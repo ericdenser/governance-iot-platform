@@ -91,7 +91,9 @@ public class ErrorOtaFailedHandler implements ErrorHandlerInterface {
         CommandRecord record = pendingCommand.get();
         record.setCompletedAt(ts);
         record.setStatus(CommandStatus.FAILED);
+        record.setErrorMessage(errorDTO.errorMsg());
         device.setStatus(DeviceStatus.ACTIVE);
+        device.setAttemptedFirmwareVersion(null);
 
         log.warn("Device [{}] falhou ao executar OTA — payload: {}", errorDTO.deviceId(), record.getPayload());
 

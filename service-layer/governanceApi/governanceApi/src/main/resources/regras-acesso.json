@@ -50,6 +50,9 @@
   "/commands/send": {
     "POST": ["ROLE_ADMIN", "ROLE_USER"]
   },
+  "/commands/*": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
 
   "/events": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]

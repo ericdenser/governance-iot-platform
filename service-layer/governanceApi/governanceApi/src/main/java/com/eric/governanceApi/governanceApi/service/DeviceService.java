@@ -126,7 +126,7 @@ public class DeviceService {
 
     @Transactional(readOnly = true)
     public DeviceDetailDTO getDevice(String deviceId) {
-        // 1 query só (device + firmwareVersion + firmware) via @EntityGraph
+
         Device device = deviceRepository.findWithFirmwareByDeviceId(deviceId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado."));
 
@@ -207,18 +207,6 @@ public class DeviceService {
         if (actorId == null) return Page.empty(pageable);
         return eventRegistryRepository.findAllByKeycloakUserId(actorId, pageable)
                 .map(EventRegistryResponseDTO::from);
-    }
-
-    @Transactional(readOnly = true)
-    public Page<CommandRecordResponseDTO> listAllCommands(Pageable pageable) {
-        if (isAdmin()) {
-            return commandRecordRepository.findAllByOrderBySentAtDesc(pageable)
-                    .map(CommandRecordResponseDTO::from);
-        }
-        String actorId = currentActorId();
-        if (actorId == null) return Page.empty(pageable);
-        return commandRecordRepository.findAllByKeycloakUserId(actorId, pageable)
-                .map(CommandRecordResponseDTO::from);
     }
 
     @Transactional(readOnly = true)

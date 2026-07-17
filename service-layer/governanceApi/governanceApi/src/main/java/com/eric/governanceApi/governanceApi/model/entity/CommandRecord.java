@@ -65,6 +65,11 @@ public class CommandRecord extends AuthoredEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     private Device targetDevice;
 
+    // Nullable: records anteriores ao agrupamento não têm batch
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batch_id")
+    private CommandBatch batch;
+
 
     @PrePersist
     private void generadeCommandID() {
