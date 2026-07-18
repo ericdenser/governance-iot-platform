@@ -15,6 +15,14 @@ mqtt:
 govapi:
   url: ${GOVAPI_URL:http://localhost:8082}
 
+# Rollout em waves: broadcasts acima do threshold são fatiados em waves de
+# wave-size devices, espaçadas por wave-interval-ms. Manter em sincronia com
+# ota.wave-* do govApi (dimensiona o TTL da presigned URL).
+broadcast:
+  wave-threshold: ${BROADCAST_WAVE_THRESHOLD:100}
+  wave-size: ${BROADCAST_WAVE_SIZE:50}
+  wave-interval-ms: ${BROADCAST_WAVE_INTERVAL_MS:10000}
+
 event-handler:
   url: ${EVENT_HANDLER_URL:http://localhost:8085}
 

@@ -219,6 +219,7 @@ public class CommandsService {
                 ? commandBatchRepository.findAllByOrderBySentAtDesc(pageable)
                 : commandBatchRepository.findAllByKeycloakUserId(currentActorId(), pageable);
 
+        @SuppressWarnings("null")
         List<Long> batchIds = page.getContent().stream().map(CommandBatch::getId).toList();
 
         Map<Long, Map<CommandStatus, Long>> countsByBatch = new HashMap<>();

@@ -57,8 +57,7 @@ public class FlashPackageService {
 
         Path tempDir = Files.createTempDirectory("flash_pkg_");
         try {
-            // Valida e baixa todos os artefatos ANTES de criar device+token no banco:
-            // falha de storage/firmware ausente não deixa PENDING órfão.
+
             FirmwareVersion firmware = resolveProvisioningFirmware();
             Path firmwarePath   = fetchFirmware(firmware, tempDir);
             Path bootloaderPath = fetchFromStorage(PLATFORM_BOOTLOADER_KEY, tempDir, "bootloader.bin");
