@@ -93,6 +93,38 @@ public class FirmwareController {
                 .toEntity(String.class);
     }
 
+    @PutMapping(value = "/versions/{versionId}/binary", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<String> reuploadBinary(
+            @PathVariable String versionId,
+            @RequestPart("file") MultipartFile file) {
+
+        MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+        parts.add("file", file.getResource());
+
+        return restClient.put()
+                .uri(govApiUrl + "/firmware/versions/" + versionId + "/binary")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(parts)
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    @DeleteMapping("/versions/{versionId}")
+    public ResponseEntity<String> deleteVersion(@PathVariable String versionId) {
+        return restClient.delete()
+                .uri(govApiUrl + "/firmware/versions/" + versionId)
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    @DeleteMapping("/{firmwareId}")
+    public ResponseEntity<String> deleteFirmware(@PathVariable String firmwareId) {
+        return restClient.delete()
+                .uri(govApiUrl + "/firmware/" + firmwareId)
+                .retrieve()
+                .toEntity(String.class);
+    }
+
     // ─── Deploy helper ─────────────────────────────────────────────────────────
 
     @GetMapping("/deployable")
