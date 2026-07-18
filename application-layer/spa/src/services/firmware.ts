@@ -21,6 +21,7 @@ export const firmwareApi = {
   create: (file: File, metadata: Record<string, unknown>) =>
     upload<FirmwareResponseDTO>('/firmware/create', file, metadata),
   setProvisioning: (firmwareId: string) => api.put<FirmwareResponseDTO>(`/firmware/${firmwareId}/provisioning`),
+  deleteFirmware: (firmwareId: string) => api.delete<void>(`/firmware/${firmwareId}`),
 
   // ── Firmware Version ───────────────────────────────────────────────────────
   listVersions: (firmwareId: string) => api.get<FirmwareVersionSummaryDTO[]>(`/firmware/${firmwareId}/versions`),
@@ -28,6 +29,12 @@ export const firmwareApi = {
   uploadVersion: (firmwareId: string, file: File, metadata: Record<string, unknown>) =>
     upload<FirmwareVersionResponseDTO>(`/firmware/${firmwareId}/upload`, file, metadata),
   deprecate: (versionId: string) => api.patch<FirmwareVersionResponseDTO>(`/firmware/versions/${versionId}/deprecate`),
+  deleteVersion: (versionId: string) => api.delete<void>(`/firmware/versions/${versionId}`),
+  reuploadBinary: (versionId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.put<FirmwareVersionResponseDTO>(`/firmware/versions/${versionId}/binary`, form)
+  },
 
   // ── Deploy ─────────────────────────────────────────────────────────────────
   listDeployable: () => api.get<DeployableVersionProjection[]>('/firmware/deployable'),

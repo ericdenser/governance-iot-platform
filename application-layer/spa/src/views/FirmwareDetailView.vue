@@ -36,7 +36,7 @@ const loading = ref(true)
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 const statusVariant = (s: string): BadgeVariant =>
-  ({ STAGED: 'muted', DEPLOYED: 'success', DEPRECATED: 'danger' }[s] as BadgeVariant) ?? 'muted'
+  ({ STAGED: 'muted', DEPLOYED: 'success', DEPRECATED: 'danger', CORRUPTED: 'danger' }[s] as BadgeVariant) ?? 'muted'
 const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 const bytes = (n: number) => n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`
 
@@ -53,6 +53,14 @@ const canManage = computed(() => {
   if (!firmware.value) return false
   if (authStore.isAdmin) return true
   return firmware.value.ownerGroupId && managedGroupIds.value.has(firmware.value.ownerGroupId)
+})
+
+// Delete exige OWNER do grupo dono (ou admin) — MEMBER não basta
+const canDelete = computed(() => {
+  if (!firmware.value) return false
+  if (authStore.isAdmin) return true
+  if (!firmware.value.ownerGroupId) return false
+  return groups.value.find(g => g.groupId === firmware.value!.ownerGroupId)?.myRole === 'OWNER'
 })
 
 const load = async () => {
@@ -198,6 +206,70 @@ const doDeprecate = async (v: FirmwareVersionSummaryDTO) => {
   }
 }
 
+// ── Reupload binary (versão CORRUPTED) ───────────────────────────────────────
+const reuploadInput = ref<HTMLInputElement | null>(null)
+const reuploadTarget = ref<FirmwareVersionSummaryDTO | null>(null)
+const reuploadingId = ref<string | null>(null)
+
+const openReupload = (v: FirmwareVersionSummaryDTO) => {
+  reuploadTarget.value = v
+  reuploadInput.value?.click()
+}
+
+const onReuploadFile = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  input.value = ''
+  const v = reuploadTarget.value
+  if (!file || !v) return
+  reuploadingId.value = v.versionId
+  try {
+    await firmwareApi.reuploadBinary(v.versionId, file)
+    await load()
+    toast.success(`Binário da v${v.version} restaurado`)
+  } catch (err: unknown) {
+    toast.error(errorMessage(err, 'Erro ao reenviar binário.'))
+  } finally {
+    reuploadingId.value = null
+    reuploadTarget.value = null
+  }
+}
+
+// ── Delete version / firmware ────────────────────────────────────────────────
+const doDeleteVersion = async (v: FirmwareVersionSummaryDTO) => {
+  const ok = await confirm({
+    title: `Excluir versão v${v.version}?`,
+    message: 'Isso deletará também o binário do storage. Ação irreversível.',
+    confirmText: 'Excluir',
+    danger: true,
+  })
+  if (!ok) return
+  try {
+    await firmwareApi.deleteVersion(v.versionId); await load()
+    toast.success(`Versão v${v.version} excluída`)
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao excluir versão.'))
+  }
+}
+
+const doDeleteFirmware = async () => {
+  if (!firmware.value) return
+  const ok = await confirm({
+    title: `Excluir firmware "${firmware.value.firmwareName}"?`,
+    message: 'Todas as versões e binários serão removidos do storage. Ação irreversível.',
+    confirmText: 'Excluir',
+    danger: true,
+  })
+  if (!ok) return
+  try {
+    await firmwareApi.deleteFirmware(firmwareId)
+    toast.success(`Firmware "${firmware.value.firmwareName}" excluído`)
+    router.push('/firmware')
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao excluir firmware.'))
+  }
+}
+
 onMounted(async () => {
   try {
     const [_, grpRes] = await Promise.all([load(), groupsApi.list()])
@@ -226,7 +298,10 @@ onMounted(async () => {
           </div>
           <p v-if="firmware.description" class="firmware-desc">{{ firmware.description }}</p>
         </div>
-        <AppButton v-if="canManage" variant="primary" size="lg" @click="openUpload">+ Nova Versão</AppButton>
+        <div class="header-actions">
+          <AppButton v-if="canDelete" variant="danger" size="lg" @click="doDeleteFirmware">Excluir Firmware</AppButton>
+          <AppButton v-if="canManage" variant="primary" size="lg" @click="openUpload">+ Nova Versão</AppButton>
+        </div>
       </div>
 
       <!-- Versions table -->
@@ -254,11 +329,15 @@ onMounted(async () => {
               <td v-if="canManage" @click.stop>
                 <div class="row-actions">
                   <AppButton size="sm" variant="secondary"
-                    :disabled="v.status === 'DEPRECATED'"
+                    :disabled="v.status === 'DEPRECATED' || v.status === 'CORRUPTED'"
                     @click="openDeploy(v)">Deploy</AppButton>
-                  <AppButton size="sm" variant="danger"
-                    :disabled="v.status === 'DEPRECATED'"
+                  <AppButton v-if="v.status === 'CORRUPTED'" size="sm" variant="primary"
+                    :loading="reuploadingId === v.versionId"
+                    @click="openReupload(v)">Reenviar binário</AppButton>
+                  <AppButton v-if="v.status !== 'DEPRECATED'" size="sm" variant="danger"
                     @click="doDeprecate(v)">Deprecar</AppButton>
+                  <AppButton v-if="v.status === 'DEPRECATED' && canDelete" size="sm" variant="danger"
+                    @click="doDeleteVersion(v)">Excluir</AppButton>
                 </div>
               </td>
             </tr>
@@ -268,6 +347,8 @@ onMounted(async () => {
           </tbody>
         </table>
       </AppCard>
+
+      <input ref="reuploadInput" type="file" accept=".bin" style="display:none" @change="onReuploadFile" />
     </div>
 
     <!-- ── Version detail modal (nível 3) ──────────────────────────────────── -->
@@ -423,6 +504,7 @@ onMounted(async () => {
 .loading { color: var(--text-muted); padding: var(--space-8); text-align: center; }
 .detail { display: flex; flex-direction: column; gap: var(--space-4); }
 .detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+.header-actions { display: flex; gap: var(--space-2); }
 .back-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: var(--text-sm); margin-bottom: var(--space-2); padding: 0; }
 .back-btn:hover { color: var(--text); }
 .firmware-name { font-size: var(--text-2xl); font-weight: 700; color: var(--text); margin: 0 0 var(--space-2); }

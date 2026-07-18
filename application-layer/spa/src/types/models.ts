@@ -1,7 +1,7 @@
 // Interfaces TypeScript espelhando os DTOs do govApi.
 
 // ── Enums (string unions, compatível com Jackson serialization) ──────────────
-export type FirmwareStatus = 'STAGED' | 'DEPLOYED' | 'DEPRECATED'
+export type FirmwareStatus = 'STAGED' | 'DEPLOYED' | 'DEPRECATED' | 'CORRUPTED'
 export type DeviceStatus =
   | 'PENDING'
   | 'PROVISIONING'
