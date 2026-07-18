@@ -32,7 +32,7 @@ public interface FirmwareVersionRepository extends JpaRepository<FirmwareVersion
     // versão específica de um firmware, usada pelos EventHandlers e service
     Optional<FirmwareVersion> findByFirmware_FirmwareIdAndVersion(String firmwareId, String version);
 
-    /** Admin: todas as versões não-deprecated de todos os firmwares. */
+    /** Admin: todas as versões deployáveis (nem DEPRECATED nem CORRUPTED). */
     @Query("""
         SELECT new com.eric.governanceApi.governanceApi.model.projection.DeployableVersionProjection(
             v.firmwareVersionId, v.version,
@@ -40,7 +40,8 @@ public interface FirmwareVersionRepository extends JpaRepository<FirmwareVersion
             v.firmware.ownerGroupId, v.status, v.uploadedAt
         )
         FROM FirmwareVersion v
-        WHERE v.status <> com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.DEPRECATED
+        WHERE v.status NOT IN (com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.DEPRECATED,
+                               com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.CORRUPTED)
         ORDER BY v.firmware.firmwareName, v.uploadedAt DESC
         """)
     List<DeployableVersionProjection> findAllDeployableAdmin();
@@ -53,7 +54,8 @@ public interface FirmwareVersionRepository extends JpaRepository<FirmwareVersion
             v.firmware.ownerGroupId, v.status, v.uploadedAt
         )
         FROM FirmwareVersion v
-        WHERE v.status <> com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.DEPRECATED
+        WHERE v.status NOT IN (com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.DEPRECATED,
+                               com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.CORRUPTED)
         AND (v.firmware.ownerGroupId IS NULL OR v.firmware.ownerGroupId IN :groupIds)
         ORDER BY v.firmware.firmwareName, v.uploadedAt DESC
         """)

@@ -22,13 +22,21 @@
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/versions/*": {
-    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+    "GET":    ["ROLE_ADMIN", "ROLE_USER"],
+    "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/versions/*/deprecate": {
     "PATCH": ["ROLE_ADMIN", "ROLE_USER"]
   },
+  "/firmware/versions/*/binary": {
+    "PUT": ["ROLE_ADMIN", "ROLE_USER"]
+  },
   "/firmware/*/provisioning": {
     "PUT": ["ROLE_ADMIN"]
+  },
+  "/firmware/*": {
+    "GET":    ["ROLE_ADMIN", "ROLE_USER"],
+    "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/**": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]

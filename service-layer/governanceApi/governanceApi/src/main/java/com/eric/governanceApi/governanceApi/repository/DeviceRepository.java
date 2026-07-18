@@ -136,4 +136,14 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
                                                             @Param("search") String search,
                                                             @Param("status") DeviceStatus status,
                                                             Pageable pageable);
+
+    /** Devices que referenciam uma versão em qualquer das 3 FKs (atual, anterior, tentada). */
+    @Query("""
+            SELECT COUNT(d) FROM Device d
+            LEFT JOIN d.firmwareVersion fv
+            LEFT JOIN d.previousFirmwareVersion pv
+            LEFT JOIN d.attemptedFirmwareVersion av
+            WHERE fv.id = :versionId OR pv.id = :versionId OR av.id = :versionId
+            """)
+    long countDevicesReferencingVersion(@Param("versionId") Long versionId);
 }

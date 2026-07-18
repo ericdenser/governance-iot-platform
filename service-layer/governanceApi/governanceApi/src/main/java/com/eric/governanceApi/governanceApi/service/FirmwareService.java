@@ -205,7 +205,12 @@ public class FirmwareService {
                 "Versão v" + v.getVersion() + " está DEPRECATED e não pode ser deployada.");
         }
 
-        // Presigned url for object storage 
+        if (v.getStatus() == FirmwareStatus.CORRUPTED) {
+            throw new ConflictException(ErrorCode.FIRMWARE_VERSION_CORRUPTED,
+                "Versão v" + v.getVersion() + " está CORRUPTED (binário ausente no storage). Reenvie o binário antes de deployar.");
+        }
+
+        // Presigned url for object storage
         String signedUrl = storageService.presignDownloadUrl(v.getFilename(), Duration.ofMinutes(10));
 
         Map<String, Object> payload = Map.of(
@@ -323,6 +328,133 @@ public class FirmwareService {
         deviceRepository.save(device);
     }
 
+    /**
+     * Restore binary of a CORRUPTED version. The file must have the exactly SHA-256 registered on CMDB — its the same binary, not a new version.
+     */
+    @Auditable(action = AuditAction.FIRMWARE_BINARY_REUPLOADED, targetType = "FIRMWARE", targetIdArg = 0)
+    @Transactional
+    public FirmwareVersionResponseDTO reuploadBinary(String versionId, MultipartFile file) throws Exception {
+        FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
+                "Versão " + versionId + " não encontrada."));
+
+        requireFirmwareManagement(v.getFirmware());
+
+        if (v.getStatus() != FirmwareStatus.CORRUPTED) {
+            throw new IllegalArgumentException(
+                "Reenvio de binário só é permitido para versões CORRUPTED (status atual: " + v.getStatus() + ").");
+        }
+
+        validateBinary(file);
+        String sha256 = computeSha256(file);
+        if (!sha256.equals(v.getSha256())) {
+            throw new IllegalArgumentException(
+                "SHA-256 do arquivo não confere com o binário original da versão v" + v.getVersion()
+                + ". Esperado: " + v.getSha256() + " — recebido: " + sha256 + ".");
+        }
+
+        try {
+            storageService.store(v.getFilename(), file.getInputStream(), file.getSize());
+        } catch (IOException | SdkException e) {
+            throw new InfrastructureException(ErrorCode.STORAGE_UNAVAILABLE,
+                "Error while sending the firmware to the storage: " + e.getMessage());
+        }
+
+        v.setStatus(v.getDeployCount() > 0 ? FirmwareStatus.DEPLOYED : FirmwareStatus.STAGED);
+        firmwareVersionRepository.save(v);
+
+        log.info("Binário da versão v{} de '{}' reenviado — status restaurado para {}.",
+                 v.getVersion(), v.getFirmware().getFirmwareName(), v.getStatus());
+
+        return FirmwareVersionResponseDTO.from(v);
+    }
+
+    // Hard delete of a version. Requires DEPRECATED and no device refering (current/previous/attempted). 
+    @Auditable(action = AuditAction.FIRMWARE_VERSION_DELETED, targetType = "FIRMWARE", targetIdArg = 0)
+    @Transactional
+    public void deleteVersion(String versionId) {
+        FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
+                "Versão " + versionId + " não encontrada."));
+
+        requireFirmwareOwnership(v.getFirmware());
+
+        if (v.getStatus() != FirmwareStatus.DEPRECATED) {
+            throw new ConflictException(ErrorCode.FIRMWARE_VERSION_MUST_BE_DEPRECATED,
+                "Versão v" + v.getVersion() + " precisa estar DEPRECATED para ser deletada (status atual: "
+                + v.getStatus() + ").");
+        }
+
+        long refs = deviceRepository.countDevicesReferencingVersion(v.getId());
+        if (refs > 0) {
+            throw new ConflictException(ErrorCode.FIRMWARE_VERSION_IN_USE,
+                "Versão v" + v.getVersion() + " ainda é referenciada por " + refs + " device(s).");
+        }
+
+        deleteBinaryOrFail(v.getFilename());
+
+        Firmware fw = v.getFirmware();
+        fw.getVersions().remove(v);
+        firmwareVersionRepository.delete(v);
+
+        log.info("Versão v{} de '{}' deletada (binário '{}' removido do storage).",
+                 v.getVersion(), fw.getFirmwareName(), v.getFilename());
+    }
+
+    /**
+     * Hard delete of product + all versions. Require: not being provisioning,
+     * all versions DEPRECATED and no device refering.
+     */
+    @Auditable(action = AuditAction.FIRMWARE_DELETED, targetType = "FIRMWARE", targetIdArg = 0)
+    @Transactional
+    public void deleteFirmware(String firmwareId) {
+        Firmware fw = firmwareRepository.findByFirmwareId(firmwareId)
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                "Firmware " + firmwareId + " não encontrado."));
+
+        requireFirmwareOwnership(fw);
+
+        if (fw.isProvisioningFirmware()) {
+            throw new ConflictException(ErrorCode.FIRMWARE_IS_PROVISIONING,
+                "Firmware '" + fw.getFirmwareName() + "' é o firmware de provisionamento e não pode ser deletado.");
+        }
+
+        long activeVersions = fw.getVersions().stream()
+            .filter(v -> v.getStatus() != FirmwareStatus.DEPRECATED)
+            .count();
+        if (activeVersions > 0) {
+            throw new ConflictException(ErrorCode.FIRMWARE_HAS_ACTIVE_VERSIONS,
+                "Firmware '" + fw.getFirmwareName() + "' possui " + activeVersions
+                + " versão(ões) não-DEPRECATED. Deprecie todas antes de deletar.");
+        }
+
+        for (FirmwareVersion v : fw.getVersions()) {
+            long refs = deviceRepository.countDevicesReferencingVersion(v.getId());
+            if (refs > 0) {
+                throw new ConflictException(ErrorCode.FIRMWARE_VERSION_IN_USE,
+                    "Versão v" + v.getVersion() + " ainda é referenciada por " + refs + " device(s).");
+            }
+        }
+
+        for (FirmwareVersion v : fw.getVersions()) {
+            deleteBinaryOrFail(v.getFilename());
+        }
+
+        firmwareRepository.delete(fw);
+
+        log.info("Firmware '{}' deletado com {} versão(ões) e binários removidos do storage.",
+                 fw.getFirmwareName(), fw.getVersions().size());
+    }
+
+    private void deleteBinaryOrFail(String filename) {
+        try {
+            storageService.delete(filename);
+        } catch (SdkException e) {
+            throw new InfrastructureException(ErrorCode.STORAGE_UNAVAILABLE,
+                "Falha ao remover binário '" + filename + "' do storage: " + e.getMessage());
+        }
+    }
+
     @Auditable(action = AuditAction.FIRMWARE_SET_PROVISIONING, targetType = "FIRMWARE", targetIdArg = 0)
     @Transactional
     public FirmwareResponseDTO setProvisioningFirmware(String firmwareId) {
@@ -347,6 +479,11 @@ public class FirmwareService {
         if (latest.getStatus() == FirmwareStatus.DEPRECATED) {
             throw new IllegalArgumentException(
                 "Versão mais recente (v" + latest.getVersion() + ") está DEPRECATED — não pode ser provisionamento.");
+        }
+
+        if (latest.getStatus() == FirmwareStatus.CORRUPTED) {
+            throw new ConflictException(ErrorCode.FIRMWARE_VERSION_CORRUPTED,
+                "Versão mais recente (v" + latest.getVersion() + ") está CORRUPTED — reenvie o binário antes.");
         }
 
         firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(current -> {
@@ -493,6 +630,20 @@ public class FirmwareService {
         }
     }
 
+    // Delete é destrutivo: só OWNER do grupo dono (ou admin). MEMBER não basta.
+    private void requireFirmwareOwnership(Firmware fw) {
+        if (isAdmin()) return;
+        if (fw.getOwnerGroupId() == null) {
+            throw new SecurityException("Apenas administradores podem deletar firmware de plataforma.");
+        }
+        String uid = currentActorId();
+        List<String> ownerGroupIds = uid == null ? List.of()
+            : assignmentRepository.findGroupUuidsByKeycloakUserIdAndRoles(uid, List.of(GroupRole.OWNER));
+        if (!ownerGroupIds.contains(fw.getOwnerGroupId())) {
+            throw new SecurityException("Você precisa ser OWNER do grupo dono deste firmware para deletá-lo.");
+        }
+    }
+
     private void requireFirmwareManagement(Firmware fw) {
         if (isAdmin()) return;
         if (fw.getOwnerGroupId() == null) {
@@ -557,7 +708,6 @@ public class FirmwareService {
         v.setOriginalFilename(originalFilename);
         v.setSha256(sha256);
         v.setSizeBytes(sizeBytes);
-        // v.setDownloadUrl(publicBaseUrl + "/" + filename);
         v.setReleaseNotes(releaseNotes);
         v.setStatus(FirmwareStatus.STAGED);
         attachSensors(v, sensors);

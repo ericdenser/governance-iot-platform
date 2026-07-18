@@ -104,7 +104,7 @@ public class FirmwareController {
         return ResponseEntity.ok(ApiResponse.success(v, httpRequest.getRequestURI()));
     }
 
-    // Deprecia UMA versão específica. 
+    // Deprecia UMA versão específica.
     @PatchMapping("/versions/{versionId}/deprecate")
     public ResponseEntity<ApiResponse<FirmwareVersionResponseDTO>> deprecate(
             @PathVariable String versionId,
@@ -112,6 +112,33 @@ public class FirmwareController {
 
         FirmwareVersionResponseDTO v = firmwareService.deprecateVersion(versionId);
         return ResponseEntity.ok(ApiResponse.success(v, httpRequest.getRequestURI()));
+    }
+
+    // Reenvia o binário de uma versão CORRUPTED (mesmo SHA-256 do original)
+    @PutMapping(value = "/versions/{versionId}/binary", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<FirmwareVersionResponseDTO>> reuploadBinary(
+            @PathVariable String versionId,
+            @RequestPart("file") MultipartFile file,
+            HttpServletRequest httpRequest) throws Exception {
+
+        log.info("Request for binary reupload of version {} — {} ({} bytes)",
+                 versionId, file.getOriginalFilename(), file.getSize());
+        FirmwareVersionResponseDTO v = firmwareService.reuploadBinary(versionId, file);
+        return ResponseEntity.ok(ApiResponse.success(v, httpRequest.getRequestURI()));
+    }
+
+    // Hard delete de uma versão (exige DEPRECATED + sem devices referenciando)
+    @DeleteMapping("/versions/{versionId}")
+    public ResponseEntity<Void> deleteVersion(@PathVariable String versionId) {
+        firmwareService.deleteVersion(versionId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // Hard delete do product + versões (exige todas DEPRECATED, não-provisioning)
+    @DeleteMapping("/{firmwareId}")
+    public ResponseEntity<Void> deleteFirmware(@PathVariable String firmwareId) {
+        firmwareService.deleteFirmware(firmwareId);
+        return ResponseEntity.noContent().build();
     }
 
     // ─── Deploy helper ─────────────────────────────────────────────────────────

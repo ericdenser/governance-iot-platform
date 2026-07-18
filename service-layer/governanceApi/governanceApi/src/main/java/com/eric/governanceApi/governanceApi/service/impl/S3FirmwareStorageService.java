@@ -2,6 +2,9 @@ package com.eric.governanceApi.governanceApi.service.impl;
 
 import java.io.InputStream;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +21,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
@@ -50,6 +54,15 @@ public class S3FirmwareStorageService implements FirmwareStorageService {
                 .build();
         s3Client.putObject(req, RequestBody.fromInputStream(data, size));
         log.info("Uploaded firmware key={} size={}B bucket={}", key, size, bucket);
+    }
+
+    @Override
+    public Map<String, Instant> listAllObjects() {
+        Map<String, Instant> objects = new HashMap<>();
+        s3Client.listObjectsV2Paginator(ListObjectsV2Request.builder().bucket(bucket).build())
+                .contents()
+                .forEach(obj -> objects.put(obj.key(), obj.lastModified()));
+        return objects;
     }
 
     @Override
