@@ -67,6 +67,14 @@ event:
 govapi:
   self-url: ${GOVAPI_SELF_URL:http://localhost:8082}
 
+ota:
+  max-firmware-size-mb: 4
+  # TTL da presigned URL = base + waves * interval. wave-size e wave-interval-ms
+  # devem espelhar broadcast do agent-mqtt.
+  presign-base-ttl-min: 10
+  wave-size: 50
+  wave-interval-ms: 10000
+
 minio:
   endpoint: ${MINIO_ENDPOINT}
   public-endpoint: ${MINIO_PUBLIC_ENDPOINT}

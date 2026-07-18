@@ -75,6 +75,17 @@ public class FirmwareService {
     @Value("${ota.max-firmware-size-mb:4}")
     private int maxSizeMb;
 
+    // TTL da presigned URL: base + tempo do rollout em waves do agent.
+    // ota.wave-size / ota.wave-interval-ms devem espelhar broadcast do agent-mqtt.
+    @Value("${ota.presign-base-ttl-min:10}")
+    private int presignBaseTtlMin;
+
+    @Value("${ota.wave-size:50}")
+    private int waveSize;
+
+    @Value("${ota.wave-interval-ms:10000}")
+    private long waveIntervalMs;
+
     public FirmwareService(FirmwareRepository firmwareRepository,
                            FirmwareVersionRepository firmwareVersionRepository,
                            DeviceRepository deviceRepository,
@@ -116,7 +127,7 @@ public class FirmwareService {
         fw.setOwnerGroupId(ownerGroupId);
         fw.setProvisioningFirmware(requestDTO.isProvisioning());
 
-        // 1ª versão não tem releaseNotes — quem descreve o firmware é a description do product.
+       
         FirmwareVersion v = buildVersion(fw, requestDTO.initialVersion(),
                                          file.getOriginalFilename(), filename, sha256,
                                          file.getSize(), null,
@@ -210,8 +221,8 @@ public class FirmwareService {
                 "Versão v" + v.getVersion() + " está CORRUPTED (binário ausente no storage). Reenvie o binário antes de deployar.");
         }
 
-        // Presigned url for object storage
-        String signedUrl = storageService.presignDownloadUrl(v.getFilename(), Duration.ofMinutes(10));
+        // Presigned url for object storage — TTL cobre a última wave do rollout
+        String signedUrl = storageService.presignDownloadUrl(v.getFilename(), presignTtlFor(targetDevices.size()));
 
         Map<String, Object> payload = Map.of(
             "version", v.getVersion(),
@@ -312,6 +323,11 @@ public class FirmwareService {
             agentResult.publishedTo(),
             agentResult.failed(),
             skipped);
+    }
+
+    private Duration presignTtlFor(int targetCount) {
+        long waves = Math.ceilDiv(Math.max(targetCount, 1), waveSize);
+        return Duration.ofMinutes(presignBaseTtlMin).plusMillis(waves * waveIntervalMs);
     }
 
     private void addSkippedRecord(Device device, CommandBatch batch, String payloadJson,
