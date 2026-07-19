@@ -14,6 +14,7 @@
 #include "esp_sleep.h"
 #include "freertos/task.h"
 #include <esp_ota_ops.h>
+#include "esp_random.h"
 
 static const char* TAG = "CommandProcessor";
 
@@ -48,6 +49,12 @@ static CommandType getCommandType(std::string cmd) {
 static void ota_task_routine(void* pvParameters) {
 
     OtaTaskParams* params = (OtaTaskParams*)pvParameters;
+
+    #if CONFIG_GOV_OTA_JITTER_MAX_MS > 0
+        uint32_t jitter_ms = esp_random() % CONFIG_GOV_OTA_JITTER_MAX_MS;
+        ESP_LOGI(TAG, "OTA jitter: waiting %lu ms before download", (unsigned long)jitter_ms);
+        vTaskDelay(pdMS_TO_TICKS(jitter_ms));
+    #endif
 
     std::string msgOut;
     WatchdogManager::addToCurrentTask();

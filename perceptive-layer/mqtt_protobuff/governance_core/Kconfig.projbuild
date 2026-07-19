@@ -110,5 +110,12 @@ menu "Governance IoT"
             demais no boot inicial (ou considera ligar o GPS antes de
             governance_core_init pra warm start).
 
+    config GOV_OTA_JITTER_MAX_MS
+        int "OTA download jitter maximo (ms)"
+        default 10000
+        help
+            Atraso aleatorio (0..N ms) antes de iniciar o download OTA.
+            Espalha os downloads de uma wave para nao saturar o object storage quando varios
+            devices recebem o comando no mesmo instante. 0 desativa o jitter.
 endmenu
 
