@@ -3,14 +3,19 @@ services:
   # ── INFRAESTRUTURA ────────────────────────────────────────────────────────────
 
   mosquitto:
-    image: eclipse-mosquitto:2
+    image: iegomez/mosquitto-go-auth:3.0.0-mosquitto_2.0.18
     container_name: iot_broker
+    command: /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf
     ports:
-      - "8883:8883"
+      - "1883:1883"
+      - "8884:8884"
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+   
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     networks:
       - iot-net

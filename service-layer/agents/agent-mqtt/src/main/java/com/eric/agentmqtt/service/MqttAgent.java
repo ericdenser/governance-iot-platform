@@ -17,6 +17,9 @@ import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.stereotype.Service;
 
 import javax.net.ssl.*;
@@ -33,13 +36,15 @@ public class MqttAgent {
     private final StatusForwardingService statusForwardingService;
     private final ErrorForwardingService errorForwardingService;
     private final TelemetryForwardingService telemetryForwardingService;
+    private final OAuth2AuthorizedClientManager auth2AuthorizedClientManager;
 
     public MqttAgent(StatusForwardingService statusForwardingService,
                      ErrorForwardingService errorForwardingService,
-                     TelemetryForwardingService telemetryForwardingService) {
+                     TelemetryForwardingService telemetryForwardingService, OAuth2AuthorizedClientManager auth2AuthorizedClientManager) {
         this.statusForwardingService = statusForwardingService;
         this.errorForwardingService = errorForwardingService;
         this.telemetryForwardingService = telemetryForwardingService;
+        this.auth2AuthorizedClientManager = auth2AuthorizedClientManager;
     }
 
     @Value("${mqtt.broker-url}")
@@ -57,17 +62,8 @@ public class MqttAgent {
     @Value("${mqtt.telemetry-topic}")
     private String telemetryTopic;
 
-    @Value("${mqtt.keystore-path}")
-    private Resource keystoreResource;
-
-    @Value("${mqtt.keystore-password}")
-    private String keystorePassword;
-
-    @Value("${mqtt.truststore-path}")
-    private Resource truststoreResource;
-
-    @Value("${mqtt.truststore-password}")
-    private String truststorePassword;
+    @Value("${mqtt.password}") 
+    private String mqttDummyPassword;
 
     private MqttClient client;
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
@@ -80,6 +76,18 @@ public class MqttAgent {
         } catch (Exception e) {
             return Map.of("detail", detail);
         }
+    }
+
+    private String fetchJwt() {
+        OAuth2AuthorizeRequest req = OAuth2AuthorizeRequest
+                    .withClientRegistrationId("govapi")
+                    .principal("agent-mqtt")
+                    .build();
+        OAuth2AuthorizedClient auth = auth2AuthorizedClientManager.authorize(req);
+        if (auth == null) {
+            throw new IllegalStateException("Falha ao obter JWT do Keycloak (client 'govapi' não autorizado");
+        }
+        return auth.getAccessToken().getTokenValue();
     }
 
     @PostConstruct
@@ -181,25 +189,17 @@ public class MqttAgent {
     }
 
     private void connectWithRetry() {
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(true);
-        options.setConnectionTimeout(10);
-        options.setAutomaticReconnect(false);
-
-        try {
-            options.setSocketFactory(getSocketFactory());
-            options.setHttpsHostnameVerificationEnabled(false);
-        } catch (Exception e) {
-            log.error("Falha ao carregar certificados SSL: {}", e.getMessage());
-            isConnecting.set(false);
-            return;
-        }
-
         while (client != null && !client.isConnected()) {
             try {
-                log.info("Tentando conectar ao Broker MQTT em {}...", brokerUrl);
+                log.info("Obtendo JWT do Keycloak e conectando em {}...", brokerUrl);
+                MqttConnectOptions options = new MqttConnectOptions();
+                options.setCleanSession(true);
+                options.setConnectionTimeout(10);
+                options.setAutomaticReconnect(false);
+                options.setUserName(fetchJwt());
+                options.setPassword(mqttDummyPassword.toCharArray());
                 client.connect(options);
-                log.info("Conectado! Inscrevendo nos tópicos [{}, {}, {}]", topic, errorTopic, telemetryTopic);
+                log.info("Conectado. Inscrevendo em [{}, {}, {}]", topic, errorTopic, telemetryTopic);
                 client.subscribe(new String[]{topic, errorTopic, telemetryTopic}, new int[]{1, 1, 0});
                 isConnecting.set(false);
                 return;
@@ -244,25 +244,5 @@ public class MqttAgent {
         } catch (MqttException e) {
             log.warn("Erro ao desconectar: {}", e.getMessage());
         }
-    }
-
-    private SSLSocketFactory getSocketFactory() throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        try (InputStream is = keystoreResource.getInputStream()) {
-            keyStore.load(is, keystorePassword.toCharArray());
-        }
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore, keystorePassword.toCharArray());
-
-        KeyStore trustStore = KeyStore.getInstance("PKCS12");
-        try (InputStream is = truststoreResource.getInputStream()) {
-            trustStore.load(is, truststorePassword.toCharArray());
-        }
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), new java.security.SecureRandom());
-        return sslContext.getSocketFactory();
     }
 }

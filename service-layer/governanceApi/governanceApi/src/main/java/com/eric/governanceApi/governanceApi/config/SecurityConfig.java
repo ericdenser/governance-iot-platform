@@ -30,6 +30,12 @@ public class SecurityConfig {
                 // ESP32 envia provisioning token no body (qualquer outra requisição é 404)
                 .requestMatchers("/provisioning/activate").permitAll()
 
+                // Callbacks do Mosquitto (plugin JWT em modo remote) — o próprio
+                // payload contém o JWT que o controller valida via JwtDecoder.
+                // Expostos apenas internamente (Mosquitto na rede docker); nginx
+                // externo NÃO deve fazer proxy destes paths.
+                .requestMatchers("/auth/mqtt-verify", "/auth/mqtt-acl").permitAll()
+
                 // apenas event-handler (service account com ROLE_EVENT_HANDLER) pode alimentar eventos
                 .requestMatchers("/events/ingest").hasRole("EVENT_HANDLER")
 

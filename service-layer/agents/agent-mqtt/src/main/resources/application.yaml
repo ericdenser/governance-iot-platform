@@ -2,15 +2,12 @@ server:
   port: 8087
 
 mqtt:
-  broker-url: ssl://${HOST_IP}:8883
+  broker-url: tcp://${HOST_IP}:1883
   client-id: agent-mqtt
   topic: status/#
   error-topic: error/#
   telemetry-topic: telemetry/#
-  keystore-path: classpath:certs/agents.p12
-  keystore-password: ${AGENT_KEYSTORE_PASS}
-  truststore-path: classpath:certs/truststore.p12
-  truststore-password: ${AGENT_TRUSTSTORE_PASS}
+  password: unused
 
 govapi:
   url: ${GOVAPI_URL:http://localhost:8082}
@@ -19,8 +16,8 @@ govapi:
 # wave-size devices, espaçadas por wave-interval-ms. Manter em sincronia com
 # ota.wave-* do govApi (dimensiona o TTL da presigned URL).
 broadcast:
-  wave-threshold: ${BROADCAST_WAVE_THRESHOLD:100}
-  wave-size: ${BROADCAST_WAVE_SIZE:50}
+  wave-threshold: ${BROADCAST_WAVE_THRESHOLD:1}
+  wave-size: ${BROADCAST_WAVE_SIZE:1}
   wave-interval-ms: ${BROADCAST_WAVE_INTERVAL_MS:10000}
 
 event-handler:
