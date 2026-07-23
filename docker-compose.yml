@@ -142,20 +142,6 @@ services:
 
   # ── SERVIÇOS ──────────────────────────────────────────────────────────────────
 
-  infra-executor:
-    build: ./service-layer/infra-executor
-    container_name: infra_executor
-    ports:
-      - "8089:8089"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      INFRA_API_KEY: ${INFRA_API_KEY}
-    depends_on:
-      - mosquitto
-    restart: unless-stopped
-    networks:
-      - iot-net
 
 networks:
   iot-net:

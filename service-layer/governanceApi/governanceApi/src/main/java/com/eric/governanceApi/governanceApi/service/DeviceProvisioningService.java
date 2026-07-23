@@ -14,13 +14,14 @@ import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
-import com.eric.governanceApi.governanceApi.model.entity.DeviceCertificate;
 import com.eric.governanceApi.governanceApi.model.entity.DeviceGroup;
 import com.eric.governanceApi.governanceApi.model.entity.DeviceGroupMembership;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
 import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequest;
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
-import com.eric.governanceApi.governanceApi.repository.DeviceCertificateRepository;
+import com.eric.governanceApi.governanceApi.model.response.CreatedKeycloakClient;
+import com.eric.governanceApi.governanceApi.model.response.DeviceCredentialsDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
@@ -28,8 +29,6 @@ import com.eric.governanceApi.governanceApi.repository.FirmwareRepository;
 import com.eric.governanceApi.governanceApi.repository.FirmwareVersionRepository;
 import com.eric.governanceApi.governanceApi.repository.ProvisioningTokenRepository;
 import com.eric.governanceApi.governanceApi.repository.UserGroupAssignmentRepository;
-import com.eric.governanceApi.governanceApi.service.CryptoService.SignedCertificateData;
-
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -38,32 +37,30 @@ public class DeviceProvisioningService {
 
     private final DeviceRepository deviceRepository;
     private final ProvisioningTokenRepository tokenRepository;
-    private final DeviceCertificateRepository deviceCertificateRepository;
-    private final CryptoService cryptoService;
     private final FirmwareVersionRepository firmwareVersionRepository;
     private final DeviceGroupRepository deviceGroupRepository;
     private final DeviceGroupMembershipRepository deviceGroupMembershipRepository;
     private final UserGroupAssignmentRepository assignmentRepository;
+    private final KeycloakDeviceClientService keycloakDeviceClientService;
 
     @Value("${provisioning.token-ttl-seconds}")
     private int tokenttl;
 
     public DeviceProvisioningService(DeviceRepository deviceRepository,
                                      ProvisioningTokenRepository tokenRepository,
-                                     DeviceCertificateRepository deviceCertificateRepository,
-                                     CryptoService cryptoService,
                                      FirmwareRepository firmwareRepository,
                                      DeviceGroupRepository deviceGroupRepository,
                                      DeviceGroupMembershipRepository deviceGroupMembershipRepository,
-                                     UserGroupAssignmentRepository assignmentRepository, FirmwareVersionRepository firmwareVersionRepository) {
+                                     UserGroupAssignmentRepository assignmentRepository, 
+                                     FirmwareVersionRepository firmwareVersionRepository, 
+                                     KeycloakDeviceClientService keycloakDeviceClientService) {
         this.deviceRepository = deviceRepository;
         this.tokenRepository = tokenRepository;
-        this.deviceCertificateRepository = deviceCertificateRepository;
-        this.cryptoService = cryptoService;
         this.firmwareVersionRepository = firmwareVersionRepository;
         this.deviceGroupRepository = deviceGroupRepository;
         this.deviceGroupMembershipRepository = deviceGroupMembershipRepository;
         this.assignmentRepository = assignmentRepository;
+        this.keycloakDeviceClientService = keycloakDeviceClientService;
     }
 
     @Transactional
@@ -129,7 +126,7 @@ public class DeviceProvisioningService {
     }
 
     @Transactional
-    public String processDeviceRegistration(DeviceRegistrationRequest request) {
+    public DeviceCredentialsDTO processDeviceRegistration(DeviceRegistrationRequest request) {
         log.info("Procurando token: {}", request.getProvisioningToken());
         // Se o token não foi emitido
         ProvisioningToken token = tokenRepository.findByToken(request.getProvisioningToken())
@@ -141,7 +138,7 @@ public class DeviceProvisioningService {
         // Se o status não é Pendente
         Device device = token.getDevice();
         if (device.getStatus() != DeviceStatus.PENDING) {
-            log.info("Device nao esta pending");
+            log.info("Device={} not in pending status", device.getDeviceId());
             throw new SecurityException("Device not in PENDING status.");
         }
 
@@ -153,38 +150,23 @@ public class DeviceProvisioningService {
         // Queima o token
         token.setUsed(true);
 
-        SignedCertificateData certData;
-        try {
-             // Passa o CSR e o MAC para o CryptoService
-             certData = cryptoService.signDeviceCSR(request.getPublicKey(), request.getDeviceId());
-        } catch (Exception e) {
-             throw new RuntimeException("Erro ao assinar certificado do dispositivo: " + e.getMessage(), e);
-        }
+        FirmwareVersion provisioningFirmware = firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
+                                                                        .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND, 
+                                                                            "No provisioning firmware registered"));
 
-        // Cria o registro do certificado no CMDB, extraindo as datas DIRETAMENTE do X509
-        DeviceCertificate cert = new DeviceCertificate();
-        cert.setCertificatePem(certData.pemString);
-        cert.setDevice(device);
-        cert.setIssuedAt(certData.certificateObj.getNotBefore().toInstant());
-        cert.setExpiresAt(certData.certificateObj.getNotAfter().toInstant());
-
-        deviceCertificateRepository.save(cert);
-        
-        // Atualiza Device
+        CreatedKeycloakClient created = keycloakDeviceClientService.createClient(device.getDeviceId());
         device.setDeviceId(request.getDeviceId());
         device.setMacAddress(request.getMacAddress());
-        device.setStatus(DeviceStatus.PROVISIONING);
+        device.setStatus(DeviceStatus.PROVISIONING);            
         device.setLastSeen(Instant.now());
-        device.setFirmwareVersion(firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
-                    "Nenhum firmware de provisioning registrado.")));
+        device.setFirmwareVersion(provisioningFirmware);
 
         // Propaga o autor do token para o device: quem gerou o zip que originou esse provisioning
         device.setIssuedByActorId(token.getCreatedByActorId());
-        device.setIssuedByUsername(token.getCreatedByUsername());
+        device.setIssuedByUsername(token.getCreatedByUsername());  
 
         // Retorna o PEM do certificado para o ESP32 guardar na memória (NVS)
-        return certData.pemString;
+        return new DeviceCredentialsDTO(created.clientId(), created.clientSecret());
     }
 
     private boolean isAdmin() {

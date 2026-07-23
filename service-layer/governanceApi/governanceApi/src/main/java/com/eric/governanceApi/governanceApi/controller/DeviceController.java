@@ -3,7 +3,6 @@ package com.eric.governanceApi.governanceApi.controller;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
-import com.eric.governanceApi.governanceApi.model.response.DeviceCertificateResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceDetailDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceMapPositionDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceSummaryDTO;
@@ -80,10 +79,4 @@ public class DeviceController {
         return ResponseEntity.ok(ApiResponse.success(deviceService.getEvents(deviceId, pageable), httpRequest.getRequestURI()));
     }
 
-    @GetMapping("/{deviceId}/certificate")
-    public ResponseEntity<ApiResponse<DeviceCertificateResponseDTO>> getCertificate(
-            @PathVariable String deviceId,
-            HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(ApiResponse.success(deviceService.getCertificate(deviceId), httpRequest.getRequestURI()));
-    }
 }

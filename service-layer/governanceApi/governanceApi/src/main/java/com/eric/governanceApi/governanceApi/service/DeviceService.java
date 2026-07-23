@@ -7,7 +7,6 @@ import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceIdNameProjection;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
-import com.eric.governanceApi.governanceApi.model.response.DeviceCertificateResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceDetailDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceMapPositionDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceSummaryDTO;
@@ -184,17 +183,6 @@ public class DeviceService {
         }
         return eventRegistryRepository.findByDevice_DeviceIdOrderByOcurredAtDesc(deviceId, pageable)
                 .map(EventRegistryResponseDTO::from);
-    }
-
-    @Transactional(readOnly = true)
-    public DeviceCertificateResponseDTO getCertificate(String deviceId) {
-        Device device = deviceRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceId + " não encontrado."));
-        if (device.getCertificate() == null) {
-            throw new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND,
-                "Device " + deviceId + " não possui certificado.");
-        }
-        return DeviceCertificateResponseDTO.from(device.getCertificate());
     }
 
     @Transactional(readOnly = true)

@@ -58,6 +58,9 @@ public class Device {
     @Column(name = "mac_address", unique = true)
     private String macAddress;
 
+    @Column(name = "keycloak_internal_id", length = 64)
+    private String keycloakInternalId;
+
     @Column(nullable = false)
     private String name;
 
@@ -97,9 +100,6 @@ public class Device {
 
     @OneToOne(mappedBy = "device", cascade = CascadeType.ALL)
     private ProvisioningToken provisioningToken;
-
-    @OneToOne(mappedBy = "device", cascade = CascadeType.ALL)
-    private DeviceCertificate certificate;
 
     @ElementCollection
     @CollectionTable(

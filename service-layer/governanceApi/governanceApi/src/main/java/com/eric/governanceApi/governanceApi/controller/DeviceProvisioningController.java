@@ -5,6 +5,7 @@ import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequ
 import com.eric.governanceApi.governanceApi.model.request.GenerateFlashPackageRequest;
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
 import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
+import com.eric.governanceApi.governanceApi.model.response.DeviceCredentialsDTO;
 import com.eric.governanceApi.governanceApi.service.DeviceProvisioningService;
 import com.eric.governanceApi.governanceApi.service.DeviceRevokeService;
 import com.eric.governanceApi.governanceApi.service.FlashPackageService;
@@ -53,11 +54,11 @@ public class DeviceProvisioningController {
 
     // Endpoint destinado ao esp na fase de provisioning
     @PostMapping("/activate")
-    public ResponseEntity<ApiResponse<String>> activateDevice(@Valid @RequestBody DeviceRegistrationRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<ApiResponse<DeviceCredentialsDTO>> activateDevice(@Valid @RequestBody DeviceRegistrationRequest request, HttpServletRequest httpRequest) {
        
-        String certificatePem = provisioningService.processDeviceRegistration(request);
+        DeviceCredentialsDTO credentials = provisioningService.processDeviceRegistration(request);
         
-        return ResponseEntity.ok(ApiResponse.success(certificatePem, httpRequest.getRequestURI()));
+        return ResponseEntity.ok(ApiResponse.success(credentials, httpRequest.getRequestURI()));
     }
 
     @PostMapping("/{deviceId}/revoke")
@@ -66,7 +67,7 @@ public class DeviceProvisioningController {
         return ResponseEntity.ok(ApiResponse.success(msg, httpRequest.getRequestURI()));
     }
 
-    @PostMapping("/generate-package")
+    @PostMapping("/generate-package")   
     public ResponseEntity<byte[]> generateFlashPackage(@Valid @RequestBody GenerateFlashPackageRequest request) throws IOException {
         byte[] zip = flashPackageService.generatePackage(request);
         String filename = "flash_package_" + request.deviceName().replaceAll("[^a-zA-Z0-9_-]", "_") + ".zip";

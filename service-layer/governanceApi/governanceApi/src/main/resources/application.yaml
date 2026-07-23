@@ -49,14 +49,9 @@ spring:
           gov-api:
             token-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/token
 
-infra:
-  api-key: ${INFRA_API_KEY}
-  ca_password: ${CA_PASSWORD}
-
 mqtt:
   broker-url: mqtt://localhost:8883
   client-id: governance-api-publisher
-  crl-path: ../../mosquitto/config/certs/revoked.crl
 
 agent:
   url: ${AGENT_URL}
@@ -65,7 +60,10 @@ event:
   url: ${EVENT_URL}
 
 govapi:
-  self-url: ${GOVAPI_SELF_URL:http://localhost:8082}
+  self-url: ${GOV_API_URL}
+
+keycloak:
+  url: ${KEYCLOAK_ADMIN_URL}
 
 ota:
   max-firmware-size-mb: 4

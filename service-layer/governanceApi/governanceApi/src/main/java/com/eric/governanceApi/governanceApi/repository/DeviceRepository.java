@@ -18,9 +18,6 @@ import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjec
 public interface DeviceRepository extends JpaRepository<Device, Long>{
     Optional<Device> findByMacAddress(String macAddress);
 
-    @Query("SELECT d.certificate.certificatePem FROM Device d WHERE d.status = com.eric.governanceApi.governanceApi.enums.status.DeviceStatus.REVOKED")
-    List<String> findAllRevokedCertificates();
-
     Optional<Device> findByDeviceId(String deviceId);
 
     @Query("SELECT d.deviceId FROM Device d")
