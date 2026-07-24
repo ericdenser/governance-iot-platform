@@ -53,14 +53,14 @@ menu "Governance IoT"
 
     config GOV_MQTT_BROKER_URI
         string "MQTT Broker URI"
-        default "mqtts://xxx.xxx.xx.xx:8883"
+        default "mqtt://REPLACE_ME:1883"
         help
             URI completa do broker MQTT. O esquema define o transporte:
-              mqtts://host:8883        — TLS direto 
-              mqtt://host:1883         — sem TLS 
+              mqtt://host:8883        — TLS direto
+              wss://host:1883         — MQTT-over-Websocket
             Exemplos:
-              mqtts://xxx.xxx.xx.xx:8883
-              mqtts://iot.mackenzie.br:8883
+              mqtt://192.168.15.76:1883 (dev local)
+              wss://iot.mackenzie.br/mqtt (prod via websocket)
 
     config GOV_MDM_BASE_URL
         string "MDM (govApi) base URL"
@@ -72,5 +72,30 @@ menu "Governance IoT"
               http://xxx.xxx.xx.xx:8080
               https://mackenzie.br/apps/govApi
               https://iot.mackenzie.br
+
+     config GOV_KEYCLOAK_URL
+        string "Keycloak base URL"
+        default "http://REPLACE_ME:8080"
+        help
+            Base URL do Keycloak (SEM /realms/... no final).
+            Alt B usa esta URL pra obter JWT via client_credentials.
+            Exemplos:
+              http://mackleaps.mackenzie.br/keycloak
+              http://192.168.15.76:8080
+
+    config GOV_KEYCLOAK_REALM
+        string "Keycloak realm"
+        default "IOT-REALM"
+        help
+            Realm onde os device-clients existem.
+
+    config GOV_KC_TOKEN_MARGIN_S
+        int "JWT renewal margin (seconds)"
+        default 300
+        range 30 1800
+        help
+            Margem de segurança antes do exp: renova JWT quando faltar
+            menos que isso pra expirar. Default 300 (5min) evita usar
+            token que expira durante o handshake MQTT.
 
 endmenu

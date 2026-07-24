@@ -133,6 +133,12 @@ services:
       KC_DB_PASSWORD: ${DB_PASSWORD}
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Fixa o hostname que Keycloak usa pra montar URLs (issuer, JWKS, redirects).
+      # Sem isso, Keycloak usa o Host header do request, emitindo tokens com iss
+      # diferente pra cada cliente (browser via localhost vs ESP via IP LAN).
+      # Ver docs/jwt-docs/05_tradeoffs_and_operations.md se precisar ajustar.
+      KC_HOSTNAME: http://${HOST_IP}:8080
+      KC_HOSTNAME_STRICT: "false"
     depends_on:
       postgres:
         condition: service_healthy

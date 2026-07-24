@@ -16,7 +16,7 @@
 #include "esp_timer.h"
 
 #include "AppState.h"
-#include "CryptoManager.h"
+#include "AuthManager.h"
 #include "WifiManager.h"
 #include "WatchdogManager.h"
 #include "MqttManager.h"
@@ -281,7 +281,7 @@ static void handle_nvs_init() {
 
     bool hasWifi       = (saved_ssid[0]      != '\0');
     bool hasToken      = (saved_token[0]     != '\0');
-    bool isProvisioned = CryptoManager::isProvisioned();
+    bool isProvisioned = AuthManager::isProvisioned();
     bool hasDeviceId   = (saved_device_id[0] != '\0');
 
     SLOG_I("Diagnóstico NVS — WiFi:%s | Token:%s | Cert:%s | DeviceId:%s | Version:%s",

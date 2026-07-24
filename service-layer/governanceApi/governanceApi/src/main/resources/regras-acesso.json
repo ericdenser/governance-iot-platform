@@ -39,7 +39,8 @@
     "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/firmware/**": {
-    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+    "GET": ["ROLE_ADMIN", "ROLE_USER"],
+    "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
 
   "/sensors": {

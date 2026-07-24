@@ -39,22 +39,21 @@ typedef struct {
     int (*read_telemetry)(sensor_reading_t* out, int max);
 
     // Time sync (optional)
-    // Todos os 3 são independentes. Core usa a combinação disponível:
-    //   * só get_persisted_time  → hora vem do RTC persistente (DS3231, PCF8563, etc)
-    //   * só get_external_time   → hora vem de fonte externa (GPS, NTP, ...) em cada boot
-    //   * ambos                  → RTC como primário; external refresca DS3231 a cada
+    // All 3 independent. Possible combination:
+    //   * only get_persisted_time  -> time comes from RTC (DS3231)
+    //   * only get_external_time   -> time comes from extern (GPS, NTP, ...) each boot
+    //   * both                  -> RTC as primary; external refresh DS3231 each boot
     //                              GOV_GPS_SYNC_EVERY_N_BOOTS boots (config Kconfig)
-    //   * nenhum                 → sem sync, sistema roda sem hora sincronizada
+    //   * null                 -> system runs unsynced
 
-    // Lê hora persistida. Retorna 0 se sem hora válida ou hardware ausente.
+    // Reads persisted time. Returns 0 if invalid hour or unavaiable hardware.
     time_t   (*get_persisted_time)(void);
 
-    // Grava hora no RTC persistente. Chamado após get_external_time bem-sucedido
-    // pra manter a hora sobrevivendo reboots.
+    // Write time on RTC. Called after get_external_time succeed
     void     (*persist_time)(time_t epoch);
 
-    // Bloqueia até obter hora de fonte externa OU timeout_ms.
-    // Retorna 0 se timeout ou falha.
+    // Blocks until obtained time from extern or timeout_ms.
+    // Return 0 if timeout or fail.
     time_t   (*get_external_time)(uint32_t timeout_ms);
 
     // ---- Bateria (opcional, futuro low-battery event) ------------------------

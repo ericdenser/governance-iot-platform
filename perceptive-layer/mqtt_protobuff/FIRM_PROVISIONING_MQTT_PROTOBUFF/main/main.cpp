@@ -11,7 +11,7 @@
 
 #include "src/AppState.h"
 #include "src/GpsManager.h"
-#include "src/CryptoManager.h"
+#include "src/AuthManager.h"
 #include "src/WifiManager.h"
 #include "src/HttpService.h"
 #include "src/WatchdogManager.h"
@@ -31,7 +31,7 @@
 // =============================================================================
 #define MAX_WIFI_RETRIES        10
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
-#define URL_PROVISIONING        CONFIG_GOV_MDM_BASE_URL "provisioning/activate"
+#define URL_PROVISIONING        CONFIG_GOV_MDM_BASE_URL "/provisioning/activate"
 #define ADVERTISE_INTERVAL_MS   10000
 
 #define GPS_UART_PORT    UART_NUM_1
@@ -199,7 +199,7 @@ static void handle_nvs_init() {
 
     bool hasWifi       = (saved_ssid[0] != '\0');
     bool hasToken      = (saved_token[0] != '\0');
-    bool isProvisioned = CryptoManager::isProvisioned();
+    bool isProvisioned = AuthManager::isProvisioned();
     bool hasDeviceId = (saved_device_id[0] != '\0');
 
     SLOG_I("Diagnóstico NVS — WiFi salvo: %s | Token salvo: %s | Certificado: %s | DeviceId %s",
@@ -416,11 +416,9 @@ static void handle_time_sync() {
         }
     }
 
-    // --- 3. MDM timestamp: fallback final tratado em CryptoManager::handleProvisioningResponse
-
     // Verificação de próximo estado
-    bool isProvisioned = CryptoManager::isProvisioned();
-    SLOG_I("Certificado mTLS presente: %s. Próximo estado: %s",
+    bool isProvisioned = AuthManager::isProvisioned();
+    SLOG_I("Credenciais Keycloak presentes: %s. Próximo estado: %s",
            isProvisioned ? "SIM" : "NÃO",
            isProvisioned ? "MQTT_CONNECTING" : "PROVISIONING");
     if (!isProvisioned) {
@@ -439,21 +437,18 @@ static void handle_provisioning() {
     SLOG_I("Iniciando provisionamento. Token: [%.8s...] DeviceID: [%s] MAC: [%s]",
        saved_token, g_deviceId.c_str(), g_macAddress.c_str());
     // Gera par de chaves ECC + CSR
-    SLOG_I("Gerando par de chaves ECC e CSR via mbedTLS...");
-    std::string espCert = CryptoManager::handleProvisioning(g_deviceId, g_macAddress, saved_token);
+   
+     std::string body =
+        std::string("{\"provisioningToken\":\"") + saved_token +
+        "\",\"deviceId\":\"" + g_deviceId +
+        "\",\"macAddress\":\"" + g_macAddress + "\"}";
 
+    SLOG_I("Enviando /active em: %s", URL_PROVISIONING);
+    SLOG_I("Payload: %s", body.c_str());
 
-    // ============= ERRO NA GERACAO DO CERT OU KEY ===============
-    if (espCert.empty()) {
-        SLOG_E("Falha ao gerar CSR. CryptoManager retornou payload vazio.");
-        return;
-    }
-
-    SLOG_I("CSR gerado com sucesso. Enviando para MDM em: %s", URL_PROVISIONING);
-    SLOG_I("Payload enviado: %.80s...", espCert.c_str());
 
     std::string responseBuffer;
-    bool ok = HttpService::post(URL_PROVISIONING, espCert, responseBuffer, g_msgOut, "application/json");
+    bool ok = HttpService::post(URL_PROVISIONING, body, responseBuffer, g_msgOut, "application/json");
 
     // ============= CHECA REQUISICAO ===============
     if (!ok) {
@@ -462,17 +457,17 @@ static void handle_provisioning() {
     }
 
     SLOG_I("POST para /activate bem-sucedido. Resposta do MDM: %s", responseBuffer.c_str());
-    SLOG_I("Processando resposta e salvando certificado na NVS...");
+    SLOG_I("Processando resposta e salvando credenciais na NVS...");
 
     // ============= CONSUMO DA RESPOSTA ===============
-    bool saved = CryptoManager::handleProvisioningResponse(responseBuffer, g_msgOut, time_synced);
+    bool saved = AuthManager::handleProvisioningResponse(responseBuffer, g_msgOut);
     if (!saved) {
         SLOG_E("Falha ao processar resposta do MDM");
         return;
     }
 
     // Execução não chega aqui -> handleProvisioningResponse chama esp_restart()
-    SLOG_I("Certificado salvo. Reiniciando para aplicar...");
+    SLOG_I("Credenciais salvas. Reiniciando para aplicar...");
 }
 
 // ---- MQTT_CONNECTING --------------------------------------------------------

@@ -17,6 +17,7 @@ import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
@@ -231,6 +232,22 @@ public class MqttAgent {
         } catch (MqttException e) {
             log.error("Falha ao publicar em [{}]: {}", topic, e.getMessage());
             throw new RuntimeException("Falha MQTT publish", e);
+        }
+    }
+
+   
+    @Scheduled(fixedRateString = "${mqtt.jwt-refresh-interval-ms:1800000}")
+    public void refreshJwtAndReconnect() {
+        if (client == null || !client.isConnected()) {
+            return;   // sem conexão ativa, nada a refrescar
+        }
+        log.info("Refresh preventivo de JWT — desconectando pra pegar token novo no reconnect.");
+        try {
+            client.disconnect();
+
+            startConnectionRoutine();
+        } catch (MqttException e) {
+            log.warn("Falha ao desconectar pra refresh: {}", e.getMessage());
         }
     }
 

@@ -16,9 +16,6 @@ public class DeviceRegistrationRequest {
     private String macAddress;
 
     @NotBlank
-    private String publicKey;
-
-    @NotBlank
     @Pattern(regexp = ValidationPatterns.PROVISIONING_TOKEN_REGEX,
              message = "provisioningToken " + ValidationPatterns.PROVISIONING_TOKEN_MESSAGE)
     private String provisioningToken;

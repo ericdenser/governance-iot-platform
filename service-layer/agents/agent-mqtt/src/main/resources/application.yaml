@@ -3,6 +3,7 @@ server:
 
 mqtt:
   broker-url: tcp://${HOST_IP}:1883
+  jwt-refresh-interval-ms: 30000
   client-id: agent-mqtt
   topic: status/#
   error-topic: error/#
