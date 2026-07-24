@@ -1,0 +1,25 @@
+services:
+  spa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROXY_URL: ${NPM_PROXY_URL:-}
+        NPM_NO_PROXY: ${NPM_NO_PROXY:-localhost,127.0.0.1}
+        VITE_BFF_URL: ${BFF_PUBLIC_URL:-http://localhost:8083}
+        VITE_BASE_PATH: ${SPA_BASE_PATH:-/}
+    container_name: ${SPA_CONTAINER_NAME:-spa}
+    ports:
+      - "${SPA_HOST_BIND:-0.0.0.0}:${SPA_HOST_PORT:-8080}:80"
+    deploy:
+      resources:
+        limits:
+          memory: ${SPA_MEMORY_LIMIT:-64M}
+    restart: unless-stopped
+    networks:
+      - ${DOCKER_NETWORK:-app-net}
+
+networks:
+  app-net:
+    name: ${DOCKER_NETWORK:-app-net}
+    external: ${DOCKER_NETWORK_EXTERNAL:-false}

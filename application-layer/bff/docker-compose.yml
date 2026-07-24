@@ -1,0 +1,39 @@
+services:
+  bff:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROXY_ACTIVE: ${PROXY_ACTIVE:-false}
+        PROXY_HOST: ${PROXY_HOST:-}
+        PROXY_PORT: ${PROXY_PORT:-}
+        PROXY_USER: ${PROXY_USER:-}
+        PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+    container_name: ${BFF_CONTAINER_NAME:-bff}
+    ports:
+      - "${BFF_HOST_BIND:-0.0.0.0}:${BFF_HOST_PORT:-8083}:8083"
+    environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      SPRING_REDIS_HOST: ${REDIS_HOST:-redis}
+      SPRING_REDIS_PORT: ${REDIS_PORT:-6379}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      KEYCLOAK_CLIENT_ID: ${BFF_CLIENT_ID:-iot-bff}
+      KEYCLOAK_CLIENT_SECRET: ${BFF_CLIENT_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      BFF_PUBLIC_URL: ${BFF_PUBLIC_URL:-http://localhost:8083}
+      GOV_API_URL: ${GOVAPI_URL:-http://govapi:8082}
+      APP_SESSION_COOKIE_SECURE: ${APP_SESSION_COOKIE_SECURE:-false}
+      APP_SESSION_COOKIE_SAME_SITE: ${APP_SESSION_COOKIE_SAME_SITE:-Lax}
+      APP_SESSION_COOKIE_PATH: ${APP_SESSION_COOKIE_PATH:-/}
+    deploy:
+      resources:
+        limits:
+          memory: ${BFF_MEMORY_LIMIT:-512M}
+    restart: unless-stopped
+    networks:
+      - ${DOCKER_NETWORK:-app-net}
+
+networks:
+  app-net:
+    name: ${DOCKER_NETWORK:-app-net}
+    external: ${DOCKER_NETWORK_EXTERNAL:-false}

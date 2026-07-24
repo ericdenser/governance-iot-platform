@@ -41,12 +41,17 @@ spring:
 
 server:
   port: ${SERVER_PORT:8083}
+  forward-headers-strategy: framework
   tomcat:
     max-http-form-post-size: 10MB
 app:
   frontend-url: ${FRONTEND_URL}
   gov-api-url: ${GOV_API_URL}
   keycloak-admin-url: ${KEYCLOAK_ADMIN_URL}
+  session:
+    cookie-secure: ${APP_SESSION_COOKIE_SECURE:false}
+    cookie-same-site: ${APP_SESSION_COOKIE_SAME_SITE:Lax}
+    cookie-path: ${APP_SESSION_COOKIE_PATH:/}
 
 logging:
   level:

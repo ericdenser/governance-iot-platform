@@ -1,0 +1,34 @@
+services:
+  event-handler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROXY_ACTIVE: ${PROXY_ACTIVE:-false}
+        PROXY_HOST: ${PROXY_HOST:-}
+        PROXY_PORT: ${PROXY_PORT:-}
+        PROXY_USER: ${PROXY_USER:-}
+        PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+    container_name: ${EVENT_HANDLER_CONTAINER_NAME:-event-handler}
+    environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:-postgres}:${DB_PORT:-5432}/${EVENT_HANDLER_DB:-event_handler}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
+      REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      EVENT_HANDLER_CLIENT_SECRET: ${EVENT_HANDLER_CLIENT_SECRET}
+      GOVAPI_URL: ${GOVAPI_URL:-http://govapi:8082}
+    deploy:
+      resources:
+        limits:
+          memory: ${EVENT_HANDLER_MEMORY_LIMIT:-512M}
+    restart: unless-stopped
+    networks:
+      - ${DOCKER_NETWORK:-app-net}
+
+networks:
+  app-net:
+    name: ${DOCKER_NETWORK:-app-net}
+    external: ${DOCKER_NETWORK_EXTERNAL:-false}

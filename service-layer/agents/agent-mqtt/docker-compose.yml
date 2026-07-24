@@ -1,0 +1,38 @@
+services:
+  agent-mqtt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROXY_ACTIVE: ${PROXY_ACTIVE:-false}
+        PROXY_HOST: ${PROXY_HOST:-}
+        PROXY_PORT: ${PROXY_PORT:-}
+        PROXY_USER: ${PROXY_USER:-}
+        PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+    container_name: ${AGENT_MQTT_CONTAINER_NAME:-agent-mqtt}
+    environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      HOST_IP: ${MQTT_BROKER_HOST:-broker}
+      MQTT_BROKER_URL: ${MQTT_BROKER_URL:-tcp://broker:1883}
+      MQTT_JWT_REFRESH_INTERVAL_MS: ${MQTT_JWT_REFRESH_INTERVAL_MS:-1800000}
+      REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
+      REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      AGENT_MQTT_CLIENT_SECRET: ${AGENT_MQTT_CLIENT_SECRET}
+      GOVAPI_URL: ${GOVAPI_URL:-http://govapi:8082}
+      EVENT_HANDLER_URL: ${EVENT_HANDLER_URL:-http://event-handler:8085}
+      BROADCAST_WAVE_THRESHOLD: ${BROADCAST_WAVE_THRESHOLD:-100}
+      BROADCAST_WAVE_SIZE: ${BROADCAST_WAVE_SIZE:-50}
+      BROADCAST_WAVE_INTERVAL_MS: ${BROADCAST_WAVE_INTERVAL_MS:-10000}
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MQTT_MEMORY_LIMIT:-512M}
+    restart: unless-stopped
+    networks:
+      - ${DOCKER_NETWORK:-app-net}
+
+networks:
+  app-net:
+    name: ${DOCKER_NETWORK:-app-net}
+    external: ${DOCKER_NETWORK_EXTERNAL:-false}
