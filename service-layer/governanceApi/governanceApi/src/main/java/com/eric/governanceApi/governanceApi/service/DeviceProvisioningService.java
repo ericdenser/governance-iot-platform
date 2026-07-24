@@ -157,7 +157,8 @@ public class DeviceProvisioningService {
         CreatedKeycloakClient created = keycloakDeviceClientService.createClient(device.getDeviceId());
         device.setDeviceId(request.getDeviceId());
         device.setMacAddress(request.getMacAddress());
-        device.setStatus(DeviceStatus.PROVISIONING);            
+        device.setKeycloakInternalId(created.internalId());
+        device.setStatus(DeviceStatus.PROVISIONING);
         device.setLastSeen(Instant.now());
         device.setFirmwareVersion(provisioningFirmware);
 
