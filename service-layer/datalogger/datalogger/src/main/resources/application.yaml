@@ -1,5 +1,6 @@
 server:
-  port: 8081 
+  port: 8081
+  forward-headers-strategy: framework
 
 influxdb:
   url: http://localhost:8086

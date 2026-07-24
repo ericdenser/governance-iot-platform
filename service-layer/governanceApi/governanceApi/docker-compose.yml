@@ -1,0 +1,53 @@
+services:
+  govapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROXY_ACTIVE: ${PROXY_ACTIVE:-false}
+        PROXY_HOST: ${PROXY_HOST:-}
+        PROXY_PORT: ${PROXY_PORT:-}
+        PROXY_USER: ${PROXY_USER:-}
+        PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+    container_name: ${GOVAPI_CONTAINER_NAME:-govapi}
+    ports:
+      - "${GOVAPI_HOST_BIND:-0.0.0.0}:${GOVAPI_HOST_PORT:-8082}:8082"
+    environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:-postgres}:${DB_PORT:-5432}/${POSTGRES_DB:-cmdb_iot}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
+      REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      KEYCLOAK_ADMIN_URL: ${KEYCLOAK_ADMIN_URL}
+      GOVAPI_CLIENT_ID: ${GOVAPI_CLIENT_ID:-gov-api}
+      GOVAPI_CLIENT_SECRET: ${GOVAPI_CLIENT_SECRET}
+      AGENT_URL: ${AGENT_URL:-http://agent-mqtt:8087}
+      EVENT_URL: ${EVENT_HANDLER_URL:-http://event-handler:8085}
+      GOV_API_URL: ${GOVAPI_PUBLIC_URL:-http://localhost:8082}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-firmware}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      NVS_PYTHON_PATH: ${NVS_PYTHON_PATH:-python3}
+      NVS_SCRIPT_PATH: ${NVS_SCRIPT_PATH:-/opt/nvs_partition_gen.py}
+      PROVISIONING_BOOTLOADER_BIN_PATH: ${PROVISIONING_BOOTLOADER_BIN_PATH:-/opt/provisioning-bins/bootloader.bin}
+      PROVISIONING_PARTITION_TABLE_BIN_PATH: ${PROVISIONING_PARTITION_TABLE_BIN_PATH:-/opt/provisioning-bins/partition-table.bin}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+    volumes:
+      - ${PROVISIONING_BINS_VOLUME:-./provisioning-bins}:/opt/provisioning-bins:ro
+    deploy:
+      resources:
+        limits:
+          memory: ${GOVAPI_MEMORY_LIMIT:-640M}
+    restart: unless-stopped
+    networks:
+      - ${DOCKER_NETWORK:-app-net}
+
+networks:
+  app-net:
+    name: ${DOCKER_NETWORK:-app-net}
+    external: ${DOCKER_NETWORK_EXTERNAL:-false}

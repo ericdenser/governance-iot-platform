@@ -37,12 +37,23 @@ public class SecurityConfig {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
+    @Value("${app.session.cookie-secure:false}")
+    private boolean cookieSecure;
+
+    @Value("${app.session.cookie-same-site:Lax}")
+    private String cookieSameSite;
+
+    @Value("${app.session.cookie-path:/}")
+    private String cookiePath;
+
     @Bean
     public CookieSerializer cookieSerializer() {
-        DefaultCookieSerializer serializer = new DefaultCookieSerializer();
-        serializer.setCookieName("SESSION");
-        serializer.setSameSite("Lax");
-        return serializer;
+        DefaultCookieSerializer s = new DefaultCookieSerializer();
+        s.setCookieName("SESSION");
+        s.setSameSite(cookieSameSite);
+        s.setUseSecureCookie(cookieSecure);
+        s.setCookiePath(cookiePath);
+        return s;
     }
 
     @Bean

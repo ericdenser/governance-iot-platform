@@ -1,0 +1,32 @@
+services:
+  datalogger:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROXY_ACTIVE: ${PROXY_ACTIVE:-false}
+        PROXY_HOST: ${PROXY_HOST:-}
+        PROXY_PORT: ${PROXY_PORT:-}
+        PROXY_USER: ${PROXY_USER:-}
+        PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+    container_name: ${DATALOGGER_CONTAINER_NAME:-datalogger}
+    environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      INFLUXDB_URL: ${INFLUX_URL:-http://influxdb:8086}
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      INFLUXDB_ORG: ${INFLUX_ORG:-mackenzie}
+      INFLUXDB_BUCKET: ${INFLUX_BUCKET:-telemetry_bucket}
+      REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
+      REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
+    deploy:
+      resources:
+        limits:
+          memory: ${DATALOGGER_MEMORY_LIMIT:-448M}
+    restart: unless-stopped
+    networks:
+      - ${DOCKER_NETWORK:-app-net}
+
+networks:
+  app-net:
+    name: ${DOCKER_NETWORK:-app-net}
+    external: ${DOCKER_NETWORK_EXTERNAL:-false}
