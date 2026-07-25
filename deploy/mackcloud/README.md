@@ -14,11 +14,11 @@ Os serviços Java (govApi/agent/event/datalogger/bff) e a SPA usam os composes g
 
 | Porta | Serviço | Location no nginx |
 |---|---|---|
-| 18884 | broker (WS) | `/IOT/mqtt` |
-| 18082 | govapi | `/IOT/govapi/` |
-| 18083 | bff | `/IOT/bff/` |
-| 18100 | spa | `/IOT/` |
-| 19000 | minio | `/IOT/minio/` |
+| 18884 | broker (WS) | `/iot/mqtt` |
+| 18082 | govapi | `/iot/govapi/` |
+| 18083 | bff | `/iot/bff/` |
+| 18100 | spa | `/iot/` |
+| 19000 | minio | `/iot/minio/` |
 
 ## Deploy
 
@@ -89,10 +89,10 @@ sudo nginx -t && sudo systemctl reload nginx
 ### 7. Smoke test
 
 ```bash
-curl -Ik https://mackleaps.mackenzie.br/IOT/
-curl -Ik https://mackleaps.mackenzie.br/IOT/bff/
-curl -sk https://mackleaps.mackenzie.br/IOT/govapi/actuator/health
-curl -sk https://mackleaps.mackenzie.br/IOT/minio/minio/health/live
+curl -Ik https://mackleaps.mackenzie.br/iot/
+curl -Ik https://mackleaps.mackenzie.br/iot/bff/
+curl -sk https://mackleaps.mackenzie.br/iot/govapi/actuator/health
+curl -sk https://mackleaps.mackenzie.br/iot/minio/minio/health/live
 ```
 
 ## Firmware
