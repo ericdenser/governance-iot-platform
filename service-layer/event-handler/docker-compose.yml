@@ -26,7 +26,7 @@ services:
           memory: ${EVENT_HANDLER_MEMORY_LIMIT:-512M}
     restart: unless-stopped
     networks:
-      - ${DOCKER_NETWORK:-app-net}
+      - app-net
 
 networks:
   app-net:
