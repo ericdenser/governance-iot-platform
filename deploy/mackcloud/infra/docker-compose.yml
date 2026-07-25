@@ -1,0 +1,96 @@
+services:
+
+  iot-postgres:
+    image: postgres:15-alpine
+    container_name: iot-postgres
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-cmdb_iot}
+    volumes:
+      - iot-postgres-data:/var/lib/postgresql/data
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+    networks: [iot-net]
+
+  iot-redis:
+    image: redis:7-alpine
+    container_name: iot-redis
+    volumes:
+      - iot-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+    networks: [iot-net]
+
+  iot-redis-streams:
+    image: redis:7-alpine
+    container_name: iot-redis-streams
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    volumes:
+      - iot-redis-streams-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+    restart: unless-stopped
+    networks: [iot-net]
+
+  iot-minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    container_name: iot-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:19000:9000"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - iot-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    restart: unless-stopped
+    networks: [iot-net]
+
+volumes:
+  iot-postgres-data:
+  iot-redis-data:
+  iot-redis-streams-data:
+  iot-minio-data:
+
+networks:
+  iot-net:
+    external: true

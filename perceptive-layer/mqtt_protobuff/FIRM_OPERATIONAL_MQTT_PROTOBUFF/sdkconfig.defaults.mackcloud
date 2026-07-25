@@ -1,0 +1,7 @@
+# idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.mackcloud" build
+
+CONFIG_GOV_KEYCLOAK_URL="https://mackleaps.mackenzie.br/keycloak"
+CONFIG_GOV_KEYCLOAK_REALM="IOT-REALM"
+CONFIG_GOV_MDM_BASE_URL="https://mackleaps.mackenzie.br/IOT/govapi"
+CONFIG_GOV_MQTT_BROKER_URI="wss://mackleaps.mackenzie.br/IOT/mqtt"
+CONFIG_GOV_KC_TOKEN_MARGIN_S=300
