@@ -9,6 +9,8 @@ services:
         PROXY_PORT: ${PROXY_PORT:-}
         PROXY_USER: ${PROXY_USER:-}
         PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+        HTTP_PROXY: ${PROXY_URL:-}
+        HTTPS_PROXY: ${PROXY_URL:-}
     container_name: ${GOVAPI_CONTAINER_NAME:-govapi}
     ports:
       - "${GOVAPI_HOST_BIND:-0.0.0.0}:${GOVAPI_HOST_PORT:-8082}:8082"
