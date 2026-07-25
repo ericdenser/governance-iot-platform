@@ -11,6 +11,7 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.Collections;
 import java.util.List;
@@ -23,8 +24,18 @@ public class JwtConfig {
     private String issuerUri;
 
     @Bean
-    public JwtDecoder jwtDecoder() {
-        NimbusJwtDecoder decoder = JwtDecoders.fromIssuerLocation(issuerUri);
+    public JwtDecoder jwtDecoder(RestTemplate proxiedRestTemplate) {
+        String configUri = issuerUri + "/.well-known/openid-configuration";
+        @SuppressWarnings("unchecked")
+        Map<String, Object> config = proxiedRestTemplate.getForObject(configUri, Map.class);
+        if (config == null) {
+            throw new RuntimeException("Failed to fetch OIDC config from " + configUri);
+        }
+        String jwkSetUri = config.get("jwks_uri").toString();
+
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
+                .restOperations(proxiedRestTemplate)
+                .build();
 
         OAuth2TokenValidator<Jwt> defaultValidators = JwtValidators.createDefaultWithIssuer(issuerUri);
 
