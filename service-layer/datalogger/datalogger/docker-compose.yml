@@ -24,7 +24,7 @@ services:
           memory: ${DATALOGGER_MEMORY_LIMIT:-448M}
     restart: unless-stopped
     networks:
-      - ${DOCKER_NETWORK:-app-net}
+      - app-net
 
 networks:
   app-net:
