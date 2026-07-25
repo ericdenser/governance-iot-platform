@@ -22,7 +22,8 @@ services:
       resources:
         limits:
           memory: ${DATALOGGER_MEMORY_LIMIT:-448M}
-    restart: unless-stopped
+          cpus: '0.5'
+    restart: on-failure:5
     networks:
       - app-net
 
