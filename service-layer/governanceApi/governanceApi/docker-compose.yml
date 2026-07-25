@@ -45,7 +45,8 @@ services:
       resources:
         limits:
           memory: ${GOVAPI_MEMORY_LIMIT:-640M}
-    restart: unless-stopped
+          cpus: '1.0'
+    restart: on-failure:5
     networks:
       - app-net
 
