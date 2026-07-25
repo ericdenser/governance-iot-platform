@@ -24,9 +24,15 @@ RUN chmod +x mvnw && ./mvnw clean package -DskipTests -B -Dmaven.artifact.thread
 
 FROM eclipse-temurin:21-jre-alpine
 
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY} NO_PROXY=localhost,127.0.0.1
+
 RUN apk add --no-cache python3 py3-pip py3-cryptography
 RUN pip3 install --break-system-packages esp-idf-nvs-partition-gen 2>/dev/null \
     || pip3 install --break-system-packages "esptool>=4.7"
+
+ENV HTTP_PROXY= HTTPS_PROXY=
 
 RUN addgroup -S app && adduser -S app -G app
 USER app
