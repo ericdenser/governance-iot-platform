@@ -15,7 +15,8 @@ services:
       resources:
         limits:
           memory: ${SPA_MEMORY_LIMIT:-64M}
-    restart: unless-stopped
+          cpus: '0.25'
+    restart: on-failure:5
     networks:
       - app-net
 

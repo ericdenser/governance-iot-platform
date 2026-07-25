@@ -29,7 +29,8 @@ services:
       resources:
         limits:
           memory: ${BFF_MEMORY_LIMIT:-512M}
-    restart: unless-stopped
+          cpus: '0.5'
+    restart: on-failure:5
     networks:
       - app-net
 
