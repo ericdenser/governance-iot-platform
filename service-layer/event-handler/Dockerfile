@@ -28,4 +28,4 @@ USER app
 WORKDIR /app
 COPY --from=builder --chown=app:app /build/target/*.jar app.jar
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_TOOL_OPTIONS -jar /app/app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
