@@ -3,6 +3,7 @@ package com.eric.eventhandler.event_handler.model.entity;
 import java.time.Instant;
 
 import com.eric.eventhandler.event_handler.enums.DeviceState;
+import com.eric.eventhandler.event_handler.enums.EventDeliveryStatus;
 import com.eric.eventhandler.event_handler.enums.EventType;
 
 import jakarta.persistence.Column;
@@ -12,18 +13,19 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-
-// Registrar os subscribers e seus eventos
 @Entity
-@Table(name = "event_log")
+@Table(name = "event_log", indexes = {
+    @Index(name = "idx_eventlog_device_status_ts", columnList = "deviceId,deliveryStatus,timestamp"),
+    @Index(name = "idx_eventlog_status_lastattempt", columnList = "deliveryStatus,lastAttemptAt")
+})
 @Data
 @NoArgsConstructor
 public class EventLog {
-    
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,11 +38,14 @@ public class EventLog {
     @Column(nullable = false)
     private String deviceId;
 
-    @Column(name = "source_message_id", unique = true, length = 64)
+    @Column(name = "source_message_id", length = 64)
     private String sourceMessageId;
 
     @Column(length = 2000)
     private String payload;
+
+    @Column(length = 500)
+    private String webhookUrl;
 
     @Enumerated(EnumType.STRING)
     private DeviceState previousStatus;
@@ -48,6 +53,17 @@ public class EventLog {
     @Enumerated(EnumType.STRING)
     private DeviceState newStatus;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private EventDeliveryStatus deliveryStatus = EventDeliveryStatus.PENDING;
+
+    @Column(nullable = false)
+    private int attemptCount = 0;
+
+    private Instant lastAttemptAt;
+
+    @Column(length = 500)
+    private String lastError;
+
     private Instant timestamp = Instant.now();
 }
-
