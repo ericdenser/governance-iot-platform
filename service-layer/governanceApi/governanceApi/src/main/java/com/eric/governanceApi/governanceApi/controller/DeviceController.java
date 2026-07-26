@@ -74,7 +74,7 @@ public class DeviceController {
     @GetMapping("/{deviceId}/events")
     public ResponseEntity<ApiResponse<Page<EventRegistryResponseDTO>>> getEvents(
             @PathVariable String deviceId,
-            @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @PageableDefault(size = 20, sort = "ocurredAt", direction = Sort.Direction.DESC) Pageable pageable,
             HttpServletRequest httpRequest) {
         return ResponseEntity.ok(ApiResponse.success(deviceService.getEvents(deviceId, pageable), httpRequest.getRequestURI()));
     }
