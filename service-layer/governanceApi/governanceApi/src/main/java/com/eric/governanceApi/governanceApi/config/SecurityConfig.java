@@ -30,11 +30,9 @@ public class SecurityConfig {
                 // ESP32 envia provisioning token no body (qualquer outra requisição é 404)
                 .requestMatchers("/provisioning/activate").permitAll()
 
-                // apenas event-handler (service account com ROLE_EVENT_HANDLER) pode alimentar eventos
-                .requestMatchers("/events/ingest").hasRole("EVENT_HANDLER")
-
-                // apenas agent-mqtt (service account com ROLE_AGENT_MQTT) pode alimentar erros
-                .requestMatchers("/error/ingest").hasRole("AGENT_MQTT")
+                // Alimentação interna via docker network — bloquear externamente no nginx-frontend
+                .requestMatchers("/events/ingest").permitAll()
+                .requestMatchers("/error/ingest").permitAll()
 
                 // Todo o resto é validado pelo RoleManager via regras-acesso.json
                 .anyRequest().access(roleManager)
