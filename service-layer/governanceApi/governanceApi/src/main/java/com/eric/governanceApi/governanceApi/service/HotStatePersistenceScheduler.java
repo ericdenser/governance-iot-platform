@@ -33,6 +33,7 @@ public class HotStatePersistenceScheduler {
                SET last_seen = ?,
                    last_latitude = COALESCE(?, last_latitude),
                    last_longitude = COALESCE(?, last_longitude),
+                   status = COALESCE(?, status),
                    last_seen_persisted_at = ?
              WHERE device_id = ?
             """;
@@ -70,7 +71,8 @@ public class HotStatePersistenceScheduler {
                         e.getKey(),
                         e.getValue().lastSeen(),
                         e.getValue().latitude(),
-                        e.getValue().longitude()))
+                        e.getValue().longitude(),
+                        e.getValue().status()))
                 // ordem estável por deviceId evita deadlock com writers concorrentes
                 .sorted(Comparator.comparing(DirtyDevice::deviceId))
                 .toList();
@@ -86,8 +88,9 @@ public class HotStatePersistenceScheduler {
             ps.setTimestamp(1, Timestamp.from(d.lastSeen()));
             if (d.latitude() != null) ps.setDouble(2, d.latitude()); else ps.setNull(2, Types.DOUBLE);
             if (d.longitude() != null) ps.setDouble(3, d.longitude()); else ps.setNull(3, Types.DOUBLE);
-            ps.setTimestamp(4, persistedAt);
-            ps.setString(5, d.deviceId());
+            if (d.status() != null) ps.setString(4, d.status()); else ps.setNull(4, Types.VARCHAR);
+            ps.setTimestamp(5, persistedAt);
+            ps.setString(6, d.deviceId());
         });
 
         // Só avança o cutoff após o batch — se falhar, o próximo run reprocessa.
@@ -106,6 +109,6 @@ public class HotStatePersistenceScheduler {
         return since == null || !state.lastSeen().isBefore(since);
     }
 
-    private record DirtyDevice(String deviceId, Instant lastSeen, Double latitude, Double longitude) {
+    private record DirtyDevice(String deviceId, Instant lastSeen, Double latitude, Double longitude, String status) {
     }
 }
