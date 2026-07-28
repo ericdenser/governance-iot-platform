@@ -3,10 +3,10 @@ server:
   forward-headers-strategy: framework
 
 influxdb:
-  url: http://localhost:8086
-  token: ${INFLUX_TOKEN} 
-  org: mackenzie
-  bucket: telemetry_bucket
+  url: ${INFLUX_URL:http://localhost:8086}
+  token: ${INFLUX_TOKEN}
+  org: ${INFLUX_ORG:mackenzie}
+  bucket: ${INFLUX_BUCKET:telemetry_bucket}
 
 spring:
   data:

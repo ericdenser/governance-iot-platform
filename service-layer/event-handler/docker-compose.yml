@@ -12,9 +12,9 @@ services:
     container_name: ${EVENT_HANDLER_CONTAINER_NAME:-event-handler}
     environment:
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
-      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:-postgres}:${DB_PORT:-5432}/${EVENT_HANDLER_DB:-event_handler}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${EVENT_HANDLER_DB:-event_handler}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
       REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
       GOVAPI_URL: ${GOVAPI_URL:-http://govapi:8082}

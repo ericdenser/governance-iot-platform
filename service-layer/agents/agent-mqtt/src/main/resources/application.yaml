@@ -3,9 +3,9 @@ server:
   forward-headers-strategy: framework
 
 mqtt:
-  broker-url: tcp://${HOST_IP}:1883
-  jwt-refresh-interval-ms: 180000
-  client-id: agent-mqtt
+  broker-url: tcp://${MQTT_BROKER_HOST:localhost}:${MQTT_BROKER_PORT:1883}
+  jwt-refresh-interval-ms: ${MQTT_JWT_REFRESH_INTERVAL_MS:1800000}
+  client-id: ${AGENT_MQTT_CLIENT_ID:agent-mqtt}
   topic: status/#
   error-topic: error/#
   telemetry-topic: telemetry/#
@@ -26,7 +26,7 @@ event-handler:
   url: ${EVENT_HANDLER_URL:http://localhost:8085}
 
 datalogger:
-  url: http://localhost:8081
+  url: ${DATALOGGER_URL:http://localhost:8081}
 
 spring:
   data:                          
@@ -51,7 +51,7 @@ spring:
       client:
         registration:
           govapi:
-            client-id: agent-mqtt
+            client-id: ${AGENT_MQTT_CLIENT_ID:agent-mqtt}
             client-secret: ${AGENT_MQTT_CLIENT_SECRET}
             authorization-grant-type: client_credentials
         provider:
