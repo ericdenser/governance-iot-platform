@@ -266,7 +266,8 @@ export interface ErrorRecordResponseDTO {
 export interface SensorResponseDTO {
   sensorId: string
   name: string
-  createdAt: string
+  createdByActorId: string | null
+  createdByUsername: string | null
 }
 
 // ── Audit ───────────────────────────────────────────────────────────────────

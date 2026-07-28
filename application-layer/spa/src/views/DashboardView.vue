@@ -53,7 +53,7 @@ const statusVariant = (s: DeviceStatus): BadgeVariant => {
   return map[s] ?? 'muted'
 }
 
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 
 const MINIMAP_STORAGE_KEY = 'dashboard_minimap_config'

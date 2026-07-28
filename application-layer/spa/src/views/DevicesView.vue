@@ -44,7 +44,7 @@ const statusVariant = (s: DeviceStatus): BadgeVariant => {
   return m[s] ?? 'muted'
 }
 
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const load = async () => {
   loading.value = true

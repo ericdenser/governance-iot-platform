@@ -52,7 +52,7 @@ const loadingFirmwares = ref(false)
 
 const sendResult = ref<CommandResultResponseDTO | null>(null)
 
-const COMMANDS = [
+const COMMANDS: Array<{ value: DeviceCommands; label: string; desc: string }> = [
   { value: 'UPDATE',            label: 'Atualizar Firmware',  desc: 'OTA — instala uma versão específica no device' },
   { value: 'REBOOT',            label: 'Reiniciar',            desc: 'Reinicia o ESP imediatamente' },
   { value: 'DEEP_SLEEP',        label: 'Deep Sleep',           desc: 'Coloca o device em modo de economia por N segundos' },

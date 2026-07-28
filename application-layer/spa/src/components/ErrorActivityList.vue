@@ -9,7 +9,7 @@ defineProps<{ errors: ErrorRecordResponseDTO[] }>()
 const statusVariant = (s: ErrorStatus): BadgeVariant =>
   (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
 
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
+const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
 </script>
 
 <template>

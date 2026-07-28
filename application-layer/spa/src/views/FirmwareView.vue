@@ -29,7 +29,7 @@ const loading = ref(true)
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 const statusVariant = (s: string): BadgeVariant =>
   ({ STAGED: 'muted', DEPLOYED: 'success', DEPRECATED: 'danger', CORRUPTED: 'danger' }[s] as BadgeVariant) ?? 'muted'
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 // Groups where user can upload firmware (MEMBER/OWNER)
 const managedGroupIds = computed(() =>
