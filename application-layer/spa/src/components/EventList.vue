@@ -7,7 +7,7 @@ withDefaults(defineProps<{
   showDevice?: boolean
 }>(), { showDevice: true })
 
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 </script>
 
 <template>

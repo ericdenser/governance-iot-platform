@@ -14,7 +14,7 @@ const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
 
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const successVariant = (ok: boolean): BadgeVariant => ok ? 'success' : 'danger'
 

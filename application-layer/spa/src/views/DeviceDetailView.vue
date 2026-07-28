@@ -57,7 +57,7 @@ const cmdVariant = (s: CommandStatus): BadgeVariant =>
   (({ PENDING: 'warning', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
 const errVariant = (s: ErrorStatus): BadgeVariant =>
   (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
-const fmt = (iso: string) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const errExpanded = ref<Set<string>>(new Set())
 const toggleErrExpand = (id: string) => {
@@ -155,7 +155,7 @@ onMounted(async () => {
             <span v-if="device.firmware && device.firmwareVersion">
               {{ device.firmware.firmwareName }}
               <span class="mono text-muted"> v{{ device.firmwareVersion.version }}</span>
-              <AppBadge v-if="device.firmware.provisioningFirmware" variant="primary" dot class="badge-inline">Provisioning</AppBadge>
+              <AppBadge v-if="device.firmware.isProvisioning" variant="primary" dot class="badge-inline">Provisioning</AppBadge>
             </span>
             <span v-else class="text-muted">—</span>
           </div>
