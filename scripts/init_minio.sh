@@ -14,8 +14,9 @@ set -a; source .env; set +a
 
 ENDPOINT="${MINIO_ENDPOINT:-http://localhost:9000}"
 NETWORK="${DOCKER_NETWORK:-host}"
+MC_IMAGE="minio/mc:RELEASE.2025-04-16T18-13-26Z"
 
-docker run --rm --network "$NETWORK" --entrypoint /bin/sh minio/mc -c "
+docker run --rm --network "$NETWORK" --entrypoint /bin/sh "$MC_IMAGE" -c "
   mc alias set local '$ENDPOINT' '$MINIO_ROOT_USER' '$MINIO_ROOT_PASSWORD' &&
   mc mb --ignore-existing local/$MINIO_BUCKET &&
   if mc admin user svcacct info local '$MINIO_ACCESS_KEY' >/dev/null 2>&1; then
