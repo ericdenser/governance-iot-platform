@@ -34,8 +34,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET:-firmware}
       MINIO_REGION: ${MINIO_REGION:-us-east-1}
-      NVS_PYTHON_PATH: ${NVS_PYTHON_PATH:-python3}
-      NVS_SCRIPT_PATH: ${NVS_SCRIPT_PATH:-/opt/nvs_partition_gen.py}
+      NVS_PYTHON_PATH: ${NVS_PYTHON_PATH:-/opt/nvs-venv/bin/python3}
+      NVS_SCRIPT_PATH: ${NVS_SCRIPT_PATH:-}
       PROVISIONING_BOOTLOADER_BIN_PATH: ${PROVISIONING_BOOTLOADER_BIN_PATH:-/opt/provisioning-bins/bootloader.bin}
       PROVISIONING_PARTITION_TABLE_BIN_PATH: ${PROVISIONING_PARTITION_TABLE_BIN_PATH:-/opt/provisioning-bins/partition-table.bin}
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
