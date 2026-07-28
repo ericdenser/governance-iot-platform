@@ -32,11 +32,10 @@ ARG HTTP_PROXY=
 ARG HTTPS_PROXY=
 ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY} NO_PROXY=localhost,127.0.0.1
 
-# Python venv isolado pro gerador NVS — não conflita com system Python 
+# Python venv isolado pro gerador NVS — não conflita com system Python
 RUN apk add --no-cache python3 py3-pip py3-cryptography && \
     python3 -m venv --system-site-packages /opt/nvs-venv && \
-    /opt/nvs-venv/bin/pip install --no-cache-dir esp-idf-nvs-partition-gen 2>/dev/null \
-      || /opt/nvs-venv/bin/pip install --no-cache-dir "esptool>=4.7"
+    /opt/nvs-venv/bin/pip install --no-cache-dir esp-idf-nvs-partition-gen
 
 # Default do binário Python usado pelo FlashPackageService (sobrescrevível
 # via env NVS_PYTHON_PATH). Aponta pro venv, não pro python3 do sistema.
