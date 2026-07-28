@@ -12,10 +12,10 @@ services:
     container_name: ${DATALOGGER_CONTAINER_NAME:-datalogger}
     environment:
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
-      INFLUXDB_URL: ${INFLUX_URL:-http://influxdb:8086}
+      INFLUX_URL: ${INFLUX_URL:-http://influxdb:8086}
       INFLUX_TOKEN: ${INFLUX_TOKEN}
-      INFLUXDB_ORG: ${INFLUX_ORG:-mackenzie}
-      INFLUXDB_BUCKET: ${INFLUX_BUCKET:-telemetry_bucket}
+      INFLUX_ORG: ${INFLUX_ORG:-mackenzie}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-telemetry_bucket}
       REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
       REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
     deploy:

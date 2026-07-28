@@ -6,9 +6,9 @@ spring:
   application:
     name: event-handler
   datasource:
-    url: jdbc:postgresql://localhost:5432/event_handler
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${EVENT_HANDLER_DB:event_handler}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
   data:                         
     redis:
       host: ${REDIS_STREAMS_HOST:localhost}
