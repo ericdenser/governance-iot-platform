@@ -8,14 +8,18 @@ ARG PROXY_PASSWORD=
 
 WORKDIR /build
 
-COPY settings.xml /root/.m2/settings.xml
-RUN sed -i \
-    -e "s|\${env.PROXY_ACTIVE}|${PROXY_ACTIVE}|g" \
-    -e "s|\${env.PROXY_HOST}|${PROXY_HOST}|g" \
-    -e "s|\${env.PROXY_PORT}|${PROXY_PORT}|g" \
-    -e "s|\${env.PROXY_USER}|${PROXY_USER}|g" \
-    -e "s|\${env.PROXY_PASSWORD}|${PROXY_PASSWORD}|g" \
-    /root/.m2/settings.xml
+COPY settings.xml /tmp/settings.xml
+RUN if [ "$PROXY_ACTIVE" = "true" ]; then \
+      sed -i \
+        -e "s|\${env.PROXY_ACTIVE}|${PROXY_ACTIVE}|g" \
+        -e "s|\${env.PROXY_HOST}|${PROXY_HOST}|g" \
+        -e "s|\${env.PROXY_PORT}|${PROXY_PORT}|g" \
+        -e "s|\${env.PROXY_USER}|${PROXY_USER}|g" \
+        -e "s|\${env.PROXY_PASSWORD}|${PROXY_PASSWORD}|g" \
+        /tmp/settings.xml && \
+      mkdir -p /root/.m2 && \
+      cp /tmp/settings.xml /root/.m2/settings.xml; \
+    fi
 
 COPY pom.xml .
 COPY src src

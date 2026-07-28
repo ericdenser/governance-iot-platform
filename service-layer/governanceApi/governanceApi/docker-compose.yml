@@ -26,8 +26,8 @@ services:
       GOVAPI_CLIENT_ID: ${GOVAPI_CLIENT_ID:-gov-api}
       GOVAPI_CLIENT_SECRET: ${GOVAPI_CLIENT_SECRET}
       AGENT_URL: ${AGENT_URL:-http://agent-mqtt:8087}
-      EVENT_URL: ${EVENT_HANDLER_URL:-http://event-handler:8085}
-      GOV_API_URL: ${GOVAPI_PUBLIC_URL:-http://localhost:8082}
+      EVENT_URL: ${EVENT_URL:-http://event-handler:8085}
+      GOV_API_URL: ${GOVAPI_SELF_URL:-http://govapi:8082}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
