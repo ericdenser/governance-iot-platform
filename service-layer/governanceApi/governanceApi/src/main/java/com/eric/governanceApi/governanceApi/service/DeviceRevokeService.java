@@ -32,6 +32,7 @@ public class DeviceRevokeService {
     private final DeviceRepository deviceRepository;
     private final CryptoService cryptoService;
     private final RestClient restClient;
+    private final HotStateService hotStateService;
 
     @Value("${infra.api-key}")
     private String infraApiKey;
@@ -39,10 +40,11 @@ public class DeviceRevokeService {
     @Value("${mqtt.crl-path}")
     private String crlPath;
 
-    public DeviceRevokeService(DeviceRepository deviceRepository, CryptoService cryptoService, RestClient restClient) {
+    public DeviceRevokeService(DeviceRepository deviceRepository, CryptoService cryptoService, RestClient restClient, HotStateService hotStateService) {
         this.deviceRepository = deviceRepository;
         this.cryptoService = cryptoService;
         this.restClient = restClient;
+	this.hotStateService = hotStateService;
     }
 
 
@@ -64,7 +66,7 @@ public class DeviceRevokeService {
         }
 
         device.setStatus(DeviceStatus.REVOKED);
-
+	hotStateService.evict(deviceId);
         try {
             List<String> revokedCertificates = deviceRepository.findAllRevokedCertificates();
 
