@@ -18,10 +18,14 @@ import lombok.extern.slf4j.Slf4j;
 public class DeviceRevokeService {
     private final DeviceRepository deviceRepository;
     private final KeycloakDeviceClientService keycloakDeviceClientService;
+    private final HotStateService hotStateService;
 
-    public DeviceRevokeService(DeviceRepository deviceRepository, KeycloakDeviceClientService keycloakDeviceClientService) {
+    public DeviceRevokeService(DeviceRepository deviceRepository,
+                               KeycloakDeviceClientService keycloakDeviceClientService,
+                               HotStateService hotStateService) {
         this.deviceRepository = deviceRepository;
         this.keycloakDeviceClientService = keycloakDeviceClientService;
+        this.hotStateService = hotStateService;
     }
 
 
@@ -44,7 +48,15 @@ public class DeviceRevokeService {
 
         keycloakDeviceClientService.deleteClient(device.getKeycloakInternalId());
         device.setStatus(DeviceStatus.REVOKED);
-        log.info("Device {} revoked (Keycloak client {} deleted)", deviceId, device.getKeycloakInternalId());
+
+        // Limpa hot state pra o HotStatePersistenceScheduler não restaurar
+        // status=ACTIVE (última telemetria antes/durante revoke) por cima do
+        // REVOKED que acabamos de setar. Guard adicional no scheduler
+        // (WHERE status <> 'REVOKED') é a rede de segurança.
+        hotStateService.evict(deviceId);
+
+        log.info("Device {} revoked (Keycloak client {} deleted, hot state evicted)",
+                 deviceId, device.getKeycloakInternalId());
 
         return "Device " + deviceId + " revoked successfully.";
     }

@@ -77,6 +77,15 @@ public class HotStateService {
         return KEY_PREFIX + deviceId + KEY_SUFFIX;
     }
 
+    /**
+     * Remove o hot state do device. Usado em revoke/delete pra evitar que
+     * telemetria stale (do próprio device ainda com JWT válido) faça o
+     * HotStatePersistenceScheduler restaurar status ACTIVE em cima do REVOKED.
+     */
+    public void evict(String deviceId) {
+        redisTemplate.delete(hashKey(deviceId));
+    }
+
     // Snapshot imutável do estado ao vivo de um device. Fields opcionais
     //(Instant/Double são nulos quando ausentes no Hash).
     public record LiveState(

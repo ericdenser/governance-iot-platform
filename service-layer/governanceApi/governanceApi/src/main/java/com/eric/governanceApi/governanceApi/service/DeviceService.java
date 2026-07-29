@@ -238,7 +238,8 @@ public class DeviceService {
         eventRegistryRepository.deleteByDeviceId(deviceDbId);
 
         deviceRepository.delete(device);
-        log.info("Device '{}' deletado (histórico de eventos, erros e memberships removidos).",
+        hotStateService.evict(deviceUUID);
+        log.info("Device '{}' deletado (histórico de eventos, erros, memberships e hot state removidos).",
                  deviceUUID);
     }
 

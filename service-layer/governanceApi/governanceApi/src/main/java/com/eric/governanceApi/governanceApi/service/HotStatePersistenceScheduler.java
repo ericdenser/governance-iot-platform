@@ -28,6 +28,10 @@ public class HotStatePersistenceScheduler {
 
     private static final int BATCH_SIZE = 500;
 
+    // WHERE status != 'REVOKED': devices revogados são terminais — não devem
+    // ser sobrescritos pelo hot state stale do Redis (última telemetria que
+    // chegou antes/durante a revogação). Sem esse guard, o scheduler restaura
+    // status=ACTIVE em cima do REVOKED a cada 5 minutos.
     private static final String UPDATE_SQL = """
             UPDATE devices
                SET last_seen = ?,
@@ -36,6 +40,7 @@ public class HotStatePersistenceScheduler {
                    status = COALESCE(?, status),
                    last_seen_persisted_at = ?
              WHERE device_id = ?
+               AND status <> 'REVOKED'
             """;
 
     private final DeviceRepository deviceRepository;
