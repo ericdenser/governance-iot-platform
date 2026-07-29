@@ -79,4 +79,12 @@ public class DeviceController {
         return ResponseEntity.ok(ApiResponse.success(deviceService.getEvents(deviceId, pageable), httpRequest.getRequestURI()));
     }
 
+    @DeleteMapping("/{deviceId}")
+    public ResponseEntity<Void> deleteDevice(
+            @PathVariable String deviceId,
+            HttpServletRequest httpRequest) {
+                deviceService.deleteDevice(deviceId);
+                return ResponseEntity.noContent().build();
+            }
+
 }
