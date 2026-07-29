@@ -86,4 +86,12 @@ public class DeviceController {
             HttpServletRequest httpRequest) {
         return ResponseEntity.ok(ApiResponse.success(deviceService.getCertificate(deviceId), httpRequest.getRequestURI()));
     }
+
+    @DeleteMapping("/{deviceId}")
+    public ResponseEntity<Void> deleteDevice(
+            @PathVariable String deviceId,
+            HttpServletRequest httpRequest) {
+                deviceService.deleteDevice(deviceId);
+                return ResponseEntity.noContent().build();
+            }
 }
