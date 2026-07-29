@@ -1,9 +1,13 @@
 package com.eric.governanceApi.governanceApi.service;
 
+import com.eric.governanceApi.governanceApi.audit.Auditable;
+import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
+import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceIdNameProjection;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
 import com.eric.governanceApi.governanceApi.model.response.CommandRecordResponseDTO;
@@ -207,6 +211,35 @@ public class DeviceService {
         if (actorId == null) return Page.empty(pageable);
         return errorRecordRepository.findAllByKeycloakUserId(actorId, pageable)
                 .map(ErrorRecordResponseDTO::from);
+    }
+
+    @Auditable(action = AuditAction.DEVICE_DELETED, targetType = "DEVICE", targetIdArg = 0)
+    @Transactional
+    public void deleteDevice(String deviceUUID) {
+        if (!isAdmin()) {
+            throw new SecurityException("Admin only feature");
+        }
+        Device device = deviceRepository.findByDeviceId(deviceUUID).orElseThrow(() ->
+                new ResourceNotFoundException(ErrorCode.DEVICE_NOT_FOUND, "Device " + deviceUUID + " não encontrado."));
+
+        if (device.getStatus() != DeviceStatus.REVOKED) {
+            throw new ConflictException(ErrorCode.DEVICE_NOT_REVOKED,
+                "Device " + deviceUUID + " precisa estar REVOKED para ser deletado (status atual: " + device.getStatus() + ").");
+        }
+
+        FirmwareVersion fw = device.getFirmwareVersion();
+        if (fw != null) {
+            fw.decrementDeployCount();
+        }
+
+        Long deviceDbId = device.getId();
+        membershipRepository.deleteByDeviceId(deviceDbId);
+        errorRecordRepository.deleteByDeviceId(deviceDbId);
+        eventRegistryRepository.deleteByDeviceId(deviceDbId);
+
+        deviceRepository.delete(device);
+        log.info("Device '{}' deletado (histórico de eventos, erros e memberships removidos).",
+                 deviceUUID);
     }
 
     // ── Access helpers ────────────────────────────────────────────────────────
