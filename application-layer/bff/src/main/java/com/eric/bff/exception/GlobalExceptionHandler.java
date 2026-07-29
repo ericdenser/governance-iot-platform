@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.client.ClientAuthorizationException;
+import org.springframework.security.oauth2.client.ClientAuthorizationRequiredException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.client.ResourceAccessException;
@@ -31,6 +33,20 @@ public class GlobalExceptionHandler {
         logger.warn("govApi indisponivel: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of("erro", "Servico temporariamente indisponivel."));
+    }
+
+    /**
+     * Refresh token expirado/invalidado no Keycloak — a session ainda existe
+     * no Redis mas o AuthorizedClient não consegue mais renovar o access token.
+     * Traduz pra 401 pra o SPA (interceptor axios detecta e redireciona pra login).
+     * Sem esse handler, cai no genérico e vira 500 (SPA mostra "Erro interno").
+     */
+    @ExceptionHandler({ClientAuthorizationException.class, ClientAuthorizationRequiredException.class})
+    public ResponseEntity<Map<String, String>> handleOAuth2Reauth(Exception ex) {
+        logger.info("OAuth2 reauth needed: {} - {}", ex.getClass().getSimpleName(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("erro", "Sessao expirada. Faca login novamente.",
+                             "code", "SESSION_EXPIRED"));
     }
 
     @ExceptionHandler(Exception.class)
