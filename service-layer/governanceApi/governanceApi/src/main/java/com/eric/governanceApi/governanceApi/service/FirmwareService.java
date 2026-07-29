@@ -430,10 +430,10 @@ public class FirmwareService {
 
         requireFirmwareOwnership(fw);
 
-        if (fw.isProvisioningFirmware()) {
-            throw new ConflictException(ErrorCode.FIRMWARE_IS_PROVISIONING,
-                "Firmware '" + fw.getFirmwareName() + "' é o firmware de provisionamento e não pode ser deletado.");
-        }
+        // if (fw.isProvisioningFirmware()) {
+        //     throw new ConflictException(ErrorCode.FIRMWARE_IS_PROVISIONING,
+        //         "Firmware '" + fw.getFirmwareName() + "' é o firmware de provisionamento e não pode ser deletado.");
+        // }
 
         long activeVersions = fw.getVersions().stream()
             .filter(v -> v.getStatus() != FirmwareStatus.DEPRECATED)
