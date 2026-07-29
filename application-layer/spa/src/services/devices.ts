@@ -44,4 +44,5 @@ export const devicesApi = {
     api.get<Page<ErrorRecordResponseDTO>>(`/devices/${id}/errors?page=${page}&size=10`),
   getCertificate: (id: string) => api.get<DeviceCertificateResponseDTO>(`/devices/${id}/certificate`),
   revoke: (id: string) => api.post<void>(`/devices/${id}/revoke`),
+   delete: (id: string) => api.delete<void>(`/devices/${id}`),
 }

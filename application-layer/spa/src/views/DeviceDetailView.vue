@@ -48,6 +48,7 @@ const evPage  = ref(0); const evTotal  = ref(0)
 const errPage = ref(0); const errTotal = ref(0)
 
 const revoking = ref(false)
+const deleting = ref(false)
 
 const statusVariant = (s: DeviceStatus): BadgeVariant => {
   const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
@@ -107,6 +108,25 @@ const revoke = async () => {
   } finally { revoking.value = false }
 }
 
+const deleteDevice = async () => {
+  const ok = await confirm({
+    title: 'Excluir dispositivo?',
+    message: "Todos os registros desse dispositivo serão apagados.",
+    confirmText: 'Excluir',
+    danger: true,
+  })
+
+  if (!ok) return
+  deleting.value = true;
+  try {
+    await devicesApi.delete(deviceId)
+    toast.success('Dispositivo excluido')
+    router.push('/devices')
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao deletar dispositivo'))
+  } finally { deleting.value = false}
+}
+
 const loadDevice = async () => {
   const r = await devicesApi.get(deviceId)
   device.value = r.data
@@ -137,6 +157,8 @@ onMounted(async () => {
                    variant="danger" size="sm" :loading="revoking" @click="revoke">
           Revogar
         </AppButton>
+        <AppButton v-if="authStore.isAdmin && device.status === 'REVOKED'" 
+                  variant="danger" size="sm" @click="deleteDevice">Excluir</AppButton>
       </div>
 
       <div class="tabs">

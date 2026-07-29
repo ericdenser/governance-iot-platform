@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,4 +43,8 @@ public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long> 
         )
         """)
     Page<ErrorRecord> findAllByKeycloakUserId(@Param("keycloakUserId") String keycloakUserId, Pageable pageable);
+
+    @Modifying
+    @Query("DELETE FROM ErrorRecord e WHERE e.device.id = :deviceId")
+    void deleteByDeviceId(@Param("deviceId") Long deviceId);
 }

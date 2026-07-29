@@ -98,6 +98,14 @@ public class DeviceController {
                 .toEntity(String.class);
     }
 
+    @DeleteMapping("/{deviceId}")
+    public ResponseEntity<String> deleteVersion(@PathVariable String deviceId) {
+        return restClient.delete()
+                .uri(govApiUrl + "/devices/" + deviceId)
+                .retrieve()
+                .toEntity(String.class);
+    }
+
     @PostMapping("/generate-package")
     public ResponseEntity<byte[]> generateFlashPackage(@RequestBody String body) {
         ResponseEntity<byte[]> upstream = restClient.post()

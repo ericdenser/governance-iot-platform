@@ -2,8 +2,9 @@
   "/devices": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
   },
-  "/devices/**": {
-    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  "/devices/*": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"],
+    "DELETE": ["ROLE_ADMIN"]
   },
 
   "/firmware": {
@@ -38,6 +39,7 @@
     "GET":    ["ROLE_ADMIN", "ROLE_USER"],
     "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
+
   "/sensors": {
     "GET":  ["ROLE_ADMIN", "ROLE_USER"],
     "POST": ["ROLE_ADMIN"]
