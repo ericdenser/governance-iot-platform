@@ -1,6 +1,11 @@
 server:
   port: 8082
   forward-headers-strategy: framework
+  tomcat:
+    # Maior que o IdleConnTimeout (90s) do http.Client Go do mosquitto-go-auth:
+    # quem descarta a conexão keep-alive ociosa é o cliente, nunca o Tomcat no
+    # meio de um reuso (EOF/connection reset nos callbacks /auth/mqtt-*).
+    keep-alive-timeout: 120000
 
 spring:
   servlet:

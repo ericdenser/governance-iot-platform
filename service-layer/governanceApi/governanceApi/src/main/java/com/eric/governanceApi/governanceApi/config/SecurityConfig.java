@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -13,7 +14,30 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    // Callbacks do Mosquitto (plugin JWT em modo remote) ficam fora do resource
+    // server: o BearerTokenAuthenticationFilter autentica qualquer request com
+    // header Authorization mesmo em rota permitAll, então JWT de device expirado
+    // viraria 401 antes de chegar no controller — e o plugin trata status != 200
+    // como erro opaco ("error code: 401"). Nesta chain o header é ignorado e o
+    // MqttAuthController valida o token, respondendo Ok=false com o motivo real.
+    // Expostos apenas internamente (Mosquitto na rede docker); nginx externo
+    // NÃO deve fazer proxy destes paths.
     @Bean
+    @Order(1)
+    public SecurityFilterChain mqttAuthFilterChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/auth/mqtt-verify", "/auth/mqtt-acl")
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            JwtDecoder jwtDecoder,
                                            JwtAuthenticationConverter jwtAuthConverter,
@@ -29,12 +53,6 @@ public class SecurityConfig {
 
                 // ESP32 envia provisioning token no body (qualquer outra requisição é 404)
                 .requestMatchers("/provisioning/activate").permitAll()
-
-                // Callbacks do Mosquitto (plugin JWT em modo remote) — o próprio
-                // payload contém o JWT que o controller valida via JwtDecoder.
-                // Expostos apenas internamente (Mosquitto na rede docker); nginx
-                // externo NÃO deve fazer proxy destes paths.
-                .requestMatchers("/auth/mqtt-verify", "/auth/mqtt-acl").permitAll()
 
                 // Alimentação interna via docker network — bloquear externamente no nginx-frontend
                 .requestMatchers("/events/ingest").permitAll()
