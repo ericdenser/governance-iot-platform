@@ -27,17 +27,21 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401 && !sessionExpiredHandled) {
-      sessionExpiredHandled = true
-
-      const currentPath = window.location.pathname + window.location.search
-      if (currentPath !== '/' && isSafeInternalPath(currentPath)) {
-        sessionStorage.setItem(NEXT_STORAGE_KEY, currentPath)
-      }
-
       const authStore = useAuthStore()
       authStore.clearAuth()
 
-      window.location.href = '/?expired=1'
+      // Já na tela de login: só limpa o estado. Redirecionar de novo recarrega
+      // a página, zera este guard e cria loop infinito enquanto o BFF responder 401.
+      if (window.location.pathname !== '/') {
+        sessionExpiredHandled = true
+
+        const currentPath = window.location.pathname + window.location.search
+        if (isSafeInternalPath(currentPath)) {
+          sessionStorage.setItem(NEXT_STORAGE_KEY, currentPath)
+        }
+
+        window.location.href = '/?expired=1'
+      }
     }
 
     return Promise.reject(error)
