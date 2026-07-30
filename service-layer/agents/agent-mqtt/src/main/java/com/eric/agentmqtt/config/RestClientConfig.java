@@ -1,6 +1,7 @@
 package com.eric.agentmqtt.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,8 +32,11 @@ public class RestClientConfig {
             ClientRegistrationRepository clientRegistrationRepository,
             OAuth2AuthorizedClientService clientService) {
 
+        // clockSkew acima da margem de refresh do MQTT (mqtt.jwt-refresh-margin-s):
+        // na reconexão preventiva o manager já considera o token expirado e busca
+        // um novo no Keycloak, em vez de devolver o cache prestes a vencer.
         var provider = OAuth2AuthorizedClientProviderBuilder.builder()
-                .clientCredentials()
+                .clientCredentials(c -> c.clockSkew(Duration.ofSeconds(120)))
                 .build();
 
         var manager = new AuthorizedClientServiceOAuth2AuthorizedClientManager(

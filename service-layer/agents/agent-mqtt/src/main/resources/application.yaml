@@ -4,7 +4,9 @@ server:
 
 mqtt:
   broker-url: tcp://${MQTT_BROKER_HOST:localhost}:${MQTT_BROKER_PORT:1883}
-  jwt-refresh-interval-ms: ${MQTT_JWT_REFRESH_INTERVAL_MS:1800000}
+  # Reconecta (expires_in - margem) segundos após cada CONNECT, pro username
+  # nunca carregar JWT vencido. Manter menor que o clockSkew do RestClientConfig.
+  jwt-refresh-margin-s: ${MQTT_JWT_REFRESH_MARGIN_S:90}
   client-id: ${AGENT_MQTT_CLIENT_ID:agent-mqtt}
   topic: status/#
   error-topic: error/#

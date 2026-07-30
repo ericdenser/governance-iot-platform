@@ -10,6 +10,7 @@ import com.eric.agentmqtt.model.TelemetryDTO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.time.Instant;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -17,10 +18,10 @@ import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.stereotype.Service;
 
 import javax.net.ssl.*;
@@ -28,6 +29,10 @@ import java.io.InputStream;
 import java.security.KeyStore;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -63,11 +68,17 @@ public class MqttAgent {
     @Value("${mqtt.telemetry-topic}")
     private String telemetryTopic;
 
-    @Value("${mqtt.password}") 
+    @Value("${mqtt.password}")
     private String mqttDummyPassword;
+
+    @Value("${mqtt.jwt-refresh-margin-s}")
+    private long jwtRefreshMarginS;
 
     private MqttClient client;
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
+    private final ScheduledExecutorService refreshExecutor =
+            Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "MqttJwtRefreshThread"));
+    private volatile ScheduledFuture<?> refreshTask;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static Map<String, Object> parseDetail(String detail) {
@@ -79,7 +90,7 @@ public class MqttAgent {
         }
     }
 
-    private String fetchJwt() {
+    private OAuth2AccessToken fetchJwt() {
         OAuth2AuthorizeRequest req = OAuth2AuthorizeRequest
                     .withClientRegistrationId("govapi")
                     .principal("agent-mqtt")
@@ -88,7 +99,7 @@ public class MqttAgent {
         if (auth == null) {
             throw new IllegalStateException("Falha ao obter JWT do Keycloak (client 'govapi' não autorizado");
         }
-        return auth.getAccessToken().getTokenValue();
+        return auth.getAccessToken();
     }
 
     @PostConstruct
@@ -193,15 +204,17 @@ public class MqttAgent {
         while (client != null && !client.isConnected()) {
             try {
                 log.info("Obtendo JWT do Keycloak e conectando em {}...", brokerUrl);
+                OAuth2AccessToken token = fetchJwt();
                 MqttConnectOptions options = new MqttConnectOptions();
                 options.setCleanSession(true);
                 options.setConnectionTimeout(10);
                 options.setAutomaticReconnect(false);
-                options.setUserName(fetchJwt());
+                options.setUserName(token.getTokenValue());
                 options.setPassword(mqttDummyPassword.toCharArray());
                 client.connect(options);
                 log.info("Conectado. Inscrevendo em [{}, {}, {}]", topic, errorTopic, telemetryTopic);
                 client.subscribe(new String[]{topic, errorTopic, telemetryTopic}, new int[]{1, 1, 0});
+                scheduleJwtRefresh(token.getExpiresAt());
                 isConnecting.set(false);
                 return;
             } catch (Exception e) {
@@ -235,24 +248,36 @@ public class MqttAgent {
         }
     }
 
-   
-    @Scheduled(fixedRateString = "${mqtt.jwt-refresh-interval-ms:1800000}")
-    public void refreshJwtAndReconnect() {
-        if (client == null || !client.isConnected()) {
-            return;   // sem conexão ativa, nada a refrescar
+    // O broker congela o JWT enviado como username no CONNECT e o reaproveita em
+    // todo ACL check enquanto a conexão viver — reconectar antes do token expirar
+    // é o que impede o govApi de receber Bearer vencido nos callbacks de ACL.
+    private void scheduleJwtRefresh(Instant expiresAt) {
+        if (refreshTask != null) {
+            refreshTask.cancel(false);
         }
+        long delayS = 30;
+        if (expiresAt != null) {
+            delayS = Math.max(Duration.between(Instant.now(), expiresAt).getSeconds() - jwtRefreshMarginS, 30);
+        }
+        log.info("Refresh preventivo de JWT agendado em {}s (margem={}s).", delayS, jwtRefreshMarginS);
+        refreshTask = refreshExecutor.schedule(this::refreshJwtAndReconnect, delayS, TimeUnit.SECONDS);
+    }
+
+    private void refreshJwtAndReconnect() {
         log.info("Refresh preventivo de JWT — desconectando pra pegar token novo no reconnect.");
         try {
-            client.disconnect();
-
-            startConnectionRoutine();
+            if (client != null && client.isConnected()) {
+                client.disconnect();
+            }
         } catch (MqttException e) {
             log.warn("Falha ao desconectar pra refresh: {}", e.getMessage());
         }
+        startConnectionRoutine();
     }
 
     @PreDestroy
     public void shutdown() {
+        refreshExecutor.shutdownNow();
         try {
             if (client != null && client.isConnected()) {
                 client.disconnect();
