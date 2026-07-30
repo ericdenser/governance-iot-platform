@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   bff:
     build:
@@ -32,6 +38,7 @@ services:
           memory: ${BFF_MEMORY_LIMIT:-512M}
           cpus: '0.5'
     restart: on-failure:5
+    logging: *default-logging
     networks:
       - app-net
 
