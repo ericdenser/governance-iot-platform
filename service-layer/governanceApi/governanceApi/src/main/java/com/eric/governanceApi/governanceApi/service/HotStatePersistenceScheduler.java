@@ -43,6 +43,21 @@ public class HotStatePersistenceScheduler {
                AND status <> 'REVOKED'
             """;
 
+    // Device que voltou a mandar mensagem tem conexão MQTT viva por definição —
+    // se o MQTT_DISCONNECTED reportado ficou PENDING (o firmware nem sempre
+    // consegue notificar o resolve depois de recuperar o broker), fecha aqui.
+    // Roda em lote junto da consolidação do hot state, custo zero por mensagem.
+    private static final String FIX_MQTT_DISCONNECTED_SQL = """
+            UPDATE error_record er
+               SET status = 'FIXED',
+                   completed_at = d.last_seen
+              FROM devices d
+             WHERE d.id = er.device_id
+               AND er.error_name = 'MQTT_DISCONNECTED'
+               AND er.status = 'PENDING'
+               AND d.last_seen > er.sent_at
+            """;
+
     private final DeviceRepository deviceRepository;
     private final HotStateService hotStateService;
     private final JdbcTemplate jdbcTemplate;
@@ -100,6 +115,11 @@ public class HotStatePersistenceScheduler {
 
         // Só avança o cutoff após o batch — se falhar, o próximo run reprocessa.
         cutoff = runStarted;
+
+        int autoFixed = jdbcTemplate.update(FIX_MQTT_DISCONNECTED_SQL);
+        if (autoFixed > 0) {
+            log.info("MQTT_DISCONNECTED auto-fixed: {} registro(s) com mensagem posterior ao reporte", autoFixed);
+        }
 
         log.info("HotState persist: scanned={} dirty={} duration={}ms",
                 deviceIds.size(), dirty.size(),
