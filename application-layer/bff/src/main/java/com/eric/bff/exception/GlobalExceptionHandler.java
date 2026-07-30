@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
+
 import java.util.Map;
 
 @ControllerAdvice
@@ -40,10 +43,19 @@ public class GlobalExceptionHandler {
      * no Redis mas o AuthorizedClient não consegue mais renovar o access token.
      * Traduz pra 401 pra o SPA (interceptor axios detecta e redireciona pra login).
      * Sem esse handler, cai no genérico e vira 500 (SPA mostra "Erro interno").
+     *
+     * Invalida a session aqui: sem isso ela continua autenticada no Redis e
+     * TODO request seguinte (inclusive /me na tela de login) repete esse 401,
+     * o que prendia o SPA num loop de reload em /?expired=1. Com a session
+     * morta, /me volta a responder 200 authenticated=false.
      */
     @ExceptionHandler({ClientAuthorizationException.class, ClientAuthorizationRequiredException.class})
-    public ResponseEntity<Map<String, String>> handleOAuth2Reauth(Exception ex) {
+    public ResponseEntity<Map<String, String>> handleOAuth2Reauth(Exception ex, HttpServletRequest request) {
         logger.info("OAuth2 reauth needed: {} - {}", ex.getClass().getSimpleName(), ex.getMessage());
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(Map.of("erro", "Sessao expirada. Faca login novamente.",
                              "code", "SESSION_EXPIRED"));
