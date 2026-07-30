@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
 
   # ── INFRAESTRUTURA ────────────────────────────────────────────────────────────
@@ -12,6 +18,7 @@ services:
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app-net
 
@@ -33,6 +40,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app-net
 
@@ -49,6 +57,7 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app-net
 
@@ -71,6 +80,7 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app-net
 
@@ -92,6 +102,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app-net
 
@@ -110,6 +121,7 @@ services:
     volumes:
       - influxdb_data:/var/lib/influxdb2
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app-net
 
@@ -132,6 +144,7 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app-net
 
