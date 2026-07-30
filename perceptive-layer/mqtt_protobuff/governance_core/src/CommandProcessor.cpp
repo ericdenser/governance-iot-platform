@@ -14,7 +14,6 @@
 #include "esp_sleep.h"
 #include "freertos/task.h"
 #include <esp_ota_ops.h>
-#include "esp_random.h"
 
 static const char* TAG = "CommandProcessor";
 
@@ -22,6 +21,9 @@ struct OtaTaskParams {
     std::string newVersion;
     std::string url_bin;
 };
+
+struct RebootParams { uint32_t delay_ms; };
+struct DeepSleepParams { uint64_t duration_s; };
 
 // get string -> enum
 static CommandType getCommandType(std::string cmd) {
@@ -50,12 +52,6 @@ static void ota_task_routine(void* pvParameters) {
 
     OtaTaskParams* params = (OtaTaskParams*)pvParameters;
 
-    #if CONFIG_GOV_OTA_JITTER_MAX_MS > 0
-        uint32_t jitter_ms = esp_random() % CONFIG_GOV_OTA_JITTER_MAX_MS;
-        ESP_LOGI(TAG, "OTA jitter: waiting %lu ms before download", (unsigned long)jitter_ms);
-        vTaskDelay(pdMS_TO_TICKS(jitter_ms));
-    #endif
-
     std::string msgOut;
     WatchdogManager::addToCurrentTask();
 
@@ -73,6 +69,26 @@ static void ota_task_routine(void* pvParameters) {
 
     // Finaliza task
     vTaskDelete(NULL);
+}
+
+static void reboot_task(void* pv) {
+    RebootParams* p = (RebootParams*)pv;
+    uint32_t delay_ms = p->delay_ms;
+    delete p;
+
+    ESP_LOGI(TAG, "Reboot in %u ms", delay_ms);
+    vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    esp_restart();
+}
+
+static void deep_sleep_task(void* pv) {
+    DeepSleepParams* p = (DeepSleepParams*)pv;
+    uint64_t duration_s = p->duration_s;
+    delete p;
+    ESP_LOGI(TAG, "Deep sleep for %u ms", duration_s);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_sleep_enable_timer_wakeup(duration_s * 1000000ULL);
+    esp_deep_sleep_start();
 }
 
 
@@ -242,7 +258,17 @@ bool CommandProcessor::manage(const std::string& payload) {
                 nvs_commit(nvsHandler);
                 nvs_close(nvsHandler);
 
-                esp_deep_sleep_start(); // noreturn
+                DeepSleepParams* p = new DeepSleepParams { (uint64_t) duration->valueint};
+                BaseType_t rc = xTaskCreate(deep_sleep_task, "deep_sleep_delay", 3072, p, 5, NULL);
+                
+                if (rc != pdPASS) {
+                    ESP_LOGE(TAG, "FAILED creating deep_sleep_task");
+                    AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Failed to create OTA Task", {TAG, "manage"});
+                    delete p;
+                    break;
+                }
+
+                success = true;
 
             } else {
 
@@ -267,7 +293,17 @@ bool CommandProcessor::manage(const std::string& payload) {
                 nvs_commit(nvsHandler);
                 nvs_close(nvsHandler);
 
-                esp_restart(); //noreturn
+                RebootParams* p = new RebootParams { 5000 };
+                BaseType_t rc = xTaskCreate(reboot_task, "reboot_delay", 3072, p, 5, NULL);
+
+                if (rc != pdPASS) {
+                    ESP_LOGE(TAG, "FAILED creating deep_sleep_task");
+                    AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Failed to create OTA Task", {TAG, "manage"});
+                    delete p;
+                    break;
+                }
+
+                success = true;
 
             } else {
                 ESP_LOGE(TAG, "Falha ao inicializar NVS: %s", esp_err_to_name(err));
@@ -343,7 +379,7 @@ bool CommandProcessor::manage(const std::string& payload) {
             esp_err_t err = esp_ota_set_boot_partition(prev);
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "Falha ao setar partição para rollback: %s", esp_err_to_name(err));
-                AppState::setError(ErrorCode::OTA_FAIL,
+                AppState::setError(ErrorCode::FIRMWARE_ROLLBACK_FAILED,
                                    std::string("Falha ao setar partição: ") + esp_err_to_name(err),
                                    {TAG, "manage"});
                 break;
@@ -351,8 +387,11 @@ bool CommandProcessor::manage(const std::string& payload) {
 
             ESP_LOGI(TAG, "Rollback forçado para v%s. Reiniciando...", prev_ver.c_str());
             vTaskDelay(pdMS_TO_TICKS(500));
-            esp_restart();
+            RebootParams* p = new RebootParams{ 500 };
+            xTaskCreate(reboot_task, "reboot_delay", 3072, p, 5, NULL);
+            success = true;
             break;
+            
         }
 
         // ========  UNKNOWN COMMAND ===========
