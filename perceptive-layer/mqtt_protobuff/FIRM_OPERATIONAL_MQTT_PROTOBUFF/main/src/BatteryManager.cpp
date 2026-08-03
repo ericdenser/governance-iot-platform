@@ -8,7 +8,12 @@
 #define BAT_DIVIDER_FACTOR 2.02f
 
 float BatteryManager::readBattery() {
-    AdcManager::configChannel(BAT_ADC_CHANNEL);
+    static bool configured = false;
+    if (!configured) {
+        AdcManager::configChannel(BAT_ADC_CHANNEL);
+        configured = true;
+    }
     int pin_mv = AdcManager::readMilliVolts(BAT_ADC_CHANNEL);
+    if (pin_mv < 0) return -1.0f;
     return (float)pin_mv * BAT_DIVIDER_FACTOR;
 }

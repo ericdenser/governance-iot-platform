@@ -42,19 +42,32 @@ void AdcManager::configChannel(adc_channel_t channel) {
         .atten    = ADC_ATTEN_DB_12,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
-    adc_oneshot_config_channel(_adc_handle, channel, &config);
+    esp_err_t err = adc_oneshot_config_channel(_adc_handle, channel, &config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "adc_oneshot_config_channel canal %d falhou: %s", channel, esp_err_to_name(err));
+    }
 }
 
 int AdcManager::readMilliVolts(adc_channel_t channel) {
     if (!_is_initialized) init();
 
     int sum = 0;
+    int valid = 0;
     for (int i = 0; i < 16; i++) {
         int val = 0;
-        adc_oneshot_read(_adc_handle, channel, &val);
+        esp_err_t err = adc_oneshot_read(_adc_handle, channel, &val);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "adc_oneshot_read canal %d falhou: %s", channel, esp_err_to_name(err));
+            continue;
+        }
         sum += val;
+        valid++;
     }
-    int raw = sum / 16;
+    if (valid == 0) {
+        ESP_LOGE(TAG, "Nenhuma amostra valida no canal %d", channel);
+        return -1;
+    }
+    int raw = sum / valid;
 
     int voltage = 0;
     if (_adc_cali_handle) {
@@ -62,5 +75,6 @@ int AdcManager::readMilliVolts(adc_channel_t channel) {
     } else {
         voltage = raw * 3100 / 4095;
     }
+    ESP_LOGI(TAG, "canal %d: raw=%d amostras_validas=%d/16 mv=%d", channel, raw, valid, voltage);
     return voltage;
 }

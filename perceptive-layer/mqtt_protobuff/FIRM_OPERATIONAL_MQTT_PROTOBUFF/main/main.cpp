@@ -181,9 +181,9 @@ static time_t my_get_external_time(uint32_t timeout_ms) {
 
 // TODO: implementar quando refatorar BatteryManager pra ler sem depender
 // do SensorMap probado. Por enquanto, sem low-battery event.
-// static uint32_t my_get_battery_mv(void) {
-//     return BatteryManager::readBattery();
-// }
+static uint32_t my_get_battery_mv(void) {
+    return BatteryManager::readBattery();
+}
 
 // =============================================================================
 //  app_main
