@@ -66,26 +66,18 @@ public class InfluxService {
     //  Write
     // -------------------------------------------------------------------------
 
-    /**
-     * Grava um lote inteiro em 1 request HTTP (writePoints manda tudo num
-     * único body line-protocol). Ponto a ponto era 1 request por mensagem —
-     * a 2k msg/s o consumer não acompanha e o MAXLEN do stream começa a
-     * descartar mensagens ainda não lidas.
-     *
-     * Reescrever o mesmo ponto (measurement + tag + timestamp iguais) é
-     * overwrite no Influx, então reprocessar um batch via PEL sweep é seguro.
-     */
+ 
     public void writeTelemetryBatch(List<TelemetryDTO> dtos) {
         if (dtos == null || dtos.isEmpty()) return;
 
+        Instant now = Instant.now();
         List<Point> points = new ArrayList<>(dtos.size());
         for (TelemetryDTO dto : dtos) {
             if (dto.readings() == null || dto.readings().isEmpty()) continue;
 
-            Instant ts = dto.deviceTimestamp() != null ? dto.deviceTimestamp() : Instant.now();
             Point point = Point.measurement("telemetry")
                 .addTag("device_id", dto.deviceId())
-                .time(ts, WritePrecision.NS);
+                .time(sanitizeTimestamp(dto.deviceTimestamp(), now), WritePrecision.NS);
 
             dto.readings().forEach((key, value) -> point.addField(key, value));
             points.add(point);
@@ -97,6 +89,18 @@ public class InfluxService {
         } catch (InfluxException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    // ESP sem SNTP manda deviceTimestamp = uptime desde epoch 0 (pontos vão pra
+    // 1970, quebram Data Explorer e "last seen"). Aceita só ts dentro de janela
+    // sã; fora dela, usa o tempo do datalogger — não perde a leitura.
+    private static final Instant MIN_VALID_TS = Instant.parse("2020-01-01T00:00:00Z");
+
+    private static Instant sanitizeTimestamp(Instant deviceTs, Instant now) {
+        if (deviceTs == null) return now;
+        if (deviceTs.isBefore(MIN_VALID_TS)) return now;
+        if (deviceTs.isAfter(now.plusSeconds(3600))) return now;
+        return deviceTs;
     }
 
     // -------------------------------------------------------------------------
