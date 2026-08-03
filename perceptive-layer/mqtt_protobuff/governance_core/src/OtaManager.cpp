@@ -34,8 +34,7 @@ bool OtaManager::verify_and_update(const std::string& newVersion, std::string &u
             {TAG, "verify_and_update"},
             {
                 {"attempted_version", newVersion},
-                {"current_version",   current_version},
-                {"firmware_url",      url_bin}
+                {"current_version",   current_version}
             }
         );
         return false;

@@ -105,7 +105,7 @@ void SensorDiscovery::run(SensorMap& map, GpsManager* gps) {
     AdcManager::init();
     AdcManager::configChannel(ADC_CHANNEL_3);
     int mv = AdcManager::readMilliVolts(ADC_CHANNEL_3);
-    if (mv > 500 && mv < 3200) {
+    if (mv > 500 && mv < 5000) {
         map.battery_adc = true;
         ESP_LOGI(TAG, "  → ADC bateria detectado (%d mV no pino, divisor conectado)", mv);
     } else {
