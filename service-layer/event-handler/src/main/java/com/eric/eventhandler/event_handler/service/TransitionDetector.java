@@ -179,11 +179,27 @@ public class TransitionDetector {
                     dto,
                     previousState, 
                     currentState);
-
-
-            default:
                 break;
 
+            case CRITICAL_BATTERY:
+                event = buildEvent(
+                    EventType.DEVICE_CRITICAL_BATTERY,
+                    dto, 
+                    previousState, 
+                    currentState);
+                break;
+            
+            case OPERATIONAL:
+                if (previousState == DeviceState.CRITICAL_BATTERY) {
+                    event = buildEvent(
+                        EventType.DEVICE_BATTERY_RECOVERED,
+                        dto, 
+                        previousState, 
+                        currentState);
+                }
+                break;
+             default:
+                break;
         }
         return event;
     }

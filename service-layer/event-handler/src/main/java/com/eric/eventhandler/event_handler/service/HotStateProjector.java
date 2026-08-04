@@ -202,6 +202,7 @@ public class HotStateProjector {
             case NVS_INIT, WIFI_AP_MODE, WIFI_CONNECTING, TIME_SYNC, PROVISIONING,
                  MQTT_WAITING_CONNECT, MQTT_INIT -> "PROVISIONING";
             case ERROR -> "ERROR";
+            case CRITICAL_BATTERY -> "CRITICAL_BATTERY";
             default -> null;
         };
     }

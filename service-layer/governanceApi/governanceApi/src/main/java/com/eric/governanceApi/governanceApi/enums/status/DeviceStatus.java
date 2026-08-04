@@ -6,5 +6,6 @@ public enum DeviceStatus {
     ACTIVE, 
     REVOKED,
     OTA_PENDING,
-    COMMAND_PENDING
+    COMMAND_PENDING,
+    CRITICAL_BATTERY
 }

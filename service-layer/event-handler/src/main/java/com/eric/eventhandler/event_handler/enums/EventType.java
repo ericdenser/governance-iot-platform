@@ -16,8 +16,8 @@ public enum EventType {
     DEVICE_FIRMWARE_ROLLBACK,
 
     // Saúde
-    DEVICE_ERROR_REPORTED,
-    DEVICE_REBOOTED,
+    DEVICE_CRITICAL_BATTERY,
+    DEVICE_BATTERY_RECOVERED,
 
     // Comandos
     DEVICE_COMMAND_COMPLETE,
@@ -27,4 +27,5 @@ public enum EventType {
 
     // Operacional
     DEVICE_SENSOR_STATUS_CHANGED
+    
 }

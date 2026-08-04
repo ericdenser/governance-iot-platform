@@ -24,6 +24,8 @@ public enum DeviceState {
     HTTP_REQUEST,
     WAITING_RESPONSE,
     COMMAND_COMPLETE,
+    SENSORS_INIT,
+    CRITICAL_BATTERY,
 
     @JsonEnumDefaultValue
     UNKNOWN_STATE;
