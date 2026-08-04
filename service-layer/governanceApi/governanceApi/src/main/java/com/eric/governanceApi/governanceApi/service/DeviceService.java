@@ -123,7 +123,9 @@ public class DeviceService {
                         e.getValue().latitude(),
                         e.getValue().longitude(),
                         e.getValue().lastSeen(),
-                        e.getValue().status()))
+                        e.getValue().status(),
+                        e.getValue().batteryMv(),
+                        e.getValue().batteryTs()))
                 .toList();
     }
 
