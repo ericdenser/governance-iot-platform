@@ -129,7 +129,7 @@ menu "Governance IoT"
 
             config GOV_BATTERY_CRITICAL_MV
                 int "Limite critico (mV)"
-                range 2800 4000
+                range 2800 4100
                 default 3200
                 help 
                     Abaixo desse valor por N leituras consecutivas, dorme.

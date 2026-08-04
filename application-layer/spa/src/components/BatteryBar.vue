@@ -16,14 +16,22 @@ const props = withDefaults(defineProps<Props>(), {
 
 const TOTAL_BINS = 6
 const STALE_MS = 10 * 60 * 1000
-const CRITICAL_THRESHOLD_MV = 3200
+const CRITICAL_THRESHOLD_MV = 3300
 
-// bins = floor((mv - 3000) / 200), clamp [0, 6]
-// 4200=6, 4000=5, 3800=4, 3600=3, 3400=2, 3200=1, <3200=0
+// Escadinha não-linear: 200mV nos verdes/amarelo alto, 100mV no amarelo baixo
+// e vermelhos (curva de descarga LiPo é mais informativa perto do corte).
+// >=4000 = 6 (verde), >=3800 = 5 (verde), >=3600 = 4 (amarelo),
+// >=3500 = 3 (amarelo), >=3400 = 2 (vermelho), >=3300 = 1 (vermelho), <3300 = 0.
 const bins = computed(() => {
   if (props.mv == null) return 0
-  const raw = Math.floor((props.mv - 3000) / 200)
-  return Math.max(0, Math.min(TOTAL_BINS, raw))
+  const mv = props.mv
+  if (mv >= 4000) return 6
+  if (mv >= 3800) return 5
+  if (mv >= 3600) return 4
+  if (mv >= 3500) return 3
+  if (mv >= 3400) return 2
+  if (mv >= 3300) return 1
+  return 0
 })
 
 const isHibernating = computed(() => props.deviceStatus === 'CRITICAL_BATTERY')
