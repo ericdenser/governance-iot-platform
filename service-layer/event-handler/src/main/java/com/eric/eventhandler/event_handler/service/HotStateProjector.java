@@ -152,13 +152,20 @@ public class HotStateProjector {
             Map<String, String> fields = new HashMap<>();
             fields.put("last_seen", envelopeTimestamp);
 
-            // TelemetryDTO.readings = Map<String, Float> — extrai lat/lon se presentes
+            // TelemetryDTO.readings = Map<String, Float> — extrai lat/lon/bateria se presentes.
+            // battery_ts é gravado SEPARADO do last_seen porque nem toda telemetria traz
+            // battery_mv (device sem ADC), e o consumidor precisa saber a idade real da leitura.
             Object readings = dto.get("readings");
             if (readings instanceof Map<?, ?> map) {
                 Object lat = map.get("latitude");
                 Object lon = map.get("longitude");
+                Object batteryMv = map.get("battery_mv");
                 if (lat != null) fields.put("latitude", String.valueOf(lat));
                 if (lon != null) fields.put("longitude", String.valueOf(lon));
+                if (batteryMv != null) {
+                    fields.put("battery_mv", String.valueOf(batteryMv));
+                    fields.put("battery_ts", envelopeTimestamp);
+                }
             }
 
             redisTemplate.opsForHash().putAll(hashKey(deviceId), fields);
@@ -212,6 +219,8 @@ public class HotStateProjector {
             if (raw.get("status") != null) payload.put("status", raw.get("status"));
             if (raw.get("latitude") != null) payload.put("lat", raw.get("latitude"));
             if (raw.get("longitude") != null) payload.put("lon", raw.get("longitude"));
+            if (raw.get("battery_mv") != null) payload.put("batteryMv", raw.get("battery_mv"));
+            if (raw.get("battery_ts") != null) payload.put("batteryTs", raw.get("battery_ts"));
 
             String json = objectMapper.writeValueAsString(payload);
             redisTemplate.convertAndSend(CHANNEL_DEVICE_LIVE, json);

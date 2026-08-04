@@ -8,5 +8,7 @@ public record DeviceMapPositionDTO(
     Double latitude,
     Double longitude,
     Instant lastSeen,
-    String status
+    String status,
+    Double batteryMv,
+    Instant batteryTs
 ) {}

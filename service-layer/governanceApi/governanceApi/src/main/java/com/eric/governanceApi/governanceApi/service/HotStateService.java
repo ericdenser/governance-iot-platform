@@ -24,8 +24,10 @@ public class HotStateService {
 
     public static final String FIELD_LAST_SEEN = "last_seen";
     public static final String FIELD_STATUS = "status";
-    public static final String FIELD_LAT = "lat";
-    public static final String FIELD_LON = "lon";
+    public static final String FIELD_LAT = "latitude";
+    public static final String FIELD_LON = "longitude";
+    public static final String FIELD_BATTERY_MV = "battery_mv";
+    public static final String FIELD_BATTERY_TS = "battery_ts";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -92,15 +94,19 @@ public class HotStateService {
             Instant lastSeen,
             String status,
             Double latitude,
-            Double longitude
+            Double longitude,
+            Double batteryMv,
+            Instant batteryTs
     ) {
 
         public static LiveState empty() {
-            return new LiveState(null, null, null, null);
+            return new LiveState(null, null, null, null, null, null);
         }
 
         public boolean isPresent() {
-            return lastSeen != null || status != null || latitude != null || longitude != null;
+            return lastSeen != null || status != null
+                || latitude != null || longitude != null
+                || batteryMv != null;
         }
 
         static LiveState fromRawMap(Map<?, ?> raw) {
@@ -109,7 +115,9 @@ public class HotStateService {
             String status = strOrNull(raw.get(FIELD_STATUS));
             Double lat = parseDouble(raw.get(FIELD_LAT));
             Double lon = parseDouble(raw.get(FIELD_LON));
-            return new LiveState(lastSeen, status, lat, lon);
+            Double batteryMv = parseDouble(raw.get(FIELD_BATTERY_MV));
+            Instant batteryTs = parseInstant(raw.get(FIELD_BATTERY_TS));
+            return new LiveState(lastSeen, status, lat, lon, batteryMv, batteryTs);
         }
 
         private static Instant parseInstant(Object o) {
