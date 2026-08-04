@@ -117,5 +117,43 @@ menu "Governance IoT"
             Atraso aleatorio (0..N ms) antes de iniciar o download OTA.
             Espalha os downloads de uma wave para nao saturar o object storage quando varios
             devices recebem o comando no mesmo instante. 0 desativa o jitter.
+ 
+    menuconfig GOV_BATTERY_HIBERNATION
+        bool "Hibernar em bateria critica"
+        default n 
+        help 
+            Se habilitado, entre em deep sleep quando battery_mv cair
+            abaixo do limite critico. Requer hook get_battery_mv registrado.
+            Publica status CRITICAL_BATTERY (24) antes de dormir.
+        if GOV_BATTERY_HIBERNATION
+
+            config GOV_BATTERY_CRITICAL_MV
+                int "Limite critico (mV)"
+                range 2800 4000
+                default 3200
+                help 
+                    Abaixo desse valor por N leituras consecutivas, dorme.
+                
+            config GOV_BATTERY_HYSTERESIS_MV
+                int "Histerese pra sair da hibernacao (mV)"
+                range 100 1000
+                default 400
+                help 
+                    So volta pro modo ativo quando bateria ficar acima de CRITICAL + HYSTERESIS.
+
+            config GOV_BATTERY_CRITICAL_STREAK
+                int "Leituras consecutivas antes de hibernar"
+                range 1 20
+                default 5
+                help
+                    Filtro anti-glitch de ADC. 
+
+            config GOV_BATTERY_WAKE_INTERVAL_S
+                int "Timer wake pra reavaliar (segundos)"
+                range 60 86400
+                default 3600
+                help
+                    A cada N segundos acorda, le bateria, decide se dorme de novo ou nao.
+        endif
 endmenu
 

@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "esp_sleep.h"
 
 #include "AppState.h"
 #include "CryptoManager.h"
@@ -39,6 +40,8 @@
 
 static const char* TAG           = "GOV_CORE";
 static const char* NVS_NAMESPACE = "main_store";
+static const char* NVS_KEY_HIBERNATION_REASON = "hib_reason";
+static const char* HIBERNATION_REASON_LOW_BATTERY = "LOW_BATTERY";
 
 // =============================================================================
 //  Macros de log contextuais
@@ -150,6 +153,103 @@ static void publish_proto_status(const char* topic,
 }
 
 // =============================================================================
+//  Hibernação por bateria (ativada via CONFIG_GOV_BATTERY_HIBERNATION)
+// =============================================================================
+#if CONFIG_GOV_BATTERY_HIBERNATION
+
+    // Persiste motivo do ultimo deep_sleep. Usado no boot para distinguir 
+    static void set_hibernation_reason(const char* reason) {
+        nvs_handle_t h;
+        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
+        if (reason == nullptr) {
+            nvs_erase_key(h, NVS_KEY_HIBERNATION_REASON);
+        } else {
+            nvs_set_str(h, NVS_KEY_HIBERNATION_REASON, reason);
+        }
+        nvs_commit(h);
+        nvs_close(h);
+    }
+
+    // Lê motivo do ultimo deep_sleep
+    static void get_hibernation_reason(char* buf, size_t len) {
+        buf[0] = '\0';
+        nvs_handle_t h;
+        if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return;
+        size_t sz = len;
+        nvs_get_str(h, NVS_KEY_HIBERNATION_REASON, buf, &sz);
+        nvs_close(h);
+    }
+
+    // Publica status CRITICAL_BATTERY e entra em deep_sleep. Não retorna
+    static void enter_low_battery_deep_sleep(uint32_t battery_mv) {
+        SLOG_W("Bateria crítica (%lu mV) - publicando CRITICAL_BATTERY e hibernando por %ds", 
+            (unsigned long)battery_mv, (int)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S);
+        
+            std::string ssid = WifiManager::getSSID();
+            char detail[48];
+            snprintf(detail, sizeof(detail), "{\"battery_mv\":%lu}", (unsigned long)battery_mv);
+
+            std::string topic = "status/" + g_deviceId;
+            publish_proto_status(topic.c_str(),
+                                g_macAddress.c_str(),
+                                firmware_version.c_str(),
+                                ssid.c_str(),
+                                (uint32_t)DeviceState::CRITICAL_BATTERY,
+                                detail);
+            
+            vTaskDelay(pdMS_TO_TICKS(3000));
+
+            set_hibernation_reason(HIBERNATION_REASON_LOW_BATTERY);
+            esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S * 1000000ULL);
+            esp_deep_sleep_start();
+    }
+
+    static bool check_wake_from_low_battery() {
+        if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER) return false;
+        char reason[32] = {0};
+        get_hibernation_reason(reason, sizeof(reason));
+        if (strcmp(reason, HIBERNATION_REASON_LOW_BATTERY) != 0) return false;
+
+        if (s_hooks.get_battery_mv == nullptr) {
+            set_hibernation_reason(nullptr); // Sem hook nao tem como avaliar
+            return false;
+        }
+
+        uint32_t mv = s_hooks.get_battery_mv();
+
+        // mv == 0 = leitura indisponível (ADC instavel, hardware com falha,
+        // fio solto). Acordar e conectar consome bateria; se ja estamos em
+        // hibernacao por bateria baixa E nao conseguimos confirmar recuperacao,
+        // o seguro e continuar dormindo. Mantem a flag e agenda novo wake.
+        if (mv == 0) {
+            SLOG_W("Wake: leitura de bateria indisponivel (0 mV) - dormindo mais %ds por seguranca",
+                   (int)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S);
+            esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S * 1000000ULL);
+            esp_deep_sleep_start();
+            // NUNCA retorna
+        }
+
+        const uint32_t threshold = CONFIG_GOV_BATTERY_CRITICAL_MV + CONFIG_GOV_BATTERY_HYSTERESIS_MV;
+
+        if (mv < threshold) {
+            SLOG_W("Wake: bateria %lu mV ainda < %lu mV (critical + hysteresis) — dormindo mais %ds",
+                (unsigned long)mv, (unsigned long)threshold,
+                (int)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S);
+
+            // Mantem flag, proximo wake checa denovo
+            esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S * 1000000ULL);
+            esp_deep_sleep_start();
+        }
+
+        SLOG_I("Wake: bateria recuperou (%lu mV >= %lu mV) — retomando boot normal",
+            (unsigned long)mv, (unsigned long)threshold);
+        set_hibernation_reason(nullptr);
+        return false;
+    }
+
+#endif
+
+// =============================================================================
 //  Tasks operacionais
 // =============================================================================
 
@@ -171,6 +271,26 @@ static void telemetry_task(void* /*pvParameters*/) {
             continue;
         }
         if (n > GOVERNANCE_MAX_READINGS) n = GOVERNANCE_MAX_READINGS;
+
+        #if CONFIG_GOV_BATTERY_HIBERNATION
+            static int s_low_battery_streak = 0;
+            if (s_hooks.get_battery_mv != nullptr) {
+                uint32_t mv = s_hooks.get_battery_mv();
+                // mv == 0 = leitura invalida (BatteryManager filtra fantasmas
+                // < 2700mV retornando -1, hook devolve 0). Nao conta pro streak.
+                if (mv > 0 && mv < (uint32_t)CONFIG_GOV_BATTERY_CRITICAL_MV) {
+                    s_low_battery_streak++;
+                     SLOG_W("Bateria %lu mV < %d mV (streak %d/%d)",
+                       (unsigned long)mv, CONFIG_GOV_BATTERY_CRITICAL_MV,
+                       s_low_battery_streak, CONFIG_GOV_BATTERY_CRITICAL_STREAK);
+                    if (s_low_battery_streak >= CONFIG_GOV_BATTERY_CRITICAL_STREAK) {
+                        enter_low_battery_deep_sleep(mv);
+                    }
+                } else {
+                    s_low_battery_streak = 0;
+                }
+            }
+        #endif
 
         MqttMessage msg = {};
         snprintf(msg.topic, sizeof(msg.topic), "telemetry/%s", g_deviceId.c_str());
@@ -688,6 +808,17 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
 
     s_hooks = *hooks;
 
+    #if CONFIG_GOV_BATTERY_HIBERNATION
+
+        esp_err_t nvs_err = nvs_flash_init();
+        if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+            nvs_flash_erase();
+            nvs_flash_init();
+        }
+        check_wake_from_low_battery();
+
+    #endif
+
     AppState::init();
 
     WatchdogManager::init(60000, true);
@@ -718,6 +849,7 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
             case DeviceState::PROVISIONING:                                           break;
             case DeviceState::WIFI_AP_MODE:                                           break;
             case DeviceState::COMMAND_COMPLETE:                                       break;
+            case DeviceState::CRITICAL_BATTERY:                                       break;
         }
     }
 

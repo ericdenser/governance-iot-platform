@@ -105,8 +105,14 @@ static int my_read_telemetry(sensor_reading_t* out, int max) {
     }
 
     if (g_sensors.battery_adc && n < max) {
-        strncpy(out[n].key, "battery_mv", sizeof(out[n].key) - 1);
-        out[n].value = BatteryManager::readBattery(); n++;
+        // -1 = leitura invalida (fantasma < 2700mV, ADC ainda instavel etc).
+        // Nao adiciona o field pra nao poluir telemetria com valor ruim —
+        // datalogger e SPA veem "sem leitura" nesse ciclo (batteryMv null).
+        float bat = BatteryManager::readBattery();
+        if (bat > 0.0f) {
+            strncpy(out[n].key, "battery_mv", sizeof(out[n].key) - 1);
+            out[n].value = bat; n++;
+        }
     }
 
     if (g_sensors.bmp280 && n + 2 <= max) {
@@ -179,10 +185,12 @@ static time_t my_get_external_time(uint32_t timeout_ms) {
     return result;
 }
 
-// TODO: implementar quando refatorar BatteryManager pra ler sem depender
-// do SensorMap probado. Por enquanto, sem low-battery event.
+// Hook consumido pelo governance_core (streak no telemetry_task + wake check
+// pos deep_sleep). Contrato: retorna 0 quando leitura invalida — nesse caso o
+// core NAO conta pro streak e nao considera pra decisao de hibernar.
 static uint32_t my_get_battery_mv(void) {
-    return BatteryManager::readBattery();
+    float mv = BatteryManager::readBattery();
+    return (mv > 0.0f) ? (uint32_t)mv : 0u;
 }
 
 // =============================================================================
@@ -204,7 +212,7 @@ extern "C" void app_main(void) {
     hooks.get_persisted_time  = my_get_persisted_time;
     hooks.persist_time        = my_persist_time;
     hooks.get_external_time   = my_get_external_time;
-    // hooks.get_battery_mv   = my_get_battery_mv;  // futuro
+    hooks.get_battery_mv   = my_get_battery_mv;  
 
     governance_core_init(&hooks);
 }

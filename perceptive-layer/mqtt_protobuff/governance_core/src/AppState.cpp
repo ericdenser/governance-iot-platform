@@ -212,6 +212,7 @@ const char* AppState::toString(DeviceState state) {
         case DeviceState::WAITING_RESPONSE:     return "WAITING_RESPONSE";
         case DeviceState::COMMAND_COMPLETE:     return "COMMAND_COMPLETE";
         case DeviceState::SENSORS_INIT:         return "SENSORS_INIT";
+        case DeviceState::CRITICAL_BATTERY:     return "CRITICAL_BATTERY";
         default:                                return "UNKNOWN";
     }
 }
