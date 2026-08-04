@@ -79,6 +79,7 @@ public class DeviceProvisionedHandler implements DeviceEventHandler {
         }
 
         eventRegistry.setCompleted(true);
+        eventRegistry.setResultMessage("Device provisionado com sucesso.");
         eventRegistryRepository.save(eventRegistry);
         log.info("Device de ID {} registrado na frota com sucesso.", event.deviceId());
         return;
