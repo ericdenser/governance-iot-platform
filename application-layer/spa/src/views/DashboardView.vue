@@ -5,6 +5,7 @@ import DeviceMap from '@/components/DeviceMap.vue'
 import StatCard from '@/components/StatCard.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
+import BatteryBar from '@/components/BatteryBar.vue'
 import EventActivityList from '@/components/EventActivityList.vue'
 import ErrorActivityList from '@/components/ErrorActivityList.vue'
 import LiveIndicator from '@/components/LiveIndicator.vue'
@@ -37,6 +38,8 @@ const mergedDevices = computed(() =>
       ...d,
       status: (lv.status as DeviceStatus) ?? d.status,
       lastSeen: lv.lastSeen ?? d.lastSeen,
+      batteryMv: lv.batteryMv ?? d.batteryMv,
+      batteryTs: lv.batteryTs ?? d.batteryTs,
     }
   }),
 )
@@ -49,6 +52,7 @@ const statusVariant = (s: DeviceStatus): BadgeVariant => {
   const map: Record<string, BadgeVariant> = {
     ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info',
     COMMAND_PENDING: 'info', REVOKED: 'danger', ERROR: 'danger',
+    CRITICAL_BATTERY: 'muted',
   }
   return map[s] ?? 'muted'
 }
@@ -173,16 +177,17 @@ onMounted(async () => {
             <LiveIndicator />
           </template>
           <table class="tbl">
-            <thead><tr><th>Nome</th><th>Status</th><th>Firmware</th><th>Última vez visto</th></tr></thead>
+            <thead><tr><th>Nome</th><th>Status</th><th>Firmware</th><th>Bateria</th><th>Última vez visto</th></tr></thead>
             <tbody>
               <tr v-for="d in mergedDevices.slice(0, 8)" :key="d.deviceId" class="tbl-row"
                   @click="$router.push(`/devices/${d.deviceId}`)">
                 <td class="mono">{{ d.name }}</td>
                 <td><AppBadge :variant="statusVariant(d.status)" dot>{{ d.status }}</AppBadge></td>
                 <td class="mono muted">{{ d.firmwareVersion ? `v${d.firmwareVersion}` : '—' }}</td>
+                <td><BatteryBar :mv="d.batteryMv" :ts="d.batteryTs" :device-status="d.status" /></td>
                 <td class="muted">{{ fmt(d.lastSeen) }}</td>
               </tr>
-              <tr v-if="!devices.length"><td colspan="4" class="empty">Nenhum dispositivo</td></tr>
+              <tr v-if="!devices.length"><td colspan="5" class="empty">Nenhum dispositivo</td></tr>
             </tbody>
           </table>
         </AppCard>

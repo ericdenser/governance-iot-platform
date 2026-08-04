@@ -9,6 +9,7 @@ export type DeviceStatus =
   | 'COMMAND_PENDING'
   | 'REVOKED'
   | 'ERROR'
+  | 'CRITICAL_BATTERY'
 export type CommandStatus =
   | 'PENDING'
   | 'COMPLETED_SUCCESS'
@@ -131,9 +132,11 @@ export interface DeviceSummaryDTO {
   firmwareVersionId: string | null
   firmwareVersion: string | null
   createdAt: string
-  lastSeen: string 
+  lastSeen: string
   issuedByActorId: string | null
   issuedByUsername: string | null
+  batteryMv: number | null
+  batteryTs: string | null
 }
 
 export interface DeviceDetailDTO {
@@ -148,6 +151,8 @@ export interface DeviceDetailDTO {
   sensorStatus: Record<string, boolean>
   issuedByActorId: string | null
   issuedByUsername: string | null
+  batteryMv: number | null
+  batteryTs: string | null
 }
 
 export interface DeviceMapPositionDTO {
@@ -157,6 +162,8 @@ export interface DeviceMapPositionDTO {
   longitude: number
   lastSeen: string | null
   status: string | null
+  batteryMv: number | null
+  batteryTs: string | null
 }
 
 export interface DeviceCertificateResponseDTO {
