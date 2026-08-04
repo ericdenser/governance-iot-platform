@@ -4,6 +4,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
+import BatteryBar from '@/components/BatteryBar.vue'
 import LiveIndicator from '@/components/LiveIndicator.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
@@ -25,6 +26,8 @@ const mergedDevices = computed(() =>
       ...d,
       status: (lv.status as DeviceStatus) ?? d.status,
       lastSeen: lv.lastSeen ?? d.lastSeen,
+      batteryMv: lv.batteryMv ?? d.batteryMv,
+      batteryTs: lv.batteryTs ?? d.batteryTs,
     }
   }),
 )
@@ -40,7 +43,7 @@ const totalElements = ref(0)
 const STATUS_OPTIONS: DeviceStatus[] = ['PENDING', 'PROVISIONING', 'ACTIVE', 'COMMAND_PENDING', 'REVOKED', 'ERROR']
 
 const statusVariant = (s: DeviceStatus): BadgeVariant => {
-  const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
+  const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger', CRITICAL_BATTERY: 'muted' }
   return m[s] ?? 'muted'
 }
 
@@ -111,6 +114,7 @@ onMounted(load)
             <th>Status</th>
             <th>Firmware</th>
             <th>MAC</th>
+            <th>Bateria</th>
             <th>Provisionado por</th>
             <th>Última vez visto</th>
           </tr>
@@ -129,6 +133,9 @@ onMounted(load)
               <span v-else class="text-muted">—</span>
             </td>
             <td class="mono text-sm">{{ d.macAddress ?? '—' }}</td>
+            <td>
+              <BatteryBar :mv="d.batteryMv" :ts="d.batteryTs" :device-status="d.status" />
+            </td>
             <td class="text-sm">
               <span v-if="d.issuedByUsername" class="issued">{{ d.issuedByUsername }}</span>
               <span v-else class="text-muted">—</span>
@@ -136,7 +143,7 @@ onMounted(load)
             <td class="text-sm text-muted">{{ fmt(d.lastSeen) }}</td>
           </tr>
           <tr v-if="!devices.length">
-            <td colspan="7" class="empty">Nenhum dispositivo encontrado</td>
+            <td colspan="8" class="empty">Nenhum dispositivo encontrado</td>
           </tr>
         </tbody>
       </table>

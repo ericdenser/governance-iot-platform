@@ -6,6 +6,7 @@ import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
+import BatteryBar from '@/components/BatteryBar.vue'
 import EventList from '@/components/EventList.vue'
 import LiveIndicator from '@/components/LiveIndicator.vue'
 import { devicesApi } from '@/services/devices'
@@ -51,9 +52,12 @@ const revoking = ref(false)
 const deleting = ref(false)
 
 const statusVariant = (s: DeviceStatus): BadgeVariant => {
-  const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' }
+  const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger', CRITICAL_BATTERY: 'muted' }
   return m[s] ?? 'muted'
 }
+
+const liveBatteryMv = computed(() => liveState.value?.batteryMv ?? device.value?.batteryMv ?? null)
+const liveBatteryTs = computed(() => liveState.value?.batteryTs ?? device.value?.batteryTs ?? null)
 const cmdVariant = (s: CommandStatus): BadgeVariant =>
   (({ PENDING: 'warning', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
 const errVariant = (s: ErrorStatus): BadgeVariant =>
@@ -183,6 +187,15 @@ onMounted(async () => {
           </div>
           <div class="info-row"><span class="info-label">Criado em</span><span>{{ fmt(device.createdAt) }}</span></div>
           <div class="info-row"><span class="info-label">Última atividade</span><span>{{ fmt(liveLastSeen) }}</span></div>
+          <div class="info-row">
+            <span class="info-label">Bateria</span>
+            <span class="battery-info">
+              <BatteryBar :mv="liveBatteryMv" :ts="liveBatteryTs" :device-status="liveStatus" size="lg" />
+              <span v-if="liveBatteryMv != null" class="mono text-sm">{{ Math.round(liveBatteryMv) }} mV</span>
+              <span v-if="liveBatteryTs" class="text-muted text-sm">· {{ fmt(liveBatteryTs) }}</span>
+              <span v-else-if="liveBatteryMv == null" class="text-muted text-sm">Sem leitura</span>
+            </span>
+          </div>
           <div class="info-row"><span class="info-label">Provisionado por</span>
             <span v-if="device.issuedByUsername">
               {{ device.issuedByUsername }}
@@ -280,6 +293,7 @@ onMounted(async () => {
 .info-row:last-child { border-bottom: none; }
 .info-label { width: 160px; min-width: 90px; font-size: var(--text-sm); color: var(--text-muted); flex-shrink: 0; }
 .info-row-sensors { align-items: flex-start; }
+.battery-info { display: inline-flex; align-items: center; gap: var(--space-3); }
 .sensor-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sensor-chip { display: flex; align-items: center; gap: var(--space-2); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 3px var(--space-2); font-size: var(--text-xs); }
 .sensor-name { color: var(--text); font-weight: 500; }

@@ -64,6 +64,8 @@ const merged = computed<DeviceMapPositionDTO[]>(() => {
       longitude: lv.lon,
       lastSeen: lv.lastSeen ?? base?.lastSeen ?? null,
       status: lv.status ?? base?.status ?? null,
+      batteryMv: lv.batteryMv ?? base?.batteryMv ?? null,
+      batteryTs: lv.batteryTs ?? base?.batteryTs ?? null,
     })
   }
   return [...byId.values()]
