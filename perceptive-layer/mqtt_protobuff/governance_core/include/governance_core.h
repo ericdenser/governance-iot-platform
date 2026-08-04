@@ -56,7 +56,7 @@ typedef struct {
     // Return 0 if timeout or fail.
     time_t   (*get_external_time)(uint32_t timeout_ms);
 
-    // ---- Bateria (opcional, futuro low-battery event) ------------------------
+    // ---- Bateria (opcional) ------------------------
     // Retorna nível atual em mV. 0 se hardware ausente. Chamado ~1x/min.
     uint32_t (*get_battery_mv)(void);
 
