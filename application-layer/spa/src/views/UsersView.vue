@@ -342,7 +342,7 @@ onMounted(load)
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; font-size: var(--text-sm); }
 
-.row-actions { display: flex; gap: var(--space-1); justify-content: flex-end; flex-wrap: wrap; }
+.row-actions { display: flex; gap: var(--space-1); justify-content: flex-end; flex-wrap: nowrap; align-items: center;}
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
