@@ -42,6 +42,7 @@ static const char* TAG           = "GOV_CORE";
 static const char* NVS_NAMESPACE = "main_store";
 static const char* NVS_KEY_HIBERNATION_REASON = "hib_reason";
 static const char* HIBERNATION_REASON_LOW_BATTERY = "LOW_BATTERY";
+static const char* HIBERNANTION_REASON_DEEP_SLEEP = "DEEP_SLEEP";
 
 // =============================================================================
 //  Macros de log contextuais
@@ -60,8 +61,13 @@ static std::string        firmware_version;
 static int                crashCount = 0;
 static bool               valid_firmware = false;
 static std::string        g_activeSensors;   // populado via hook sensor_discovery()
-
 static governance_hooks_t s_hooks = {};
+
+#if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+static bool                telemetryPublished = false;
+static bool                statusPublished = false;
+static int64_t  s_operational_start_us = 0;
+#endif
 
 struct MqttMessage {
     char    topic[128];
@@ -259,6 +265,11 @@ static void telemetry_task(void* /*pvParameters*/) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
+
+        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+            if (telemetryPublished == true) {vTaskDelay(pdMS_TO_TICKS(5000)); continue;}
+        #endif
+
         if (s_hooks.read_telemetry == nullptr) {
             vTaskDelay(pdMS_TO_TICKS(TELEMETRY_INTERVAL_MS));
             continue;
@@ -276,13 +287,29 @@ static void telemetry_task(void* /*pvParameters*/) {
             static int s_low_battery_streak = 0;
             if (s_hooks.get_battery_mv != nullptr) {
                 uint32_t mv = s_hooks.get_battery_mv();
+
                 // mv == 0 = leitura invalida (BatteryManager filtra fantasmas
                 // < 2700mV retornando -1, hook devolve 0). Nao conta pro streak.
                 if (mv > 0 && mv < (uint32_t)CONFIG_GOV_BATTERY_CRITICAL_MV) {
+
+                    #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+                        nvs_handle_t h; streak = 0;
+                        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+                            nvs_get_i32(h, "low_bat_streak", &streak);
+                            streak++;
+                        } else {
+                            streak = 0;
+                        }
+                        nvs_set_i32(h, "low_bat_streak", streak);
+                        nvs_commit(h); nvs_close(h);
+                        if (streak >= CONFIG_GOV_BATTERY_CRITICAL_STREAK) enter_low_battery_deep_sleep(mv);
+                    #endif
+
                     s_low_battery_streak++;
                      SLOG_W("Bateria %lu mV < %d mV (streak %d/%d)",
                        (unsigned long)mv, CONFIG_GOV_BATTERY_CRITICAL_MV,
                        s_low_battery_streak, CONFIG_GOV_BATTERY_CRITICAL_STREAK);
+
                     if (s_low_battery_streak >= CONFIG_GOV_BATTERY_CRITICAL_STREAK) {
                         enter_low_battery_deep_sleep(mv);
                     }
@@ -291,6 +318,7 @@ static void telemetry_task(void* /*pvParameters*/) {
                 }
             }
         #endif
+
 
         MqttMessage msg = {};
         snprintf(msg.topic, sizeof(msg.topic), "telemetry/%s", g_deviceId.c_str());
@@ -310,6 +338,11 @@ static void telemetry_task(void* /*pvParameters*/) {
         if (pb_encode(&os, DeviceTelemetry_fields, &proto)) {
             msg.payload_len = os.bytes_written;
             xQueueSend(g_mqttQueue, &msg, 0);
+            
+            #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+                telemetryPublished = true;
+            #endif
+
         } else {
             ESP_LOGE(TAG, "pb_encode DeviceTelemetry falhou: %s", PB_GET_ERROR(&os));
         }
@@ -324,6 +357,10 @@ static void status_task(void* /*pvParameters*/) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
+
+        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+            if (statusPublished == true) { vTaskDelay(pdMS_TO_TICKS(5000)); continue; }
+        #endif
 
         MqttMessage msg = {};
         snprintf(msg.topic, sizeof(msg.topic), "status/%s", g_deviceId.c_str());
@@ -344,6 +381,11 @@ static void status_task(void* /*pvParameters*/) {
         if (pb_encode(&os, DeviceStatus_fields, &proto)) {
             msg.payload_len = os.bytes_written;
             xQueueSend(g_mqttQueue, &msg, 0);
+
+            #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+                statusPublished = true;
+            #endif
+
         } else {
             ESP_LOGE(TAG, "pb_encode DeviceStatus falhou: %s", PB_GET_ERROR(&os));
         }
@@ -355,10 +397,37 @@ static void status_task(void* /*pvParameters*/) {
 static void mqtt_publisher_task(void* /*pvParameters*/) {
     MqttMessage msg;
     while (true) {
-        if (xQueueReceive(g_mqttQueue, &msg, pdMS_TO_TICKS(5000))) {
-            if (AppState::is(DeviceState::OPERATIONAL) && MqttManager::isConnected()) {
-                MqttManager::publish(msg.payload, msg.payload_len, msg.topic);
+        BaseType_t received = xQueueReceive(g_mqttQueue, &msg, pdMS_TO_TICKS(5000));
+        
+        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+            // Timeout guard: se passou muito tempo no OPERATIONAL e nao conseguiu
+            // publicar ambos, dorme mesmo assim. 
+            if (s_operational_start_us != 0 &&
+                !(telemetryPublished && statusPublished)) {
+                int64_t elapsed_us = esp_timer_get_time() - s_operational_start_us;
+                int64_t threshold_us = (int64_t)CONFIG_GOV_DEEP_SLEEP_OPERATIONAL_TIMEOUT_S * 1000000LL;
+                if (elapsed_us >= threshold_us) {
+                    SLOG_W("Timeout %ds no OPERATIONAL sem publicar (tele=%d status=%d, mqtt=%d) — dormindo mesmo assim",
+                            (int)CONFIG_GOV_DEEP_SLEEP_OPERATIONAL_TIMEOUT_S,
+                            telemetryPublished, statusPublished,
+                            MqttManager::isConnected());
+                    set_hibernation_reason(HIBERNATION_REASON_DEEP_SLEEP);
+                    esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_DEEP_SLEEP_WAKE_INTERVAL_S * 1000000ULL);
+                    esp_deep_sleep_start();
+                    // NUNCA retorna
+                }
             }
+        #endif
+        if (received && AppState::is(DeviceState::OPERATIONAL) && MqttManager::isConnected()) {
+            MqttManager::publish(msg.payload, msg.payload_len, msg.topic);
+            #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+                if (telemetryPublished && statusPublished) {
+                    vTaskDelay(pdMS_TO_TICKS(5000));
+                    set_hibernation_reason(HIBERNANTION_REASON_DEEP_SLEEP);
+                    esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S * 1000000ULL);
+                    esp_deep_sleep_start();
+                }
+            #endif
         }
     }
 }
@@ -710,6 +779,9 @@ static void handle_boot_audit() {
 static void handle_operational() {
     static bool started = false;
     if (!started) {
+        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+            s_operational_start_us = esp_timer_get_time();
+        #endif
         g_mqttQueue = xQueueCreate(10, sizeof(MqttMessage));
         xTaskCreate(telemetry_task,      "telemetry", 4096, NULL, 4, NULL);
         xTaskCreate(status_task,         "status",    4096, NULL, 4, NULL);

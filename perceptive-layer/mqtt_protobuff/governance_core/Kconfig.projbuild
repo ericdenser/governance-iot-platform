@@ -117,7 +117,18 @@ menu "Governance IoT"
             Atraso aleatorio (0..N ms) antes de iniciar o download OTA.
             Espalha os downloads de uma wave para nao saturar o object storage quando varios
             devices recebem o comando no mesmo instante. 0 desativa o jitter.
- 
+            
+     config GOV_DEEP_SLEEP_OPERATIONAL_TIMEOUT_S
+            int "Timeout no OPERATIONAL antes de dormir sem publicar (s)"
+            range 15 600
+            default 60
+            help
+                Se em N segundos no OPERATIONAL nao conseguir publicar telemetria
+                E status (ex: MQTT desconectado, WiFi caindo), dorme mesmo assim
+                pra nao drenar bateria acordado infinitamente. Proximo wake tenta
+                de novo. 60s cobre reconnect WiFi + fetch JWT + connect MQTT +
+                buffer de retry.
+                
     menuconfig GOV_BATTERY_HIBERNATION
         bool "Hibernar em bateria critica"
         default n 
@@ -155,5 +166,23 @@ menu "Governance IoT"
                 help
                     A cada N segundos acorda, le bateria, decide se dorme de novo ou nao.
         endif
+
+    menuconfig GOV_FIRMWARE_DEEP_SLEEP
+        bool "Enable deep sleep"
+        default n
+        help 
+            Se habilitado, o firmware entra em estado de deep sleep após cada ciclo
+
+        if GOV_FIRMWARE_DEEP_SLEEP
+
+            config DEEP_SLEEP_WAKE_INTERVAL_S
+                int "Timer para dispositivo acordar"
+                range 60 86400
+                default 300
+                help
+                    A cada N segundos o dispositivo acorda, termina o ciclo e volta a dormir
+        endif
+
+
 endmenu
 
