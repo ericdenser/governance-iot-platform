@@ -42,7 +42,7 @@ static const char* TAG           = "GOV_CORE";
 static const char* NVS_NAMESPACE = "main_store";
 static const char* NVS_KEY_HIBERNATION_REASON = "hib_reason";
 static const char* HIBERNATION_REASON_LOW_BATTERY = "LOW_BATTERY";
-static const char* HIBERNANTION_REASON_DEEP_SLEEP = "DEEP_SLEEP";
+static const char* HIBERNATION_REASON_DEEP_SLEEP = "DEEP_SLEEP";
 
 // =============================================================================
 //  Macros de log contextuais
@@ -271,6 +271,9 @@ static void telemetry_task(void* /*pvParameters*/) {
         #endif
 
         if (s_hooks.read_telemetry == nullptr) {
+            #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+                telemetryPublished = true;
+            #endif
             vTaskDelay(pdMS_TO_TICKS(TELEMETRY_INTERVAL_MS));
             continue;
         }
@@ -278,6 +281,9 @@ static void telemetry_task(void* /*pvParameters*/) {
         sensor_reading_t readings[GOVERNANCE_MAX_READINGS] = {};
         int n = s_hooks.read_telemetry(readings, GOVERNANCE_MAX_READINGS);
         if (n <= 0) {
+            #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+                telemetryPublished = true;
+            #endif
             vTaskDelay(pdMS_TO_TICKS(TELEMETRY_INTERVAL_MS));
             continue;
         }
@@ -288,33 +294,41 @@ static void telemetry_task(void* /*pvParameters*/) {
             if (s_hooks.get_battery_mv != nullptr) {
                 uint32_t mv = s_hooks.get_battery_mv();
 
-                // mv == 0 = leitura invalida (BatteryManager filtra fantasmas
-                // < 2700mV retornando -1, hook devolve 0). Nao conta pro streak.
+                // mv == 0 = leitura invalida (hook devolve 0). Nao conta pro streak.
                 if (mv > 0 && mv < (uint32_t)CONFIG_GOV_BATTERY_CRITICAL_MV) {
+                    int streak = ++s_low_battery_streak;
 
                     #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
-                        nvs_handle_t h; streak = 0;
+                        // Deep sleep zera a task static a cada wake; persiste no NVS.
+                        nvs_handle_t h;
                         if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
-                            nvs_get_i32(h, "low_bat_streak", &streak);
-                            streak++;
-                        } else {
-                            streak = 0;
+                            int32_t persisted = 0;
+                            nvs_get_i32(h, "low_bat_streak", &persisted);
+                            persisted++;
+                            nvs_set_i32(h, "low_bat_streak", persisted);
+                            nvs_commit(h);
+                            nvs_close(h);
+                            streak = persisted;
                         }
-                        nvs_set_i32(h, "low_bat_streak", streak);
-                        nvs_commit(h); nvs_close(h);
-                        if (streak >= CONFIG_GOV_BATTERY_CRITICAL_STREAK) enter_low_battery_deep_sleep(mv);
                     #endif
 
-                    s_low_battery_streak++;
-                     SLOG_W("Bateria %lu mV < %d mV (streak %d/%d)",
-                       (unsigned long)mv, CONFIG_GOV_BATTERY_CRITICAL_MV,
-                       s_low_battery_streak, CONFIG_GOV_BATTERY_CRITICAL_STREAK);
+                    SLOG_W("Bateria %lu mV < %d mV (streak %d/%d)",
+                        (unsigned long)mv, CONFIG_GOV_BATTERY_CRITICAL_MV,
+                        streak, CONFIG_GOV_BATTERY_CRITICAL_STREAK);
 
-                    if (s_low_battery_streak >= CONFIG_GOV_BATTERY_CRITICAL_STREAK) {
+                    if (streak >= CONFIG_GOV_BATTERY_CRITICAL_STREAK) {
                         enter_low_battery_deep_sleep(mv);
                     }
                 } else {
                     s_low_battery_streak = 0;
+                    #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+                        nvs_handle_t h;
+                        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+                            nvs_erase_key(h, "low_bat_streak");
+                            nvs_commit(h);
+                            nvs_close(h);
+                        }
+                    #endif
                 }
             }
         #endif
@@ -412,7 +426,7 @@ static void mqtt_publisher_task(void* /*pvParameters*/) {
                             telemetryPublished, statusPublished,
                             MqttManager::isConnected());
                     set_hibernation_reason(HIBERNATION_REASON_DEEP_SLEEP);
-                    esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_DEEP_SLEEP_WAKE_INTERVAL_S * 1000000ULL);
+                    esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S * 1000000ULL);
                     esp_deep_sleep_start();
                     // NUNCA retorna
                 }
@@ -423,7 +437,7 @@ static void mqtt_publisher_task(void* /*pvParameters*/) {
             #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
                 if (telemetryPublished && statusPublished) {
                     vTaskDelay(pdMS_TO_TICKS(5000));
-                    set_hibernation_reason(HIBERNANTION_REASON_DEEP_SLEEP);
+                    set_hibernation_reason(HIBERNATION_REASON_DEEP_SLEEP);
                     esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S * 1000000ULL);
                     esp_deep_sleep_start();
                 }
