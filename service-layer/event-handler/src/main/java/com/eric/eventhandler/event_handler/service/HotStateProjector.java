@@ -197,8 +197,8 @@ public class HotStateProjector {
     // Traduz o estado operacional do firmware pro vocabulário de status do CMDB
     private String toCmdbStatus(DeviceState state) {
         return switch (state) {
-            case OPERATIONAL, PROVISIONING_SUCCESS, OTA_SUCCESSFUL, BOOT_AUDIT, COMMAND_COMPLETE -> "ACTIVE";
-            case OTA_FOUND, OTA_DOWNLOADING, FIRMWARE_ROLLBACK, REBOOTING -> "COMMAND_PENDING";
+            case OPERATIONAL, PROVISIONING_SUCCESS, OTA_SUCCESSFUL, BOOT_AUDIT, COMMAND_COMPLETE, FIRMWARE_ROLLBACK -> "ACTIVE";
+            case OTA_FOUND, OTA_DOWNLOADING, REBOOTING -> "COMMAND_PENDING";
             case NVS_INIT, WIFI_AP_MODE, WIFI_CONNECTING, TIME_SYNC, PROVISIONING,
                  MQTT_WAITING_CONNECT, MQTT_INIT -> "PROVISIONING";
             case ERROR -> "ERROR";
