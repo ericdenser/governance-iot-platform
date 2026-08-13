@@ -17,7 +17,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
-
+#include "esp_sleep.h"
 #include "ds3231.h"
 #include "i2cdev.h"
 
@@ -198,6 +198,7 @@ static uint32_t my_get_battery_mv(void) {
 // =============================================================================
 extern "C" void app_main(void) {
     // Init do bus I2C (DS3231 usa)
+
     i2cdev_init();
 
     // GPIO de controle do transistor PNP que liga/desliga VCC do GPS

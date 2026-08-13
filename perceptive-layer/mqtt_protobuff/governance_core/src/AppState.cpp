@@ -82,7 +82,13 @@ void AppState::setError(ErrorCode code, const std::string& msg, const Source& so
     evt.resolved = false;
 
     uint32_t maskToSave;
+    size_t   droppedCount = 0;
     xSemaphoreTake(_mutex, portMAX_DELAY);
+    constexpr size_t MAX_ERROR_QUEUE = 32;
+    while (_errorQueue.size() >= MAX_ERROR_QUEUE) {
+        _errorQueue.pop();  // descarta o mais antigo
+        droppedCount++;
+    }
     _errorQueue.push(evt);
     uint32_t bit = error_bit(code);
     if (bit) _activeErrorMask |= bit;
@@ -90,6 +96,11 @@ void AppState::setError(ErrorCode code, const std::string& msg, const Source& so
     _current  = DeviceState::ERROR;
     maskToSave = _activeErrorMask;
     xSemaphoreGive(_mutex);
+
+    // Log fora do mutex pra nao bloquear outras tasks
+    if (droppedCount > 0) {
+        ESP_LOGW(TAG, "Error queue overflow: dropped %u oldest entries", (unsigned)droppedCount);
+    }
 
     nvs_save_mask(maskToSave); // fora do mutex para não bloquear a task
 

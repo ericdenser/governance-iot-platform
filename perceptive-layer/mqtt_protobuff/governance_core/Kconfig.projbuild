@@ -193,6 +193,17 @@ menu "Governance IoT"
                     A cada N segundos acorda, le bateria, decide se dorme de novo ou nao.
         endif
 
+    config GOV_BOOT_TIMEOUT_S
+        int "Boot watchdog timeout (s)"
+        range 60 600
+        default 120
+        help
+            Se o firmware nao chegar em OPERATIONAL em N segundos apos boot,
+            forca esp_restart(). Recupera de estados intermediarios travados
+            (JWT sem resposta, MQTT em WAITING_CONNECT eterno, etc).
+            Independente do task watchdog do FreeRTOS — este pega loops
+            logicos onde tasks yieldam mas nunca progridem.
+
     menuconfig GOV_FIRMWARE_DEEP_SLEEP
         bool "Enable deep sleep"
         default n

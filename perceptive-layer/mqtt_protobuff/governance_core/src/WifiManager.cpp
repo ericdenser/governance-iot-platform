@@ -419,6 +419,10 @@ void WifiManager::deinit() {
 
     ESP_LOGW(TAG, "Parando WifiManager...");
 
+    esp_wifi_disconnect();
+    esp_wifi_stop();
+    esp_wifi_deinit();
+
     // --------- DEREGISTRANDO OS HANDLERS ---------
     if (s_instance_any_id != NULL) {
         esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_instance_any_id);
@@ -440,10 +444,6 @@ void WifiManager::deinit() {
         esp_netif_destroy(s_wifi_netif);
         s_wifi_netif = NULL;
     }
-
-    esp_wifi_disconnect();
-    esp_wifi_stop();
-    esp_wifi_deinit();
     
     // Resetando estados
     s_is_initialized = false;

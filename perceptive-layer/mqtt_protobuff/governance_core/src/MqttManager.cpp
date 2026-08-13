@@ -41,6 +41,7 @@ static void resubscribe_all() {
 
 
 static void refresh_timer_cb(void*) {
+     if (mqtt_client == NULL) return;
     ESP_LOGI(TAG, "Safe JWT refresh — invalidating cache + reconnecting.");
     AuthManager::invalidateCache();
     if (mqtt_client) {
@@ -52,6 +53,7 @@ static void refresh_timer_cb(void*) {
 
 // Chamado pelo timer após RECONNECT_DELAY_MS para tentar reconectar
 static void reconnect_timer_cb(void*) {
+     if (mqtt_client == NULL) return;
     s_reconnect_count++;
     ESP_LOGW(TAG, "[%d/%d] Tentando reconectar ao broker MQTT...",
              s_reconnect_count, MAX_RECONNECT_ATTEMPTS);
@@ -292,4 +294,24 @@ void MqttManager::tryReconnect() {
 void MqttManager::setCallback(MessageCallback cb) {
     s_message_callback = cb;
     ESP_LOGI(TAG, "Callback de mensagens MQTT registrado.");
+}
+
+void MqttManager::destroy() {
+    
+    if (mqtt_client == NULL) { return; } 
+
+    if (s_reconnect_timer) {
+        esp_timer_stop(s_reconnect_timer);
+        esp_timer_delete(s_reconnect_timer);
+        s_reconnect_timer = NULL;
+    }
+    if (s_refresh_timer) {
+        esp_timer_stop(s_refresh_timer);
+        esp_timer_delete(s_refresh_timer);
+        s_refresh_timer = NULL;
+    }
+    esp_mqtt_client_stop(mqtt_client);
+    esp_mqtt_client_destroy(mqtt_client);
+    mqtt_client = NULL;
+    ESP_LOGI(TAG, "MQTT_CLIENT destruído.");
 }

@@ -41,8 +41,12 @@
 static const char* TAG           = "GOV_CORE";
 static const char* NVS_NAMESPACE = "main_store";
 static const char* NVS_KEY_HIBERNATION_REASON = "hib_reason";
+
+#if defined(CONFIG_GOV_FIRMWARE_DEEP_SLEEP) || defined (CONFIG_GOV_BATTERY_HIBERNATION)
 static const char* HIBERNATION_REASON_LOW_BATTERY = "LOW_BATTERY";
 static const char* HIBERNATION_REASON_DEEP_SLEEP = "DEEP_SLEEP";
+static const char* HIBERNATION_REASON_TIMEOUT = "TIMEOUT_SLEEP";
+#endif
 
 // =============================================================================
 //  Macros de log contextuais
@@ -66,7 +70,6 @@ static governance_hooks_t s_hooks = {};
 #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
 static bool                telemetryPublished = false;
 static bool                statusPublished = false;
-static int64_t  s_operational_start_us = 0;
 #endif
 
 struct MqttMessage {
@@ -158,11 +161,8 @@ static void publish_proto_status(const char* topic,
     MqttManager::publish(proto_buf, os.bytes_written, topic);
 }
 
-// =============================================================================
-//  Hibernação por bateria (ativada via CONFIG_GOV_BATTERY_HIBERNATION)
-// =============================================================================
-#if CONFIG_GOV_BATTERY_HIBERNATION
 
+#if defined(CONFIG_GOV_FIRMWARE_DEEP_SLEEP) || defined(CONFIG_GOV_BATTERY_HIBERNATION)
     // Persiste motivo do ultimo deep_sleep. Usado no boot para distinguir 
     static void set_hibernation_reason(const char* reason) {
         nvs_handle_t h;
@@ -186,7 +186,40 @@ static void publish_proto_status(const char* topic,
         nvs_close(h);
     }
 
-    // Publica status CRITICAL_BATTERY e entra em deep_sleep. Não retorna
+    static void enter_deep_sleep(uint64_t wake_interval_s, const char* reason) {
+        
+
+        SLOG_W("Preparando deep sleep por %llus (motivo: %s)", wake_interval_s, reason);
+
+        //Desliga peripherals externos que o firmware controla via GPIO
+        // #ifdef CONFIG_GOV_GPS_POWER_PIN
+        // gpio_set_level((gpio_num_t)CONFIG_GOV_GPS_POWER_PIN, 0);
+        // #endif
+
+        MqttManager::destroy();
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        WifiManager::stop();
+        //esp_deep_sleep_disable_rom_logging();
+
+        set_hibernation_reason(reason);
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+
+        esp_sleep_enable_timer_wakeup(wake_interval_s * 1000000ULL);
+        esp_deep_sleep_start();
+
+    }
+
+
+#endif
+
+
+// =============================================================================
+//  Hibernação por bateria (ativada via CONFIG_GOV_BATTERY_HIBERNATION)
+// =============================================================================
+#if CONFIG_GOV_BATTERY_HIBERNATION
+
+    // Publica status CRITICAL_BATTERY e entra em deep_sleep. 
     static void enter_low_battery_deep_sleep(uint32_t battery_mv) {
         SLOG_W("Bateria crítica (%lu mV) - publicando CRITICAL_BATTERY e hibernando por %ds", 
             (unsigned long)battery_mv, (int)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S);
@@ -205,9 +238,9 @@ static void publish_proto_status(const char* topic,
             
             vTaskDelay(pdMS_TO_TICKS(3000));
 
-            set_hibernation_reason(HIBERNATION_REASON_LOW_BATTERY);
-            esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S * 1000000ULL);
-            esp_deep_sleep_start();
+            enter_deep_sleep((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S, HIBERNATION_REASON_LOW_BATTERY);
+
+
     }
 
     static bool check_wake_from_low_battery() {
@@ -230,8 +263,7 @@ static void publish_proto_status(const char* topic,
         if (mv == 0) {
             SLOG_W("Wake: leitura de bateria indisponivel (0 mV) - dormindo mais %ds por seguranca",
                    (int)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S);
-            esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S * 1000000ULL);
-            esp_deep_sleep_start();
+            enter_deep_sleep((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S, HIBERNATION_REASON_LOW_BATTERY);
             // NUNCA retorna
         }
 
@@ -243,8 +275,7 @@ static void publish_proto_status(const char* topic,
                 (int)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S);
 
             // Mantem flag, proximo wake checa denovo
-            esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S * 1000000ULL);
-            esp_deep_sleep_start();
+            enter_deep_sleep((uint64_t)CONFIG_GOV_BATTERY_WAKE_INTERVAL_S, HIBERNATION_REASON_LOW_BATTERY);
         }
 
         SLOG_I("Wake: bateria recuperou (%lu mV >= %lu mV) — retomando boot normal",
@@ -254,6 +285,7 @@ static void publish_proto_status(const char* topic,
     }
 
 #endif
+
 
 // =============================================================================
 //  Tasks operacionais
@@ -352,11 +384,8 @@ static void telemetry_task(void* /*pvParameters*/) {
         if (pb_encode(&os, DeviceTelemetry_fields, &proto)) {
             msg.payload_len = os.bytes_written;
             xQueueSend(g_mqttQueue, &msg, 0);
-            
-            #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
-                telemetryPublished = true;
-            #endif
-
+            // NAO seta telemetryPublished, quem seta e o mqtt_publisher_task
+            // apos publish real. Enfileirar != publicar.
         } else {
             ESP_LOGE(TAG, "pb_encode DeviceTelemetry falhou: %s", PB_GET_ERROR(&os));
         }
@@ -395,11 +424,8 @@ static void status_task(void* /*pvParameters*/) {
         if (pb_encode(&os, DeviceStatus_fields, &proto)) {
             msg.payload_len = os.bytes_written;
             xQueueSend(g_mqttQueue, &msg, 0);
-
-            #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
-                statusPublished = true;
-            #endif
-
+            // NAO seta statusPublished aqui, quem seta e o mqtt_publisher_task
+            // apos publish real. Enfileirar != publicar.
         } else {
             ESP_LOGE(TAG, "pb_encode DeviceStatus falhou: %s", PB_GET_ERROR(&os));
         }
@@ -411,38 +437,29 @@ static void status_task(void* /*pvParameters*/) {
 static void mqtt_publisher_task(void* /*pvParameters*/) {
     MqttMessage msg;
     while (true) {
-        BaseType_t received = xQueueReceive(g_mqttQueue, &msg, pdMS_TO_TICKS(5000));
-        
-        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
-            // Timeout guard: se passou muito tempo no OPERATIONAL e nao conseguiu
-            // publicar ambos, dorme mesmo assim. 
-            if (s_operational_start_us != 0 &&
-                !(telemetryPublished && statusPublished)) {
-                int64_t elapsed_us = esp_timer_get_time() - s_operational_start_us;
-                int64_t threshold_us = (int64_t)CONFIG_GOV_DEEP_SLEEP_OPERATIONAL_TIMEOUT_S * 1000000LL;
-                if (elapsed_us >= threshold_us) {
-                    SLOG_W("Timeout %ds no OPERATIONAL sem publicar (tele=%d status=%d, mqtt=%d) — dormindo mesmo assim",
-                            (int)CONFIG_GOV_DEEP_SLEEP_OPERATIONAL_TIMEOUT_S,
-                            telemetryPublished, statusPublished,
-                            MqttManager::isConnected());
-                    set_hibernation_reason(HIBERNATION_REASON_DEEP_SLEEP);
-                    esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S * 1000000ULL);
-                    esp_deep_sleep_start();
-                    // NUNCA retorna
-                }
-            }
-        #endif
+        BaseType_t received = xQueueReceive(g_mqttQueue, &msg, pdMS_TO_TICKS(1000));
+
         if (received && AppState::is(DeviceState::OPERATIONAL) && MqttManager::isConnected()) {
             MqttManager::publish(msg.payload, msg.payload_len, msg.topic);
+
+            // Flags refletem publish REAL (nao enqueue). Sem isso, o publisher
+            // podia dormir com msg de status ainda na fila 
             #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
-                if (telemetryPublished && statusPublished) {
-                    vTaskDelay(pdMS_TO_TICKS(5000));
-                    set_hibernation_reason(HIBERNATION_REASON_DEEP_SLEEP);
-                    esp_sleep_enable_timer_wakeup((uint64_t)CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S * 1000000ULL);
-                    esp_deep_sleep_start();
-                }
+                if (strncmp(msg.topic, "telemetry/", 10) == 0) telemetryPublished = true;
+                else if (strncmp(msg.topic, "status/", 7) == 0)   statusPublished    = true;
             #endif
         }
+
+        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+            if (telemetryPublished && statusPublished) {
+                SLOG_I("Ciclo completo (tele+status publicados) — dormindo por %ds",
+                       (int)CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S);
+                vTaskDelay(pdMS_TO_TICKS(5000));
+
+                enter_deep_sleep((uint64_t)CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S, HIBERNATION_REASON_DEEP_SLEEP);
+                // NUNCA retorna
+            }
+        #endif
     }
 }
 
@@ -487,7 +504,7 @@ static void handle_nvs_init() {
     bool isProvisioned = AuthManager::isProvisioned();
     bool hasDeviceId   = (saved_device_id[0] != '\0');
 
-    SLOG_I("Diagnóstico NVS — WiFi:%s | Token:%s | Cert:%s | DeviceId:%s | Version:%s",
+    SLOG_I("Diagnóstico NVS — WiFi:%s | Token:%s | KC Credential:%s | DeviceId:%s | Version:%s",
            hasWifi ? "SIM" : "NÃO", hasToken ? "SIM" : "NÃO",
            isProvisioned ? "SIM" : "NÃO", hasDeviceId ? "SIM" : "NÃO",
            firmware_version.c_str());
@@ -502,7 +519,7 @@ static void handle_nvs_init() {
         return;
     }
     if (!isProvisioned) {
-        AppState::setError(ErrorCode::CERT_MISSING, "Certificado ausente na NVS", {TAG, "handle_nvs_init"});
+        AppState::setError(ErrorCode::CERT_MISSING, "Keycloak credentials ausente na NVS", {TAG, "handle_nvs_init"});
         return;
     }
     if (firmware_version.empty()) {
@@ -783,19 +800,37 @@ static void handle_boot_audit() {
     AppState::resolveError(ErrorCode::MQTT_INIT_FAIL);
     AppState::resolveError(ErrorCode::MQTT_DISCONNECTED);
 
-    if (AppState::hasQueuedErrors()) {
-        AppState::transition(DeviceState::ERROR, {TAG, "handle_boot_audit"});
-    } else {
-        AppState::transition(DeviceState::SENSORS_INIT, {TAG, "handle_boot_audit"});
-    }
+    // Sempre passa por SENSORS_INIT antes de qualquer outra coisa. Se resolveError
+    // enfileirou eventos, o main loop detecta hasQueuedErrors apos OPERATIONAL e
+    // dispara handle_error na iteracao seguinte (sem pular sensor discovery).
+    AppState::transition(DeviceState::SENSORS_INIT, {TAG, "handle_boot_audit"});
+}
+
+// Boot watchdog: aguarda CONFIG_GOV_BOOT_TIMEOUT_S; 
+// atingido, forca esp_restart() ou esp_deep_sleep(). 
+static void boot_timeout_task(void* /*pv*/) {
+    vTaskDelay(pdMS_TO_TICKS(CONFIG_GOV_BOOT_TIMEOUT_S * 1000));
+
+    // TODO: pensar num motivo para nao reiniciar o esp se estiver na tomada, por enquanto reiniciamos mesmo assim
+    // #if !defined(CONFIG_GOV_FIRMWARE_DEEP_SLEEP)
+    //     if (s_operational_reached) {  };
+    // #endif
+   // Correção: Adicionado o %d para casar com a variável inteira do timeout
+    ESP_LOGE(TAG, "Boot timeout: device ligado a mais de %d segundos (estado atual: %s)",
+        (int)CONFIG_GOV_BOOT_TIMEOUT_S, AppState::toString(AppState::get()));
+    
+    #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+    enter_deep_sleep((uint64_t) CONFIG_DEEP_SLEEP_WAKE_INTERVAL_S, HIBERNATION_REASON_TIMEOUT);
+    #endif
+
+    // se nao tem deep_sleep ativado, so reinicia 
+    esp_restart();
+    
 }
 
 static void handle_operational() {
     static bool started = false;
     if (!started) {
-        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
-            s_operational_start_us = esp_timer_get_time();
-        #endif
         g_mqttQueue = xQueueCreate(10, sizeof(MqttMessage));
         xTaskCreate(telemetry_task,      "telemetry", 4096, NULL, 4, NULL);
         xTaskCreate(status_task,         "status",    4096, NULL, 4, NULL);
@@ -812,6 +847,10 @@ static void handle_error() {
     SLOG_E("Handler de erro. Eventos na fila: %s", AppState::hasQueuedErrors() ? "SIM" : "NÃO");
 
     if (!AppState::hasQueuedErrors()) {
+        #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+            telemetryPublished = false;
+            statusPublished    = false;
+        #endif
         AppState::transition(DeviceState::OPERATIONAL, {TAG, "handle_error"});
         return;
     }
@@ -871,15 +910,24 @@ static void handle_error() {
     } else {
         SLOG_I("Todos os erros resolvidos.");
     }
+
+    // Reseta flags de ciclo antes de voltar pra OPERATIONAL 
+    #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
+        telemetryPublished = false;
+        statusPublished    = false;
+    #endif
+
     AppState::transition(DeviceState::OPERATIONAL, {TAG, "handle_error"});
 }
 
 static void handle_waiting_instruction() {
     SLOG_W("Waiting instruction...");
-    while (1) {
-        WatchdogManager::reset();
-        vTaskDelay(pdMS_TO_TICKS(5000));
-    }
+
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    // while (1) {
+    //     WatchdogManager::reset();
+    //     vTaskDelay(pdMS_TO_TICKS(5000));
+    // }
 }
 
 // =============================================================================
@@ -893,6 +941,11 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
     }
 
     s_hooks = *hooks;
+
+    // Boot watchdog — cria ANTES de qualquer inicialização pesada.
+    // Se timeout, reseta.
+    xTaskCreate(boot_timeout_task, "boot_wd", 4096, NULL, 1, NULL);
+    
 
     #if CONFIG_GOV_BATTERY_HIBERNATION
 
@@ -912,6 +965,14 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
 
     while (true) {
         WatchdogManager::reset();
+
+        // Se estamos em OPERATIONAL mas erros foram enfileirados (ex: resolves
+        // do handle_boot_audit, ou erros gerados por tasks async), redireciona
+        // pra ERROR pra drenar a fila. Sem isso, resolves ficam presos ate um
+        // proximo setError disparar transicao pra ERROR.
+        if (AppState::get() == DeviceState::OPERATIONAL && AppState::hasQueuedErrors()) {
+            AppState::transition(DeviceState::ERROR, {TAG, "main_loop"});
+        }
 
         switch (AppState::get()) {
             case DeviceState::NVS_INIT:              handle_nvs_init();               break;
