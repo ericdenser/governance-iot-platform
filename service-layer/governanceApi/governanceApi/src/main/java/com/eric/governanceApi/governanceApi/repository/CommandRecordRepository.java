@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -52,4 +53,8 @@ public interface CommandRecordRepository extends JpaRepository<CommandRecord, Lo
         GROUP BY c.batch.id, c.status
         """)
     List<BatchStatusCount> countStatusesByBatchIds(@Param("batchIds") List<Long> batchIds);
+
+    @Modifying
+    @Query("DELETE FROM EventRegistry e WHERE e.device.id = :deviceId")
+    void deleteByDeviceId(@Param("deviceId") Long deviceId);
 }

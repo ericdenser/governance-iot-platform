@@ -4,6 +4,7 @@ import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
@@ -77,6 +78,7 @@ public class DeviceService {
         }
 
 
+        @SuppressWarnings("null")
         List<String> pageIds = rows.map(DeviceSummaryProjection::deviceId).getContent();
         Map<String, LiveState> live = hotStateService.getLiveBulk(pageIds);
 
@@ -241,16 +243,20 @@ public class DeviceService {
         FirmwareVersion fw = device.getFirmwareVersion();
         if (fw != null) {
             fw.decrementDeployCount();
+            if (fw.getDeployCount() <= 0 && fw.getStatus() != FirmwareStatus.DEPRECATED) {
+                fw.setStatus(FirmwareStatus.STAGED);
+            }
         }
 
         Long deviceDbId = device.getId();
         membershipRepository.deleteByDeviceId(deviceDbId);
         errorRecordRepository.deleteByDeviceId(deviceDbId);
         eventRegistryRepository.deleteByDeviceId(deviceDbId);
+        commandRecordRepository.deleteByDeviceId(deviceDbId);
 
         deviceRepository.delete(device);
         hotStateService.evict(deviceUUID);
-        log.info("Device '{}' deletado (histórico de eventos, erros, memberships e hot state removidos).",
+        log.info("Device '{}' deletado (histórico de eventos, comandos, erros, memberships e hot state removidos).",
                  deviceUUID);
     }
 
