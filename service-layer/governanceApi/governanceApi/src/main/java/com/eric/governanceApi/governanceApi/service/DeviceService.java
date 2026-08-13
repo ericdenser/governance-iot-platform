@@ -77,20 +77,29 @@ public class DeviceService {
             rows = deviceRepository.findSummariesByUserGroups(actorId, normalizedSearch, status, pageable);
         }
 
-        return rows.map(row -> new DeviceSummaryDTO(
-            row.deviceId(),
-            row.name(),
-            row.status(),
-            row.macAddress(),
-            row.firmwareId(),
-            row.firmwareName(),
-            row.firmwareVersionId(),
-            row.version(),
-            row.createdAt(),
-            row.lastSeen(),
-            row.issuedByActorId(),
-            row.issuedByUsername()
-        ));
+
+        List<String> pageIds = rows.map(DeviceSummaryProjection::deviceId).getContent();
+        Map<String, LiveState> live = hotStateService.getLiveBulk(pageIds);
+
+        return rows.map(row -> {
+            LiveState lv = live.getOrDefault(row.deviceId(), LiveState.empty());
+            return new DeviceSummaryDTO(
+                row.deviceId(),
+                row.name(),
+                row.status(),
+                row.macAddress(),
+                row.firmwareId(),
+                row.firmwareName(),
+                row.firmwareVersionId(),
+                row.version(),
+                row.createdAt(),
+                row.lastSeen(),
+                row.issuedByActorId(),
+                row.issuedByUsername(),
+                lv.batteryMv(),
+                lv.batteryTs()
+            );
+        });
     }
 
     
