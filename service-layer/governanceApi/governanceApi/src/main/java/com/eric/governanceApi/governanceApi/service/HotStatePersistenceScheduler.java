@@ -40,7 +40,7 @@ public class HotStatePersistenceScheduler {
                    status = COALESCE(?, status),
                    last_seen_persisted_at = ?
              WHERE device_id = ?
-               AND status <> 'REVOKED'
+               AND status NOT IN ('REVOKED', 'COMMAND_PENDING')
             """;
 
     private final DeviceRepository deviceRepository;
