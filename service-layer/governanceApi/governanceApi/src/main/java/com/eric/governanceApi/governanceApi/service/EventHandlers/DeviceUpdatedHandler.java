@@ -71,8 +71,8 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
 
         // ESTADO INVÁLIDO
         if (device.getStatus() != DeviceStatus.COMMAND_PENDING) {
-            log.warn("Device de ID {} não estava com status de OTA_PENDING, STATUS:", device.getDeviceId(), device.getStatus());
-            eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + "não estava com status de OTA_PENDING.");
+            log.warn("Device de ID {} não estava com status de COMMAND_PENDING. STATUS atual: {}", device.getDeviceId(), device.getStatus());
+            eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + " não estava com status COMMAND_PENDING (estava " + device.getStatus() + ").");
             eventRegistryRepository.save(eventRegistry);
             return;
         }
