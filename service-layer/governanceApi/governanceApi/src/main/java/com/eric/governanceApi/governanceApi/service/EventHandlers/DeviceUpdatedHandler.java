@@ -80,7 +80,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         // atualiza firmware antigo
         FirmwareVersion previous_firmware = device.getFirmwareVersion();
         if (previous_firmware != null) {
-            previous_firmware.setDeployCount(previous_firmware.getDeployCount() - 1);
+            previous_firmware.decrementDeployCount();
             if (previous_firmware.getDeployCount() <= 0 && previous_firmware.getStatus() != FirmwareStatus.DEPRECATED) {
                 previous_firmware.setStatus(FirmwareStatus.STAGED);
             }
@@ -114,7 +114,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         device.setFirmwareVersion(current_firmware);
         device.setAttemptedFirmwareVersion(null); // OTA concluído com sucesso
 
-        current_firmware.setDeployCount(current_firmware.getDeployCount() + 1);
+        current_firmware.incrementDeployCount();
         if (current_firmware.getDeployCount() >= 1) {
             current_firmware.setStatus(FirmwareStatus.DEPLOYED);
         }
@@ -124,9 +124,6 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
         eventRegistry.setResultMessage("Device de ID " + device.getDeviceId() + "atualizou para a versão [v" + current_firmware_version + "] com sucesso!!");
         eventRegistry.setCompleted(true);
 
-        // TODO: Atualiza o mapa de sensores daquele device para bater com do firmware novo
-
-       
         Map<String, Boolean> sensorStatus = new HashMap<>();
         for (FirmwareSensorConfig cfg : current_firmware.getSensorConfigs()) {
                 sensorStatus.put(cfg.getSensor().getName(), false);
