@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -15,6 +16,12 @@ public interface CommandBatchRepository extends JpaRepository<CommandBatch, Long
     Optional<CommandBatch> findByBatchId(String batchId);
 
     Page<CommandBatch> findAllByOrderBySentAtDesc(Pageable pageable);
+
+    // Apaga batches sem records. Idempotente — chamar apos deletar records de
+    // um device pra limpar batches que ficaram vazios.
+    @Modifying
+    @Query("DELETE FROM CommandBatch b WHERE b.records IS EMPTY")
+    int deleteOrphanedBatches();
 
     // Batch visível se ao menos um record aponta pra device de grupo do usuário
     @Query(value = """
@@ -39,4 +46,5 @@ public interface CommandBatchRepository extends JpaRepository<CommandBatch, Long
         )
         """)
     Page<CommandBatch> findAllByKeycloakUserId(@Param("keycloakUserId") String keycloakUserId, Pageable pageable);
+
 }

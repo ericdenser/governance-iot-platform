@@ -18,6 +18,7 @@ import com.eric.governanceApi.governanceApi.model.response.DeviceMapPositionDTO;
 import com.eric.governanceApi.governanceApi.model.response.DeviceSummaryDTO;
 import com.eric.governanceApi.governanceApi.model.response.ErrorRecordResponseDTO;
 import com.eric.governanceApi.governanceApi.model.response.EventRegistryResponseDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandBatchRepository;
 import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
@@ -52,17 +53,20 @@ public class DeviceService {
     private final EventRegistryRepository eventRegistryRepository;
     private final DeviceGroupMembershipRepository membershipRepository;
     private final HotStateService hotStateService;
+    private final CommandBatchRepository commandBatchRepository;
+
     public DeviceService(DeviceRepository deviceRepository,
                          CommandRecordRepository commandRecordRepository,
                          ErrorRecordRepository errorRecordRepository,
                          EventRegistryRepository eventRegistryRepository,
-                         DeviceGroupMembershipRepository membershipRepository, HotStateService hotStateService) {
+                         DeviceGroupMembershipRepository membershipRepository, HotStateService hotStateService, CommandBatchRepository commandBatchRepository) {
         this.deviceRepository = deviceRepository;
         this.commandRecordRepository = commandRecordRepository;
         this.errorRecordRepository = errorRecordRepository;
         this.eventRegistryRepository = eventRegistryRepository;
         this.membershipRepository = membershipRepository;
         this.hotStateService = hotStateService;
+        this.commandBatchRepository = commandBatchRepository;
     }
     
     @Transactional(readOnly = true)
@@ -265,11 +269,12 @@ public class DeviceService {
         errorRecordRepository.deleteByDeviceId(deviceDbId);
         eventRegistryRepository.deleteByDeviceId(deviceDbId);
         commandRecordRepository.deleteByDeviceId(deviceDbId);
+        int orphanedBatches = commandBatchRepository.deleteOrphanedBatches();
 
         deviceRepository.delete(device);
         hotStateService.evict(deviceUUID);
-        log.info("Device '{}' deletado (histórico de eventos, comandos, erros, memberships e hot state removidos).",
-                 deviceUUID);
+        log.info("Device '{}' deletado (histórico de eventos, comandos, erros, memberships e hot state removidos). Batches orfaos removidos: {}",
+                 deviceUUID, orphanedBatches);
     }
 
     // ── Access helpers ────────────────────────────────────────────────────────
