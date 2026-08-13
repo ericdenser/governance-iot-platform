@@ -55,6 +55,6 @@ public interface CommandRecordRepository extends JpaRepository<CommandRecord, Lo
     List<BatchStatusCount> countStatusesByBatchIds(@Param("batchIds") List<Long> batchIds);
 
     @Modifying
-    @Query("DELETE FROM EventRegistry e WHERE e.device.id = :deviceId")
+    @Query("DELETE FROM CommandRecord e WHERE e.targetDevice.id = :deviceId")
     void deleteByDeviceId(@Param("deviceId") Long deviceId);
 }
