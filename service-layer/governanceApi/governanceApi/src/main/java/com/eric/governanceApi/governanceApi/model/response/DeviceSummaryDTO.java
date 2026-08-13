@@ -19,7 +19,9 @@ public record DeviceSummaryDTO(
     Instant createdAt,
     Instant lastSeen,
     String issuedByActorId,
-    String issuedByUsername
+    String issuedByUsername,
+    Double batteryMv,
+    Instant batteryTs
 ) {
 
 }
