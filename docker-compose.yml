@@ -171,9 +171,21 @@ services:
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Fixa o hostname que Keycloak usa pra montar URLs (issuer, JWKS, redirects).
+      KC_HOSTNAME: http://${HOST_IP}:8080
+      KC_HOSTNAME_STRICT: "false"
+      # Habilita endpoint /health/{ready,live,started} na porta 9000 (mgmt).
+      KC_HEALTH_ENABLED: "true"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      # Keycloak 26+ nao tem curl na imagem. Usa /dev/tcp pra bater no /health/ready.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
     deploy:
       resources:
         limits:
