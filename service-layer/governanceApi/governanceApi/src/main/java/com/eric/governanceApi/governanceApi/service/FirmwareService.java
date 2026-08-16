@@ -582,7 +582,9 @@ public class FirmwareService {
                     row.latestUploadedAt(),
                     row.latestCreatedByUsername(),
                     row.latestDeployCount() != null ? row.latestDeployCount() : 0,
-                    row.latestSizeBytes() != null ? row.latestSizeBytes() : 0L
+                    row.latestSizeBytes() != null ? row.latestSizeBytes() : 0L,
+                    Boolean.TRUE.equals(row.latestDeepSleepEnabled()),
+                    row.latestDeepSleepIntervalS()
                 )
             ))
             .toList();

@@ -23,7 +23,8 @@ public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
         f.createdAt, f.createdByActorId, f.createdByUsername,
         (SELECT COUNT(v) FROM FirmwareVersion v WHERE v.firmware = f),
         latest.firmwareVersionId, latest.version, latest.status, latest.uploadedAt,
-        latest.createdByUsername, latest.deployCount, latest.sizeBytes
+        latest.createdByUsername, latest.deployCount, latest.sizeBytes,
+        latest.deepSleepEnabled, latest.deepSleepIntervalS
     )
     FROM Firmware f
     LEFT JOIN FirmwareVersion latest ON latest.firmware = f
@@ -40,7 +41,8 @@ public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
         f.createdAt, f.createdByActorId, f.createdByUsername,
         (SELECT COUNT(v) FROM FirmwareVersion v WHERE v.firmware = f),
         latest.firmwareVersionId, latest.version, latest.status, latest.uploadedAt,
-        latest.createdByUsername, latest.deployCount, latest.sizeBytes
+        latest.createdByUsername, latest.deployCount, latest.sizeBytes,
+        latest.deepSleepEnabled, latest.deepSleepIntervalS
     )
     FROM Firmware f
     LEFT JOIN FirmwareVersion latest ON latest.firmware = f
