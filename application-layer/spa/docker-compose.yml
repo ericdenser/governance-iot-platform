@@ -16,7 +16,7 @@ services:
         VITE_BASE_PATH: ${SPA_BASE_PATH:-/}
     container_name: ${SPA_CONTAINER_NAME:-spa}
     ports:
-      - "${SPA_HOST_BIND:-0.0.0.0}:${SPA_HOST_PORT:-8080}:80"
+      - "${SPA_HOST_BIND:-0.0.0.0}:${SPA_HOST_PORT:-5173}:80"
     deploy:
       resources:
         limits:
