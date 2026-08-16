@@ -72,6 +72,16 @@ public class FirmwareVersion extends AuthoredEntity {
 
     private int deployCount = 0; // incrementa a cada broadcast
 
+    @Column(name = "deep_sleep_enabled")
+    private Boolean deepSleepEnabled;
+
+    @Column(name = "deep_sleep_interval_s")
+    private Integer deepSleepIntervalS;
+
+    public boolean isDeepSleepEnabled() {
+        return deepSleepEnabled != null && deepSleepEnabled;
+    }
+
     @Column(nullable = false)
     private Instant uploadedAt = Instant.now();
 

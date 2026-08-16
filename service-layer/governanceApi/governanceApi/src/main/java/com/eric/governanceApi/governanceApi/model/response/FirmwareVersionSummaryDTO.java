@@ -12,7 +12,9 @@ public record FirmwareVersionSummaryDTO(
     Instant uploadedAt,
     String createdByUsername,
     int deployCount,
-    long sizeBytes
+    long sizeBytes,
+    boolean deepSleepEnabled,
+    Integer deepSleepIntervalS
 ) {
     public static FirmwareVersionSummaryDTO from(FirmwareVersion v) {
         return new FirmwareVersionSummaryDTO(
@@ -22,7 +24,9 @@ public record FirmwareVersionSummaryDTO(
             v.getUploadedAt(),
             v.getCreatedByUsername(),
             v.getDeployCount(),
-            v.getSizeBytes()
+            v.getSizeBytes(),
+            v.isDeepSleepEnabled(),
+            v.getDeepSleepIntervalS()
         );
     }
 }

@@ -131,7 +131,9 @@ public class FirmwareService {
         FirmwareVersion v = buildVersion(fw, requestDTO.initialVersion(),
                                          file.getOriginalFilename(), filename, sha256,
                                          file.getSize(), null,
-                                         requestDTO.sensors());
+                                         requestDTO.sensors(),
+                                         requestDTO.deepSleepEnabled(),
+                                         requestDTO.deepSleepIntervalS());
         fw.getVersions().add(v);
 
         firmwareRepository.save(fw);  // cascade grava a versão junto
@@ -169,7 +171,9 @@ public class FirmwareService {
         FirmwareVersion v = buildVersion(fw, requestDTO.version(),
                                          file.getOriginalFilename(), filename, sha256,
                                          file.getSize(), requestDTO.releaseNotes(),
-                                         requestDTO.sensors());
+                                         requestDTO.sensors(),
+                                         requestDTO.deepSleepEnabled(),
+                                         requestDTO.deepSleepIntervalS());
         fw.getVersions().add(v);
         firmwareVersionRepository.save(v);
 
@@ -716,7 +720,13 @@ public class FirmwareService {
 
     private FirmwareVersion buildVersion(Firmware fw, String version, String originalFilename,
                                          String filename, String sha256, long sizeBytes,
-                                         String releaseNotes, List<SensorConfigDTO> sensors) {
+                                         String releaseNotes, List<SensorConfigDTO> sensors,
+                                         boolean deepSleepEnabled, Integer deepSleepIntervalS) {
+        if (deepSleepEnabled && (deepSleepIntervalS == null || deepSleepIntervalS < 30)) {
+            throw new IllegalArgumentException(
+                "Firmware com deep sleep habilitado precisa de deepSleepIntervalS >= 30.");
+        }
+
         FirmwareVersion v = new FirmwareVersion();
         v.setFirmware(fw);
         v.setVersion(version);
@@ -726,6 +736,8 @@ public class FirmwareService {
         v.setSizeBytes(sizeBytes);
         v.setReleaseNotes(releaseNotes);
         v.setStatus(FirmwareStatus.STAGED);
+        v.setDeepSleepEnabled(deepSleepEnabled);
+        v.setDeepSleepIntervalS(deepSleepEnabled ? deepSleepIntervalS : null);
         attachSensors(v, sensors);
         return v;
     }

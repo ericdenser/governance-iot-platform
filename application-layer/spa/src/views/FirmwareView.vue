@@ -73,6 +73,8 @@ const createMeta = ref({
   initialVersion: '',
   isProvisioning: false,
   ownerGroupId: '',
+  deepSleepEnabled: false,
+  deepSleepIntervalS: 300,
 })
 const creating = ref(false)
 const createError = ref('')
@@ -92,6 +94,8 @@ const openCreate = async (asProvisioning = false) => {
     initialVersion: '',
     isProvisioning: asProvisioning,
     ownerGroupId: '',
+    deepSleepEnabled: false,
+    deepSleepIntervalS: 300,
   }
   createError.value = ''
   selectedSensors.value = new Map()
@@ -122,6 +126,10 @@ const doCreate = async () => {
     createError.value = 'Selecione o grupo ao qual o firmware pertence.'
     return
   }
+  if (meta.deepSleepEnabled && (!meta.deepSleepIntervalS || meta.deepSleepIntervalS < 30)) {
+    createError.value = 'Intervalo de deep sleep deve ser >= 30 segundos.'
+    return
+  }
   creating.value = true; createError.value = ''
   try {
     const sensors = [...selectedSensors.value.entries()].map(([sensorId, pin]) => ({ sensorId, pin }))
@@ -130,6 +138,8 @@ const doCreate = async () => {
       description: meta.description.trim() || null,
       initialVersion: meta.initialVersion.trim(),
       isProvisioning: meta.isProvisioning,
+      deepSleepEnabled: meta.deepSleepEnabled,
+      deepSleepIntervalS: meta.deepSleepEnabled ? meta.deepSleepIntervalS : null,
       sensors,
     }
     if (!meta.isProvisioning && meta.ownerGroupId) {
@@ -316,6 +326,25 @@ onMounted(async () => {
           <input type="checkbox" v-model="createMeta.isProvisioning" />
           Firmware de provisionamento (usado no flash inicial dos devices)
         </label>
+
+        <label class="checkbox-row">
+          <input type="checkbox" v-model="createMeta.deepSleepEnabled" />
+          Firmware usa deep sleep
+        </label>
+
+        <div v-if="createMeta.deepSleepEnabled" class="form-group">
+          <label>Intervalo de deep sleep (segundos)</label>
+          <input
+            type="number"
+            min="30"
+            v-model.number="createMeta.deepSleepIntervalS"
+            class="field"
+            placeholder="ex: 300"
+          />
+          <small class="text-muted">
+            Usado pra calcular timeout de comandos (default: intervalo × 2 + 60s de margem).
+          </small>
+        </div>
 
         <div v-if="availableSensors.length" class="form-group">
           <label>Sensores <span class="text-muted">(opcional)</span></label>
