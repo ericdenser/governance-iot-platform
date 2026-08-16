@@ -1,16 +1,3 @@
-# =============================================================================
-#  Governance IoT — Orquestrador de operações
-#
-#  Convenções:
-#  - Alvos que NÃO produzem arquivo (todos aqui) sao declarados em .PHONY
-#    (GNU Make Manual §4.6 — https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html).
-#  - SHELL := /bin/bash forca bash em vez de /bin/sh (que no Debian/Ubuntu
-#    e dash e nao suporta [[ ]], arrays, etc).
-#  - Alvos self-documented via comentarios `## <descricao>` na mesma linha —
-#    parsed pelo alvo `help` via awk. Padrao consagrado em projetos DevOps
-#    (ver: marmelab.com/blog/2016/02/29/auto-documented-makefile.html).
-# =============================================================================
-
 SHELL := /bin/bash
 
 # Diretorio deste Makefile (funciona chamando de qualquer subdir).
@@ -39,7 +26,7 @@ RESET  := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check-env net up down restart ps logs clean setup
+.PHONY: help check-env net build up up-build down restart ps logs clean setup
 
 help:  ## Lista todos os comandos disponiveis
 	@printf "$(CYAN)Governance IoT — comandos disponiveis:$(RESET)\n\n"
@@ -69,7 +56,13 @@ net:  ## Cria a rede docker compartilhada (idempotente)
 		printf "$(GREEN)OK$(RESET) rede '$(DOCKER_NETWORK)' ja existe\n"; \
 	fi
 
-up: check-env net  ## Sobe infra + servicos (build se necessario)
+build: check-env  ## Rebuilda imagens dos servicos (use quando codigo mudou)
+	@for f in $(SERVICE_COMPOSES); do \
+		printf "$(CYAN)=== build: $$f ===$(RESET)\n"; \
+		docker compose --env-file $(ENV_FILE) -f $$f build; \
+	done
+
+up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 	@printf "$(CYAN)=== infra ===$(RESET)\n"
 	@docker compose --env-file $(ENV_FILE) -f $(INFRA_COMPOSE) up -d
 	@printf "$(CYAN)Aguardando postgres healthy...$(RESET)\n"
@@ -79,10 +72,12 @@ up: check-env net  ## Sobe infra + servicos (build se necessario)
 		fi; sleep 2; \
 	done
 	@for f in $(SERVICE_COMPOSES); do \
-		printf "$(CYAN)=== build+up: $$f ===$(RESET)\n"; \
-		docker compose --env-file $(ENV_FILE) -f $$f up -d --build; \
+		printf "$(CYAN)=== up: $$f ===$(RESET)\n"; \
+		docker compose --env-file $(ENV_FILE) -f $$f up -d; \
 	done
 	@$(MAKE) --no-print-directory ps
+
+up-build: build up  ## Build + up (usar primeira vez ou apos mudar codigo)
 
 down:  ## Para todos os containers (mantem volumes)
 	@for f in $(SERVICE_COMPOSES) $(INFRA_COMPOSE); do \
