@@ -71,6 +71,17 @@ up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 			printf "$(GREEN)OK$(RESET) postgres healthy\n"; break; \
 		fi; sleep 2; \
 	done
+	@printf "$(CYAN)Aguardando keycloak healthy (pode levar 30-60s no primeiro boot)...$(RESET)\n"
+	@for i in $$(seq 1 60); do \
+		if docker inspect --format '{{.State.Health.Status}}' iot-keycloak 2>/dev/null | grep -q healthy; then \
+			printf "$(GREEN)OK$(RESET) keycloak healthy\n"; break; \
+		fi; \
+		if [ $$i -eq 60 ]; then \
+			printf "$(RED)ERRO:$(RESET) keycloak nao ficou healthy em 120s. Rode $(CYAN)docker logs iot-keycloak$(RESET) pra investigar.\n"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done
 	@for f in $(SERVICE_COMPOSES); do \
 		printf "$(CYAN)=== up: $$f ===$(RESET)\n"; \
 		docker compose --env-file $(ENV_FILE) -f $$f up -d; \
