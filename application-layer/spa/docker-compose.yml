@@ -30,4 +30,4 @@ services:
 networks:
   app-net:
     name: ${DOCKER_NETWORK:-app-net}
-    external: ${DOCKER_NETWORK_EXTERNAL:-false}
+    external: ${DOCKER_NETWORK_EXTERNAL:-true}
