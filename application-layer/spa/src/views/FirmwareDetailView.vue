@@ -95,7 +95,7 @@ const openVersionDetail = async (versionSummary: FirmwareVersionSummaryDTO) => {
 // ── Upload New Version modal ──────────────────────────────────────────────────
 const showUpload = ref(false)
 const uploadFile = ref<File | null>(null)
-const uploadMeta = ref({ version: '', releaseNotes: '' })
+const uploadMeta = ref({ version: '', releaseNotes: '', deepSleepEnabled: false, deepSleepIntervalS: 300 })
 const uploading = ref(false)
 const uploadError = ref('')
 const availableSensors = ref<SensorResponseDTO[]>([])
@@ -103,7 +103,7 @@ const selectedSensors = ref<Map<string, number>>(new Map())
 
 const openUpload = async () => {
   uploadFile.value = null
-  uploadMeta.value = { version: '', releaseNotes: '' }
+  uploadMeta.value = { version: '', releaseNotes: '', deepSleepEnabled: false, deepSleepIntervalS: 300 }
   uploadError.value = ''
   selectedSensors.value = new Map()
   showUpload.value = true
@@ -128,13 +128,19 @@ const doUpload = async () => {
     uploadError.value = 'Arquivo e versão são obrigatórios.'
     return
   }
+  if (uploadMeta.value.deepSleepEnabled && (!uploadMeta.value.deepSleepIntervalS || uploadMeta.value.deepSleepIntervalS < 30)) {
+    uploadError.value = 'Intervalo de deep sleep deve ser >= 30 segundos.'
+    return
+  }
   uploading.value = true; uploadError.value = ''
   try {
     const sensors = [...selectedSensors.value.entries()].map(([sensorId, pin]) => ({ sensorId, pin }))
-    
+
     const payload: UploadVersionRequest = {
       version: uploadMeta.value.version.trim(),
       releaseNotes: uploadMeta.value.releaseNotes || null,
+      deepSleepEnabled: uploadMeta.value.deepSleepEnabled,
+      deepSleepIntervalS: uploadMeta.value.deepSleepEnabled ? uploadMeta.value.deepSleepIntervalS : null,
       sensors,
     }
 
@@ -385,6 +391,12 @@ onMounted(async () => {
               <span class="detail-label">Data de upload</span>
               <span class="detail-value">{{ fmt(detailVersion.uploadedAt) }}</span>
             </div>
+            <div class="detail-item">
+              <span class="detail-label">Deep sleep</span>
+              <span class="detail-value">
+                {{ detailVersion.deepSleepEnabled ? `Sim (${detailVersion.deepSleepIntervalS}s)` : 'Não' }}
+              </span>
+            </div>
             <div class="detail-item detail-full">
               <span class="detail-label">SHA-256</span>
               <span class="detail-value mono text-xs">{{ detailVersion.sha256 }}</span>
@@ -439,6 +451,25 @@ onMounted(async () => {
         <div class="form-group">
           <label>Release Notes</label>
           <textarea v-model="uploadMeta.releaseNotes" class="field" rows="3" placeholder="Descreva as mudanças..." />
+        </div>
+
+        <label class="checkbox-row">
+          <input type="checkbox" v-model="uploadMeta.deepSleepEnabled" />
+          Firmware usa deep sleep
+        </label>
+
+        <div v-if="uploadMeta.deepSleepEnabled" class="form-group">
+          <label>Intervalo de deep sleep (segundos)</label>
+          <input
+            type="number"
+            min="30"
+            v-model.number="uploadMeta.deepSleepIntervalS"
+            class="field"
+            placeholder="ex: 300"
+          />
+          <small class="text-muted">
+            Timeout de comando pra devices nessa versão: intervalo × 2 + 60s.
+          </small>
         </div>
 
         <div v-if="availableSensors.length" class="form-group">

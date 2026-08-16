@@ -89,8 +89,14 @@ minio:
 
 app:
   hotstate:
-    # Intervalo do HotStatePersistenceScheduler 
+    # Intervalo do HotStatePersistenceScheduler
     persist-interval-ms: 300000
+  command:
+    # Timeout default de comando (device sem deep_sleep no firmware)
+    timeout-default-s: 300
+    # Devices com deep_sleep: timeout = intervalo_deep_sleep * N + margem_s
+    timeout-deep-sleep-cycles: 2
+    timeout-deep-sleep-margin-s: 60
   streams:
     
     replica-id: ${REPLICA_ID:0}

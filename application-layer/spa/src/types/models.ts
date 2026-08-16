@@ -44,6 +44,8 @@ export interface FirmwareVersionSummaryDTO {
   createdByUsername: string | null
   deployCount: number
   sizeBytes: number
+  deepSleepEnabled: boolean
+  deepSleepIntervalS: number | null
 }
 
 export interface FirmwareResponseDTO {
@@ -82,6 +84,8 @@ export interface FirmwareVersionResponseDTO {
   deployCount: number
   createdByActorId: string | null
   createdByUsername: string | null
+  deepSleepEnabled: boolean
+  deepSleepIntervalS: number | null
 }
 
 export interface FirmwareSummaryDTO {
@@ -112,12 +116,16 @@ export interface CreateFirmwareRequest {
   initialVersion: string
   isProvisioning: boolean
   ownerGroupId?: string | null
+  deepSleepEnabled: boolean
+  deepSleepIntervalS?: number | null
   sensors: SensorConfigDTO[]
 }
 
 export interface UploadVersionRequest {
   version: string
   releaseNotes?: string | null
+  deepSleepEnabled: boolean
+  deepSleepIntervalS?: number | null
   sensors: SensorConfigDTO[]
 }
 

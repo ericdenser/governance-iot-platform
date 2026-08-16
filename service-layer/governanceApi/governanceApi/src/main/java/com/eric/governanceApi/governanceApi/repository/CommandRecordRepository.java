@@ -18,6 +18,8 @@ public interface CommandRecordRepository extends JpaRepository<CommandRecord, Lo
 
     List<CommandRecord> findByStatusAndSentAtBefore(CommandStatus status, Instant threshold);
 
+    List<CommandRecord> findByStatus(CommandStatus status);
+
     Page<CommandRecord> findByTargetDevice_DeviceId(String deviceId, Pageable pageable);
 
     Optional<CommandRecord> findFirstByTargetDevice_DeviceIdAndStatus(String deviceId, CommandStatus status);

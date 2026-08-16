@@ -442,8 +442,7 @@ static void mqtt_publisher_task(void* /*pvParameters*/) {
         if (received && AppState::is(DeviceState::OPERATIONAL) && MqttManager::isConnected()) {
             MqttManager::publish(msg.payload, msg.payload_len, msg.topic);
 
-            // Flags refletem publish REAL (nao enqueue). Sem isso, o publisher
-            // podia dormir com msg de status ainda na fila 
+     
             #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
                 if (strncmp(msg.topic, "telemetry/", 10) == 0) telemetryPublished = true;
                 else if (strncmp(msg.topic, "status/", 7) == 0)   statusPublished    = true;
@@ -942,7 +941,7 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
 
     s_hooks = *hooks;
 
-    // Boot watchdog — cria ANTES de qualquer inicialização pesada.
+    // Boot timeout — cria ANTES de qualquer inicialização pesada.
     // Se timeout, reseta.
     xTaskCreate(boot_timeout_task, "boot_wd", 4096, NULL, 1, NULL);
     

@@ -23,7 +23,9 @@ public record FirmwareVersionResponseDTO (
     Instant uploadedAt,
     int deployCount,
     String createdByActorId,
-    String createdByUsername
+    String createdByUsername,
+    boolean deepSleepEnabled,
+    Integer deepSleepIntervalS
 ) {
 
     public static FirmwareVersionResponseDTO from(FirmwareVersion v) {
@@ -53,7 +55,9 @@ public record FirmwareVersionResponseDTO (
             v.getUploadedAt(),
             v.getDeployCount(),
             v.getCreatedByActorId(),
-            v.getCreatedByUsername());
+            v.getCreatedByUsername(),
+            v.isDeepSleepEnabled(),
+            v.getDeepSleepIntervalS());
     }
 
 }

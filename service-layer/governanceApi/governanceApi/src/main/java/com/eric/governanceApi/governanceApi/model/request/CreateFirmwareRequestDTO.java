@@ -4,6 +4,7 @@ import java.util.List;
 
 import jakarta.annotation.Nullable;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -24,6 +25,11 @@ public record CreateFirmwareRequestDTO (
     @Nullable
     @Pattern(regexp = ValidationPatterns.UUID_REGEX, message = "ownerGroupId " + ValidationPatterns.UUID_MESSAGE)
     String ownerGroupId,
+
+    boolean deepSleepEnabled,
+
+    @Nullable @Min(30)
+    Integer deepSleepIntervalS,
 
     @Valid
     List<SensorConfigDTO> sensors){
