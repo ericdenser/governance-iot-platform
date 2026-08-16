@@ -104,11 +104,23 @@ void SensorDiscovery::run(SensorMap& map, GpsManager* gps) {
     // --- ADC bateria ----------------------------------------------------------
     AdcManager::init();
     AdcManager::configChannel(ADC_CHANNEL_3);
-    int mv = AdcManager::readMilliVolts(ADC_CHANNEL_3);
-    if (mv > 500 && mv < 5000) {
+
+    // Descarta primeira leitura 
+    (void)AdcManager::readMilliVolts(ADC_CHANNEL_3);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    int mv1 = AdcManager::readMilliVolts(ADC_CHANNEL_3);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    int mv2 = AdcManager::readMilliVolts(ADC_CHANNEL_3);
+
+    int diff = abs(mv1 - mv2);
+    int mv_avg = (mv1 + mv2) / 2;
+
+    // bateria real: leituras estaveis (diff pequeno) E dentro da faixa esperada
+    if (diff < 100 && mv_avg > 500 && mv_avg < 5000) {
         map.battery_adc = true;
-        ESP_LOGI(TAG, "  → ADC bateria detectado (%d mV no pino, divisor conectado)", mv);
+        ESP_LOGI(TAG, "  → ADC bateria detectado (%d mV, diff %d mV entre leituras)", mv_avg, diff);
     } else {
-        ESP_LOGW(TAG, "  ADC bateria fora do range esperado (%d mV) — divisor de tensão ausente?", mv);
+        ESP_LOGW(TAG, "  ADC bateria ausente/fantasma (mv1=%d mv2=%d diff=%d)", mv1, mv2, diff);
     }
 }
