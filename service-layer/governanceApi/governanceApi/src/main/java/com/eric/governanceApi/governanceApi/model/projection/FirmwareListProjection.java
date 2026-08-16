@@ -23,7 +23,9 @@ public record FirmwareListProjection(
     Instant latestUploadedAt,
     String latestCreatedByUsername,
     Integer latestDeployCount,
-    Long latestSizeBytes
+    Long latestSizeBytes,
+    Boolean latestDeepSleepEnabled,
+    Integer latestDeepSleepIntervalS
 ) {
 
 }
