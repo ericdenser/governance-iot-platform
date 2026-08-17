@@ -28,3 +28,10 @@ app:
     replica-id: ${REPLICA_ID:0}
     # Intervalo do sweeper que reivindica mensagens pendentes órfãs (XPENDING + XCLAIM)
     sweep-interval-ms: 60000
+
+# Expose /actuator/health pra docker healthcheck
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

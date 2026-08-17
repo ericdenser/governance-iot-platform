@@ -26,7 +26,7 @@ RESET  := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check-env net build up up-build down restart ps logs clean setup
+.PHONY: help check-env init-secrets net build up up-build down restart ps status logs clean setup
 
 help:  ## Lista todos os comandos disponiveis
 	@printf "$(CYAN)Governance IoT — comandos disponiveis:$(RESET)\n\n"
@@ -47,6 +47,27 @@ check-env:  ## Valida que .env existe e tem os campos obrigatorios
 		exit 1; \
 	fi
 	@printf "$(GREEN)OK$(RESET) .env valido\n"
+
+init-secrets:  ## Gera secrets aleatorios pros clients Keycloak no .env (idempotente)
+	@if [ ! -f "$(ENV_FILE)" ]; then \
+		printf "$(RED)ERRO:$(RESET) .env nao encontrado. Rode $(CYAN)cp .env.example .env$(RESET) antes.\n"; \
+		exit 1; \
+	fi
+	@for var in GOVAPI_CLIENT_SECRET BFF_CLIENT_SECRET AGENT_MQTT_CLIENT_SECRET; do \
+		current=$$(grep -E "^$$var=" "$(ENV_FILE)" | cut -d= -f2-); \
+		if [ -z "$$current" ] || [ "$$current" = "changeme" ]; then \
+			new=$$(openssl rand -base64 32 | tr -d '=+/\n' | cut -c1-32); \
+			if grep -qE "^$$var=" "$(ENV_FILE)"; then \
+				sed -i "s|^$$var=.*|$$var=$$new|" "$(ENV_FILE)"; \
+			else \
+				echo "$$var=$$new" >> "$(ENV_FILE)"; \
+			fi; \
+			printf "$(GREEN)OK$(RESET) $$var gerado (32 chars aleatorios)\n"; \
+		else \
+			printf "$(YELLOW)SKIP$(RESET) $$var ja setado (nao sobrescreve)\n"; \
+		fi; \
+	done
+	@printf "$(CYAN)Secrets prontos.$(RESET) Rode $(CYAN)make up$(RESET) pra subir.\n"
 
 net:  ## Cria a rede docker compartilhada (idempotente)
 	@if ! docker network inspect $(DOCKER_NETWORK) >/dev/null 2>&1; then \
@@ -82,11 +103,18 @@ up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 		fi; \
 		sleep 2; \
 	done
+	@# Sobe apps sequencialmente com --wait: cada um bloqueia ate healthy antes
+	@# do proximo subir. Se um falhar (crash/unhealthy), aborta com erro claro
+	@# e nao continua puxando CPU pros seguintes.
 	@for f in $(SERVICE_COMPOSES); do \
-		printf "$(CYAN)=== up: $$f ===$(RESET)\n"; \
-		docker compose --env-file $(ENV_FILE) -f $$f up -d; \
+		printf "$(CYAN)=== up: $$f (aguardando healthy)$(RESET)\n"; \
+		if ! docker compose --env-file $(ENV_FILE) -f $$f up -d --wait --wait-timeout 120; then \
+			printf "$(RED)FALHOU:$(RESET) $$f nao ficou healthy em 120s.\n"; \
+			printf "Debug: $(CYAN)docker logs \$$(docker compose -f $$f ps -q | head -1)$(RESET)\n"; \
+			exit 1; \
+		fi; \
 	done
-	@$(MAKE) --no-print-directory ps
+	@$(MAKE) --no-print-directory status
 
 up-build: build up  ## Build + up (usar primeira vez ou apos mudar codigo)
 
@@ -107,6 +135,23 @@ ps:  ## Lista status dos containers do stack
 	@printf "$(CYAN)Containers do stack:$(RESET)\n"
 	@docker ps --filter "name=iot-" --filter "name=infra_executor" \
 		--format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+
+status:  ## Status detalhado (health + restarts) de todos containers do stack
+	@printf "$(CYAN)Health + restart count por container:$(RESET)\n"
+	@for c in iot-postgres iot-keycloak iot-redis iot-redis-streams iot-broker iot-minio iot-influxdb govapi agent-mqtt event-handler datalogger bff spa; do \
+		if docker inspect $$c >/dev/null 2>&1; then \
+			state=$$(docker inspect --format '{{.State.Status}}' $$c); \
+			health=$$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' $$c); \
+			restarts=$$(docker inspect --format '{{.RestartCount}}' $$c); \
+			color=$(GREEN); \
+			[ "$$state" != "running" ] && color=$(RED); \
+			[ "$$health" = "unhealthy" ] && color=$(RED); \
+			[ "$$health" = "starting" ] && color=$(YELLOW); \
+			printf "  $$color%-20s$(RESET) state=%-10s health=%-10s restarts=%s\n" "$$c" "$$state" "$$health" "$$restarts"; \
+		else \
+			printf "  $(YELLOW)%-20s$(RESET) (nao existe)\n" "$$c"; \
+		fi; \
+	done
 
 logs:  ## Logs em tempo real de UM container. Uso: make logs SVC=iot-govapi
 	@if [ -z "$(SVC)" ]; then \

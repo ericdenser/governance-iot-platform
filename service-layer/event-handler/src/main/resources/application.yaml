@@ -42,3 +42,10 @@ webhook:
   timeout-ms: 5000
   max-retries: 3
   retry-delay-ms: 2000
+
+# Expose /actuator/health pra docker healthcheck
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

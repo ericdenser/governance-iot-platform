@@ -39,3 +39,6 @@ testcontrollers/
 tips.txt
 service-layer/governanceApi/governanceApi/data/
 .venv-nvs/
+
+# Keycloak realm renderizado 
+deploy/keycloak/iot-realm.json

@@ -29,6 +29,9 @@ services:
       REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
       KEYCLOAK_ADMIN_URL: ${KEYCLOAK_ADMIN_URL}
+      # mTLS-only (main branch): senha do rootCA.p12 que assina certs de device
+      CA_PASSWORD: ${CA_PASSWORD}
+      INFRA_API_KEY: ${INFRA_API_KEY}
       GOVAPI_CLIENT_ID: ${GOVAPI_CLIENT_ID:-gov-api}
       GOVAPI_CLIENT_SECRET: ${GOVAPI_CLIENT_SECRET}
       AGENT_MQTT_URL: ${AGENT_MQTT_URL:-http://agent-mqtt:8087}
@@ -47,6 +50,12 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
     volumes:
       - ${PROVISIONING_BINS_VOLUME:-./provisioning-bins}:/opt/provisioning-bins:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health 2>/dev/null | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     deploy:
       resources:
         limits:

@@ -17,6 +17,13 @@ services:
     container_name: ${SPA_CONTAINER_NAME:-spa}
     ports:
       - "${SPA_HOST_BIND:-0.0.0.0}:${SPA_HOST_PORT:-5173}:80"
+    healthcheck:
+      # testa se serve o index.html
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
     deploy:
       resources:
         limits:
