@@ -59,3 +59,10 @@ spring:
         provider:
           govapi:
             token-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/token
+
+# Expose /actuator/health pra docker healthcheck
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

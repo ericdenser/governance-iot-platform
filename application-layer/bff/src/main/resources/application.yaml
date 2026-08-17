@@ -60,3 +60,10 @@ logging:
     org.springframework.session: WARN
     org.springframework.data.redis: WARN
     org.springframework.web.servlet.DispatcherServlet: DEBUG
+
+# Expose /actuator/health pra docker healthcheck
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
