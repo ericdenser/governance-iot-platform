@@ -33,7 +33,7 @@ services:
       APP_SESSION_COOKIE_SAME_SITE: ${APP_SESSION_COOKIE_SAME_SITE:-Lax}
       APP_SESSION_COOKIE_PATH: ${APP_SESSION_COOKIE_PATH:-/}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health 2>/dev/null | grep -q UP || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health/liveness 2>/dev/null | grep -q UP || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12

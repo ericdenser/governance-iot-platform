@@ -149,18 +149,20 @@ ps:  ## Lista status dos containers do stack
 
 status:  ## Status detalhado (health + restarts) de todos containers do stack
 	@printf "$(CYAN)Health + restart count por container:$(RESET)\n"
-	@for c in iot-postgres iot-keycloak iot-redis iot-redis-streams iot-broker iot-minio iot-influxdb govapi agent-mqtt event-handler datalogger bff spa; do \
-		if docker inspect $$c >/dev/null 2>&1; then \
+	@# Aceita tanto `govapi` quanto `iot-govapi` (varia por CONTAINER_NAME no .env).
+	@for base in postgres keycloak redis redis-streams broker minio influxdb govapi agent-mqtt event-handler datalogger bff spa; do \
+		c=$$(docker ps -a --format '{{.Names}}' | grep -E "^(iot-)?$$base$$" | head -1); \
+		if [ -n "$$c" ]; then \
 			state=$$(docker inspect --format '{{.State.Status}}' $$c); \
 			health=$$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' $$c); \
 			restarts=$$(docker inspect --format '{{.RestartCount}}' $$c); \
-			color=$(GREEN); \
-			[ "$$state" != "running" ] && color=$(RED); \
-			[ "$$health" = "unhealthy" ] && color=$(RED); \
-			[ "$$health" = "starting" ] && color=$(YELLOW); \
-			printf "  $$color%-20s$(RESET) state=%-10s health=%-10s restarts=%s\n" "$$c" "$$state" "$$health" "$$restarts"; \
+			ccode=32; \
+			[ "$$state" != "running" ] && ccode=31; \
+			[ "$$health" = "unhealthy" ] && ccode=31; \
+			[ "$$health" = "starting" ] && ccode=33; \
+			printf "  \033[$${ccode}m%-20s\033[0m state=%-10s health=%-10s restarts=%s\n" "$$c" "$$state" "$$health" "$$restarts"; \
 		else \
-			printf "  $(YELLOW)%-20s$(RESET) (nao existe)\n" "$$c"; \
+			printf "  \033[33m%-20s\033[0m (nao existe)\n" "$$base"; \
 		fi; \
 	done
 

@@ -48,7 +48,7 @@ services:
     volumes:
       - ${PROVISIONING_BINS_VOLUME:-./provisioning-bins}:/opt/provisioning-bins:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health 2>/dev/null | grep -q UP || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health/liveness 2>/dev/null | grep -q UP || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12

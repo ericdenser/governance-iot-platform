@@ -49,3 +49,10 @@ management:
     web:
       exposure:
         include: health
+  endpoint:
+    health:
+      # liveness: so verifica se JVM ta viva. Nao checa dependencias externas
+      # (Redis/DB/etc), que fazem /actuator/health retornar 500 quando alguma
+      # tem HealthIndicator com bug.
+      probes:
+        enabled: true
