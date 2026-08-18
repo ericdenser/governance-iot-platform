@@ -102,6 +102,7 @@ public class SecurityConfig {
                 )
             )
             .authorizeHttpRequests(req -> req
+                .requestMatchers("/actuator/health/**").permitAll()
                 .requestMatchers("/", "/public/**", "/login", "/favicon.ico", "/error", "/me").permitAll()
                 .anyRequest().authenticated()
             )

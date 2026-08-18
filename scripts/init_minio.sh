@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Bootstrap MinIO: cria bucket + service account com access key dedicada.
-# Idempotente. Funciona em dev local (defaults) ou prod (via .env com overrides).
+# Idempotente. Roda o `mc` compartilhando a network stack do container minio
+
+
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -12,12 +14,14 @@ set -a; source .env; set +a
 : "${MINIO_SECRET_KEY:?}"
 : "${MINIO_BUCKET:?}"
 
-ENDPOINT="${MINIO_ENDPOINT:-http://localhost:9000}"
-NETWORK="${DOCKER_NETWORK:-host}"
+MINIO_CONTAINER="${MINIO_CONTAINER_NAME:-iot-minio}"
 MC_IMAGE="minio/mc:RELEASE.2025-04-16T18-13-26Z"
 
-docker run --rm --network "$NETWORK" --entrypoint /bin/sh "$MC_IMAGE" -c "
-  mc alias set local '$ENDPOINT' '$MINIO_ROOT_USER' '$MINIO_ROOT_PASSWORD' &&
+# Endpoint interno: bate em localhost:9000 do namespace de rede do minio.
+INTERNAL_ENDPOINT="http://localhost:9000"
+
+docker run --rm --network "container:${MINIO_CONTAINER}" --entrypoint /bin/sh "$MC_IMAGE" -c "
+  mc alias set local '$INTERNAL_ENDPOINT' '$MINIO_ROOT_USER' '$MINIO_ROOT_PASSWORD' &&
   mc mb --ignore-existing local/$MINIO_BUCKET &&
   if mc admin user svcacct info local '$MINIO_ACCESS_KEY' >/dev/null 2>&1; then
     echo 'Access key ja existe — ok'

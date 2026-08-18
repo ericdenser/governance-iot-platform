@@ -18,7 +18,7 @@ services:
     container_name: ${AGENT_MQTT_CONTAINER_NAME:-agent-mqtt}
     environment:
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
-      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-broker}
+      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mosquitto}
       MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
       MQTT_JWT_REFRESH_MARGIN_S: ${MQTT_JWT_REFRESH_MARGIN_S:-90}
       REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}

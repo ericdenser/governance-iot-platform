@@ -26,7 +26,7 @@ RESET  := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check-env init-secrets net build up up-build down restart ps status logs clean setup
+.PHONY: help check-env init-secrets init-minio net build up up-build down restart ps status logs clean setup
 
 help:  ## Lista todos os comandos disponiveis
 	@printf "$(CYAN)Governance IoT — comandos disponiveis:$(RESET)\n\n"
@@ -69,6 +69,9 @@ init-secrets:  ## Gera secrets aleatorios pros clients Keycloak no .env (idempot
 	done
 	@printf "$(CYAN)Secrets prontos.$(RESET) Rode $(CYAN)make up$(RESET) pra subir.\n"
 
+init-minio:  ## Cria bucket + access key no MinIO (idempotente, usa scripts/init_minio.sh)
+	@bash $(REPO_ROOT)/scripts/init_minio.sh
+
 net:  ## Cria a rede docker compartilhada (idempotente)
 	@if ! docker network inspect $(DOCKER_NETWORK) >/dev/null 2>&1; then \
 		printf "$(CYAN)Criando rede docker '$(DOCKER_NETWORK)'...$(RESET)\n"; \
@@ -92,6 +95,14 @@ up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 			printf "$(GREEN)OK$(RESET) postgres healthy\n"; break; \
 		fi; sleep 2; \
 	done
+	@printf "$(CYAN)Aguardando minio healthy...$(RESET)\n"
+	@for i in $$(seq 1 30); do \
+		if docker inspect --format '{{.State.Health.Status}}' iot-minio 2>/dev/null | grep -q healthy; then \
+			printf "$(GREEN)OK$(RESET) minio healthy\n"; break; \
+		fi; sleep 2; \
+	done
+	@printf "$(CYAN)Bootstrap MinIO (bucket + access key)...$(RESET)\n"
+	@$(MAKE) --no-print-directory init-minio
 	@printf "$(CYAN)Aguardando keycloak healthy (pode levar 30-60s no primeiro boot)...$(RESET)\n"
 	@for i in $$(seq 1 60); do \
 		if docker inspect --format '{{.State.Health.Status}}' iot-keycloak 2>/dev/null | grep -q healthy; then \
