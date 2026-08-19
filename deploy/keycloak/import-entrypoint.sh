@@ -14,6 +14,7 @@ if [ -f "$TEMPLATE" ]; then
     -e "s|\${BFF_CLIENT_SECRET}|${BFF_CLIENT_SECRET:-}|g" \
     -e "s|\${AGENT_MQTT_CLIENT_SECRET}|${AGENT_MQTT_CLIENT_SECRET:-}|g" \
     -e "s|\${HOST_IP}|${HOST_IP:-localhost}|g" \
+    -e "s|\${SPA_HOST_PORT}|${SPA_HOST_PORT:-5173}|g" \
     "$TEMPLATE" > "$TARGET"
 fi
 
