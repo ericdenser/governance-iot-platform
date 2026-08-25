@@ -78,9 +78,6 @@
             "uma_authorization"
           ],
           "client": {
-            "iot-bff": [
-              "ROLE_USER"
-            ],
             "account": [
               "manage-account",
               "view-profile"
@@ -307,7 +304,17 @@
       ],
       "security-admin-console": [],
       "account-console": [],
-      "agent-mqtt": [],
+      "agent-mqtt": [
+        {
+          "id": "b1f0c3d4-1a2b-4c3d-9e5f-000000000001",
+          "name": "GOV_API",
+          "description": "Autoriza chamadas de gov-api pro agent-mqtt (ex.: /agent/broadcast)",
+          "composite": false,
+          "clientRole": true,
+          "containerId": "8ee7680d-b0ff-49ee-8b6e-f228699166ce",
+          "attributes": {}
+        }
+      ],
       "broker": [
         {
           "id": "fea88b36-c95e-40cb-ab92-f8cc74901fe0",
@@ -2655,5 +2662,61 @@
   },
   "clientPolicies": {
     "policies": []
-  }
+  },
+  "users": [
+    {
+      "username": "service-account-gov-api",
+      "enabled": true,
+      "emailVerified": false,
+      "serviceAccountClientId": "gov-api",
+      "clientRoles": {
+        "realm-management": [
+          "manage-clients"
+        ],
+        "agent-mqtt": [
+          "GOV_API"
+        ]
+      }
+    },
+    {
+      "username": "service-account-iot-bff",
+      "enabled": true,
+      "emailVerified": false,
+      "serviceAccountClientId": "iot-bff",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users"
+        ]
+      }
+    },
+    {
+      "username": "service-account-agent-mqtt",
+      "enabled": true,
+      "emailVerified": false,
+      "serviceAccountClientId": "agent-mqtt",
+      "clientRoles": {}
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "IoT",
+      "email": "admin@iot.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${IOT_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "iot-bff": [
+          "ROLE_ADMIN"
+        ]
+      }
+    }
+  ]
 }

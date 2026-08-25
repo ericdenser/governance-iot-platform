@@ -186,6 +186,11 @@ services:
       BFF_CLIENT_SECRET: ${BFF_CLIENT_SECRET}
       AGENT_MQTT_CLIENT_SECRET: ${AGENT_MQTT_CLIENT_SECRET}
       HOST_IP: ${HOST_IP}
+      # Porta do SPA (redirect uris do iot-bff). Default 5173 dev, override 8090 no lab.
+      SPA_HOST_PORT: ${SPA_HOST_PORT:-5173}
+      # Senha do user "admin" do IOT-REALM criado no bootstrap do template.
+      # Login: admin / <IOT_ADMIN_PASSWORD>. Ele traz ROLE_ADMIN via iot-bff.
+      IOT_ADMIN_PASSWORD: ${IOT_ADMIN_PASSWORD:-admin}
     volumes:
       # Writable pra que o entrypoint escreva o JSON renderizado (iot-realm.json)
        - ./deploy/keycloak:/opt/keycloak/data/import
