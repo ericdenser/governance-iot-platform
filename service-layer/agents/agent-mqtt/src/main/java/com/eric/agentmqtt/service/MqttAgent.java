@@ -9,13 +9,14 @@ import com.eric.agentmqtt.model.StatusDTO;
 import com.eric.agentmqtt.model.TelemetryDTO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PostConstruct;
 import java.time.Instant;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
@@ -82,7 +83,7 @@ public class MqttAgent {
         }
     }
 
-    @PostConstruct
+    @EventListener(ApplicationReadyEvent.class)
     public void init() {
         log.info("Inicializando Agent MQTT (Protobuf mTLS)...");
         try {
@@ -176,7 +177,9 @@ public class MqttAgent {
 
     private void startConnectionRoutine() {
         if (isConnecting.compareAndSet(false, true)) {
-            new Thread(this::connectWithRetry, "MqttConnectionThread").start();
+            Thread t = new Thread(this::connectWithRetry, "MqttConnectionThread");
+            t.setDaemon(true);
+            t.start();
         }
     }
 
