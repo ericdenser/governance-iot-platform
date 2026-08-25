@@ -69,6 +69,9 @@ init-secrets:  ## Gera secrets aleatorios pros clients Keycloak no .env (idempot
 	done
 	@printf "$(CYAN)Secrets prontos.$(RESET) Rode $(CYAN)make up$(RESET) pra subir.\n"
 
+upload-bin: ## Upload dos bins bootloader e partition
+	@bash ${REPO_ROOT}/scripts/upload_platform_bins.sh
+
 net:  ## Cria a rede docker compartilhada (idempotente)
 	@if ! docker network inspect $(DOCKER_NETWORK) >/dev/null 2>&1; then \
 		printf "$(CYAN)Criando rede docker '$(DOCKER_NETWORK)'...$(RESET)\n"; \
