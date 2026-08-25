@@ -71,6 +71,11 @@ govapi:
 keycloak:
   url: ${KEYCLOAK_ADMIN_URL}
 
+device:
+  token:
+    # Access token lifespan (segundos) do client Keycloak criado por device.
+    lifespan-s: ${DEVICE_TOKEN_LIFESPAN_S:300}
+
 ota:
   max-firmware-size-mb: 4
   # TTL da presigned URL = base + waves * interval. wave-size e wave-interval-ms

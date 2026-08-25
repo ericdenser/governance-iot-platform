@@ -28,6 +28,11 @@ public class KeycloakDeviceClientService {
     @Value("${keycloak.url}")
     private String keycloakAdminUrl;
 
+    // Janela de acesso pós-revoke = deviceTokenLifespanS + acl_cache_seconds do broker.
+    // Default 300s (5min). Reduzir aumenta refresh calls no Keycloak.
+    @Value("${device.token.lifespan-s:300}")
+    private int deviceTokenLifespanS;
+
 
     public KeycloakDeviceClientService(RestClient restClient, OAuth2AuthorizedClientManager authorizedClientManager) {
         this.restClient = restClient;
@@ -52,7 +57,7 @@ public class KeycloakDeviceClientService {
                         "serviceAccountsEnabled", true,
                         "standardFlowEnabled", false,
                         "directAccessGrantsEnabled", false,
-                        "attributes", Map.of("access.token.lifespan", "3600")                   
+                        "attributes", Map.of("access.token.lifespan", String.valueOf(deviceTokenLifespanS))
                     ))
                     .retrieve()
                     .toBodilessEntity()
