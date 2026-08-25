@@ -72,6 +72,9 @@ init-secrets:  ## Gera secrets aleatorios pros clients Keycloak no .env (idempot
 init-minio:  ## Cria bucket + access key no MinIO (idempotente, usa scripts/init_minio.sh)
 	@bash $(REPO_ROOT)/scripts/init_minio.sh
 
+upload-bin: ## Upload dos bins bootloader e partition
+	@bash ${REPO_ROOT}/scripts/upload_platform_bins.sh
+
 net:  ## Cria a rede docker compartilhada (idempotente)
 	@if ! docker network inspect $(DOCKER_NETWORK) >/dev/null 2>&1; then \
 		printf "$(CYAN)Criando rede docker '$(DOCKER_NETWORK)'...$(RESET)\n"; \
