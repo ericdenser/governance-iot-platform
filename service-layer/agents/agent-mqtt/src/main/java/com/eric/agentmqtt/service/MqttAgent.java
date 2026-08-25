@@ -9,7 +9,6 @@ import com.eric.agentmqtt.model.StatusDTO;
 import com.eric.agentmqtt.model.TelemetryDTO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.Instant;
 import jakarta.annotation.PreDestroy;
@@ -17,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.Resource;
 import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
@@ -77,7 +78,11 @@ public class MqttAgent {
     private MqttClient client;
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
     private final ScheduledExecutorService refreshExecutor =
-            Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "MqttJwtRefreshThread"));
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "MqttJwtRefreshThread");
+                t.setDaemon(true);
+                return t;
+            });
     private volatile ScheduledFuture<?> refreshTask;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -102,7 +107,7 @@ public class MqttAgent {
         return auth.getAccessToken();
     }
 
-    @PostConstruct
+    @EventListener(ApplicationReadyEvent.class)
     public void init() {
         log.info("Inicializando Agent MQTT (Protobuf mTLS)...");
         try {
@@ -196,7 +201,9 @@ public class MqttAgent {
 
     private void startConnectionRoutine() {
         if (isConnecting.compareAndSet(false, true)) {
-            new Thread(this::connectWithRetry, "MqttConnectionThread").start();
+            Thread t = new Thread(this::connectWithRetry, "MqttConnectionThread");
+            t.setDaemon(true);
+            t.start();
         }
     }
 
@@ -252,6 +259,10 @@ public class MqttAgent {
     // todo ACL check enquanto a conexão viver — reconectar antes do token expirar
     // é o que impede o govApi de receber Bearer vencido nos callbacks de ACL.
     private void scheduleJwtRefresh(Instant expiresAt) {
+        if (refreshExecutor.isShutdown()) {
+            log.error("refreshExecutor terminado — encerrando JVM para restart limpo.");
+            System.exit(1);
+        }
         if (refreshTask != null) {
             refreshTask.cancel(false);
         }
