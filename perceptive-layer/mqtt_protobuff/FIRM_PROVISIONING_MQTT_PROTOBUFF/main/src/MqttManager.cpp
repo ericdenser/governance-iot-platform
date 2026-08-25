@@ -8,6 +8,7 @@
 #include "esp_timer.h"
 #include <vector>
 #include <utility>
+#include <algorithm>
 
 #define BROKER_URL     CONFIG_GOV_MQTT_BROKER_URI
 #define MAX_RECONNECT_ATTEMPTS  5
@@ -221,10 +222,12 @@ void MqttManager::init_mqtt(void) {
     esp_mqtt_client_start(mqtt_client);
 
     // Timer de refresh preventivo do JWT.
-    // Reconecta MQTT (TTL - MARGIN) segundos antes do JWT expirar.
+    // Margem efetiva = min(MARGIN configurado, 20% do TTL).
     int remaining = AuthManager::getJwtRemainingSeconds();
-    int refresh_at = remaining - CONFIG_GOV_KC_TOKEN_MARGIN_S;
-    if (refresh_at < 30) refresh_at = 30;  // piso mínimo pra evitar hot loop
+    int margin_eff = std::min(CONFIG_GOV_KC_TOKEN_MARGIN_S, remaining / 5);
+    if (margin_eff < 30) margin_eff = 30;
+    int refresh_at = remaining - margin_eff;
+    if (refresh_at < 60) refresh_at = 60;  // piso: nunca refresh sub-1min
 
     if (s_refresh_timer == NULL) {
         esp_timer_create_args_t args = {};
