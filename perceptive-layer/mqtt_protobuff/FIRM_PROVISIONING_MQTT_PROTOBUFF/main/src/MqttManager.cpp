@@ -177,6 +177,7 @@ void MqttManager::init_mqtt(void) {
 
     mqtt_cfg.broker.verification.skip_cert_common_name_check = true;
 
+    mqtt_cfg.session.disable_clean_session = true;
 
     // Inicializa e registra o event loop do MQTT
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
