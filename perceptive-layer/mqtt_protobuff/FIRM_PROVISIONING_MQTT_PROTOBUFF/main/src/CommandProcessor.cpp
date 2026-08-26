@@ -64,10 +64,19 @@ static void ota_task_routine(void* pvParameters) {
 
     WatchdogManager::removeFromCurrentTask();
 
-    // Libera memoria alocada para os parametros
-    delete params;
+    if (!success) {
+        AppState::setError(
+            ErrorCode::OTA_FAIL,
+            msgOut,
+            {TAG, "ota_task_routine"},
+            {
+                {"attempted_version", params->newVersion},
+                {"firmware_url",      params->url_bin}
+            }
+        );
+    }
 
-    // Finaliza task
+    delete params;
     vTaskDelete(NULL);
 }
 

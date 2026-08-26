@@ -28,15 +28,6 @@ bool OtaManager::verify_and_update(const std::string& newVersion, std::string &u
     if (current_version == newVersion) {
         ESP_LOGE(TAG, "Stopping OTA download due same firmware version.");
         msgOut = "Stopping OTA download due same firmware version";
-        AppState::setError(
-            ErrorCode::OTA_FAIL,
-            msgOut,
-            {TAG, "verify_and_update"},
-            {
-                {"attempted_version", newVersion},
-                {"current_version",   current_version}
-            }
-        );
         return false;
     }
 
