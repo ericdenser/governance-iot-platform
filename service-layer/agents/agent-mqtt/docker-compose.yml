@@ -18,9 +18,12 @@ services:
     container_name: ${AGENT_MQTT_CONTAINER_NAME:-agent-mqtt}
     environment:
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
-      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-broker}
-      MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
-      MQTT_JWT_REFRESH_INTERVAL_MS: ${MQTT_JWT_REFRESH_INTERVAL_MS:-1800000}
+      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mosquitto}
+      MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-8883}
+      AGENT_KEYSTORE_PASS: ${AGENT_KEYSTORE_PASS}
+      AGENT_TRUSTSTORE_PASS: ${AGENT_TRUSTSTORE_PASS}
+      MQTT_KEYSTORE_PATH: file:/opt/certs/agents.p12
+      MQTT_TRUSTSTORE_PATH: file:/opt/certs/truststore.p12
       REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
       REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
@@ -32,8 +35,11 @@ services:
       BROADCAST_WAVE_THRESHOLD: ${BROADCAST_WAVE_THRESHOLD:-100}
       BROADCAST_WAVE_SIZE: ${BROADCAST_WAVE_SIZE:-50}
       BROADCAST_WAVE_INTERVAL_MS: ${BROADCAST_WAVE_INTERVAL_MS:-10000}
+    volumes:
+      - ../../../keys/agents.p12:/opt/certs/agents.p12:ro
+      - ../../../keys/truststore.p12:/opt/certs/truststore.p12:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/actuator/health 2>/dev/null | grep -q UP || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/actuator/health/liveness 2>/dev/null | grep -q UP || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12

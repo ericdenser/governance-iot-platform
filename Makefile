@@ -26,7 +26,7 @@ RESET  := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check-env init-secrets net build up up-build down restart ps status logs clean setup
+.PHONY: help check-env init-secrets init-certs clean-certs net build up up-build down restart ps status logs clean setup upload-bin
 
 help:  ## Lista todos os comandos disponiveis
 	@printf "$(CYAN)Governance IoT — comandos disponiveis:$(RESET)\n\n"
@@ -48,12 +48,14 @@ check-env:  ## Valida que .env existe e tem os campos obrigatorios
 	fi
 	@printf "$(GREEN)OK$(RESET) .env valido\n"
 
-init-secrets:  ## Gera secrets aleatorios pros clients Keycloak no .env (idempotente)
+init-secrets:  ## Gera secrets aleatorios (Keycloak clients + PKI + INFRA_API_KEY) no .env (idempotente)
 	@if [ ! -f "$(ENV_FILE)" ]; then \
 		printf "$(RED)ERRO:$(RESET) .env nao encontrado. Rode $(CYAN)cp .env.example .env$(RESET) antes.\n"; \
 		exit 1; \
 	fi
-	@for var in GOVAPI_CLIENT_SECRET BFF_CLIENT_SECRET AGENT_MQTT_CLIENT_SECRET; do \
+	@# 32 chars alphanum: clients Keycloak + senhas dos p12 (consumidas por init_certs.sh e runtime).
+	@for var in GOVAPI_CLIENT_SECRET BFF_CLIENT_SECRET AGENT_MQTT_CLIENT_SECRET \
+	            CA_PASSWORD AGENT_KEYSTORE_PASS AGENT_TRUSTSTORE_PASS; do \
 		current=$$(grep -E "^$$var=" "$(ENV_FILE)" | cut -d= -f2-); \
 		if [ -z "$$current" ] || [ "$$current" = "changeme" ]; then \
 			new=$$(openssl rand -base64 32 | tr -d '=+/\n' | cut -c1-32); \
@@ -67,7 +69,31 @@ init-secrets:  ## Gera secrets aleatorios pros clients Keycloak no .env (idempot
 			printf "$(YELLOW)SKIP$(RESET) $$var ja setado (nao sobrescreve)\n"; \
 		fi; \
 	done
-	@printf "$(CYAN)Secrets prontos.$(RESET) Rode $(CYAN)make up$(RESET) pra subir.\n"
+	@# UUID pra INFRA_API_KEY (shared secret govApi <-> infra-executor no reload da CRL).
+	@current=$$(grep -E "^INFRA_API_KEY=" "$(ENV_FILE)" | cut -d= -f2-); \
+	if [ -z "$$current" ] || [ "$$current" = "changeme" ]; then \
+		new=$$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen); \
+		if grep -qE "^INFRA_API_KEY=" "$(ENV_FILE)"; then \
+			sed -i "s|^INFRA_API_KEY=.*|INFRA_API_KEY=$$new|" "$(ENV_FILE)"; \
+		else \
+			echo "INFRA_API_KEY=$$new" >> "$(ENV_FILE)"; \
+		fi; \
+		printf "$(GREEN)OK$(RESET) INFRA_API_KEY gerado (UUID)\n"; \
+	else \
+		printf "$(YELLOW)SKIP$(RESET) INFRA_API_KEY ja setado\n"; \
+	fi
+	@printf "$(CYAN)Secrets prontos.$(RESET) Proximo: $(CYAN)make init-certs$(RESET) (PKI mTLS) e $(CYAN)make up-build$(RESET)\n"
+
+init-certs:  ## Gera Root CA + certs (broker, agent) e distribui pros lugares certos (idempotente)
+	@bash $(REPO_ROOT)/scripts/init_certs.sh
+
+clean-certs:  ## Apaga PKI local (forca regeneracao no proximo init-certs)
+	@if command -v docker >/dev/null 2>&1; then \
+		docker run --rm -v $(REPO_ROOT)/mosquitto/config:/cfg alpine:3 \
+			sh -c "rm -rf /cfg/certs /cfg/regras_acesso.acl" >/dev/null 2>&1 || true; \
+	fi
+	@rm -rf $(REPO_ROOT)/keys
+	@printf "$(GREEN)OK$(RESET) certs limpos. Rode $(CYAN)make init-certs$(RESET) pra regenerar.\n"
 
 upload-bin: ## Upload dos bins bootloader e partition
 	@bash ${REPO_ROOT}/scripts/upload_platform_bins.sh
@@ -173,6 +199,5 @@ clean:  ## PARA tudo E REMOVE volumes (DESTRUTIVO — pede confirmacao)
 	done
 	@printf "$(GREEN)OK$(RESET) tudo limpo\n"
 
-setup:  ## (Fase 6) Bootstrap completo: infra + Keycloak + MinIO + migrations
-	@printf "$(YELLOW)TODO:$(RESET) implementado na Fase 6.\n"
-	@printf "Por enquanto rode: $(CYAN)make up$(RESET)\n"
+setup: check-env init-secrets init-certs up-build  ## Bootstrap completo: secrets + PKI + build + up
+	@printf "\n$(GREEN)Setup completo.$(RESET) Ver estado: $(CYAN)make status$(RESET)\n"

@@ -31,7 +31,7 @@ import java.util.List;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.math.BigInteger;
@@ -44,7 +44,7 @@ import java.util.Date;
 @Slf4j
 public class CryptoService {
 
-    @Value("classpath:certs/rootCA.p12")
+    @Value("${crypto.ca-path:file:/opt/certs/rootCA.p12}")
     private Resource rootCaFile;
 
     @Value("${CA_PASSWORD}")
@@ -73,8 +73,8 @@ public class CryptoService {
     private void loadCA() throws Exception {
         log.info("🔐 A carregar Root CA offline do disco...");
         KeyStore ks = KeyStore.getInstance("PKCS12", "BC");
-        try (FileInputStream fis = new FileInputStream(rootCaFile.getFile())) {
-            ks.load(fis, CA_PASSWORD.toCharArray());
+        try (InputStream is = rootCaFile.getInputStream()) {
+            ks.load(is, CA_PASSWORD.toCharArray());
         }
         String alias = ks.aliases().nextElement();
         caCert = (X509Certificate) ks.getCertificate(alias);

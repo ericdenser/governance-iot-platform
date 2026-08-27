@@ -48,8 +48,10 @@ services:
       PROVISIONING_BOOTLOADER_BIN_PATH: ${PROVISIONING_BOOTLOADER_BIN_PATH:-/opt/provisioning-bins/bootloader.bin}
       PROVISIONING_PARTITION_TABLE_BIN_PATH: ${PROVISIONING_PARTITION_TABLE_BIN_PATH:-/opt/provisioning-bins/partition-table.bin}
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+      CRYPTO_CA_PATH: file:/opt/certs/rootCA.p12
     volumes:
       - ${PROVISIONING_BINS_VOLUME:-./provisioning-bins}:/opt/provisioning-bins:ro
+      - ../../../keys/rootCA.p12:/opt/certs/rootCA.p12:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health 2>/dev/null | grep -q UP || exit 1"]
       interval: 10s
