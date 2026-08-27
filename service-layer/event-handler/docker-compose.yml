@@ -26,7 +26,7 @@ services:
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
       GOVAPI_URL: ${GOVAPI_URL:-http://govapi:8082}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/actuator/health 2>/dev/null | grep -q UP || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/actuator/health/liveness 2>/dev/null | grep -q UP || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
