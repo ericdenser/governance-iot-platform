@@ -826,7 +826,7 @@
       "description": "",
       "rootUrl": "http://${HOST_IP}:8083",
       "adminUrl": "http://${HOST_IP}:8083",
-      "baseUrl": "http://${HOST_IP}:8090",
+      "baseUrl": "http://${HOST_IP}:${SPA_HOST_PORT}",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
@@ -835,11 +835,11 @@
       "redirectUris": [
         "http://${HOST_IP}:8083/*",
         "http://${HOST_IP}:8083/login/oauth2/code/keycloak",
-        "http://${HOST_IP}:8090/*"
+        "http://${HOST_IP}:${SPA_HOST_PORT}/*"
       ],
       "webOrigins": [
         "http://${HOST_IP}:8083",
-        "http://${HOST_IP}:8090"
+        "http://${HOST_IP}:${SPA_HOST_PORT}"
       ],
       "notBefore": 0,
       "bearerOnly": false,
@@ -857,7 +857,7 @@
         "client.secret.creation.time": "1785185181",
         "backchannel.logout.session.required": "true",
         "frontchannel.logout.session.required": "true",
-        "post.logout.redirect.uris": "http://${HOST_IP}:8090/*",
+        "post.logout.redirect.uris": "http://${HOST_IP}:${SPA_HOST_PORT}/*",
         "oauth2.device.authorization.grant.enabled": "false",
         "display.on.consent.screen": "false",
         "backchannel.logout.revoke.offline.tokens": "false"
