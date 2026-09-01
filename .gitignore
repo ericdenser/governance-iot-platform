@@ -30,9 +30,11 @@ keys/
 *.iml
 .DS_Store
 
-mosquitto/data/
-mosquitto/log/
-mosquitto/config/regras_acesso.acl
+brokers/mosquitto/data/
+brokers/mosquitto/log/
+brokers/mosquitto/config/regras_acesso.acl
+brokers/mosquitto/config/certs/
+platform-bins/*.bin
 
 backup/
 testcontrollers/

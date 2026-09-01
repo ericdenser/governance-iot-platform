@@ -14,9 +14,9 @@ services:
     ports:
       - "8883:8883"
     volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
+      - ./brokers/mosquitto/config:/mosquitto/config
+      - ./brokers/mosquitto/data:/mosquitto/data
+      - ./brokers/mosquitto/log:/mosquitto/log   
     deploy:
       resources:
         limits:

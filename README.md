@@ -129,11 +129,15 @@ governance-iot/
 
 ├── perceptive-layer/    - Firmware ESP32-S3 (PROVISIONING + OPERATIONAL)
 
-├── mosquitto/           - Broker MQTT
+├── brokers/
 
-├── mbroker-main/        - Broker gRPC
+│ ├── mosquitto/         - Broker MQTT (config + data + log)
 
-├── service-layer/      
+│ └── broker-grpc/       - Broker gRPC (Rust)
+
+├── platform-bins/       - Bootloader + partition-table do ESP32 (base pro provisioning package)
+
+├── service-layer/
 
 │ ├── governanceApi/     - API principal (MDM + CMDB)
 
@@ -151,9 +155,15 @@ governance-iot/
 
 │ └── spa/               - Dashboard administrativo
 
+├── deploy/keycloak/     - Template do realm IOT-REALM + entrypoint de import
+
+├── keys/                - PKI local (gitignored — gerado por `make init-certs`)
+
 ├── docs/                - Documentação técnica
 
-├── scripts/             - Scripts operacionais
+├── scripts/             - Scripts operacionais (init_certs, init_minio, upload_platform_bins, loadtest, …)
+
+├── Makefile             - Targets de bootstrap e deploy (setup, up, down, status, …)
 
 └── docker-compose.yml   - Stack de infra (Postgres, Keycloak, Redis, MinIO, InfluxDB, Broker)
 
@@ -234,33 +244,135 @@ A camada de abstração voltada para os operadores de TI e administradores do si
 
   
 
-## Como subir o seu govApi
+## Deploy
 
-  
+### Pré-requisitos
 
-> Pré-requisitos: Docker + Docker Compose, e uma máquina Linux com pelo menos 6 GB de RAM livre para toda a stack de infra + serviços.
+- **Docker**
+- **≥ 8 GB RAM** livre (infra + serviços + broker)
 
-  
+### Passos comuns (todas as implementações)
+
+Válidos independente da branch — precisam ser feitos uma vez antes do setup específico.
 
 ```bash
-
+# 1. Clone
 git clone https://github.com/ericdenser/governance-iot-platform.git
-
 cd governance-iot-platform
 
+# 2. .env
 cp .env.example .env
+# edite HOST_IP=<ip da maquina>   (obrigatório)
+# demais secrets serão gerados automaticamente pelo init-secrets
+# modifique keys, passwords e nomes como lhe convier 
 
-# edite .env preenchendo secrets (POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD, MINIO_ACCESS_KEY, HOST_IP, …)
-
-docker network create app-net # só na primeira vez
-
-./scripts/up-all.sh
-
+# 3. Binários base do ESP32 (bootloader + partition-table)
+#    O bootloader e o partition já vem prontos junto com 
+#    a versão de provisioning em platform-bins/, modifique se achar necessário:
+#       platform-bins/bootloader.bin
+#       platform-bins/partition-table.bin
+#       platform-bins/provisioning_firmware.bin
+#    O upload pro MinIO acontece automaticamente no `make setup` (via upload-bin).
 ```
 
-  
+Ao final de qualquer setup, assumindo as portas padrões: **`http://<HOST_IP>:5173`** — dashboard SPA (login `admin` / `admin`).
 
-Ao final, o dashboard estará em `http://<HOST_IP>:8090`. Para reiniciar tudo sem rebuild: `./scripts/restart-all.sh`. Detalhes de troubleshooting e deploy em VM estão em [`docs/VM_SETUP.md`](docs/VM_SETUP.md).
+---
+
+### Implementação A — mTLS (branch `main`)
+
+Broker Mosquitto com autenticação por certificado X.509 (Root CA local + cert por device). Revoke via CRL propagada ao broker.
+
+```bash
+git checkout main
+make setup
+```
+
+`make setup` na branch `main` executa em ordem:
+
+| Passo | Target | O que faz |
+|---|---|---|
+| 1 | `check-env` | Valida `.env` e `HOST_IP` |
+| 2 | `init-secrets` | Gera secrets aleatórios: passwords Keycloak/Postgres, client_secrets, **`CA_PASSWORD`**, **`AGENT_KEYSTORE_PASS`**, **`AGENT_TRUSTSTORE_PASS`**, `INFRA_API_KEY` |
+| 3 | `init-certs` | Gera Root CA (ECC) + cert do broker (CN=HOST_IP) + cert do agent + p12s, distribui pros bind mounts do broker/agent |
+| 4 | `up-build` | Build das imagens + `up` sequencial com healthcheck |
+| 5 | `upload-bin` | Publica `platform-bins/*.bin` no MinIO |
+
+Se preferir controle passo-a-passo, os targets podem ser invocados individualmente na mesma ordem.
+
+**Troubleshooting específico:**
+
+- `iot-broker unhealthy` → PKI mal-distribuída ou permissões dos certs. Rode `make clean-certs && make init-certs && docker restart iot-broker`.
+- `govApi crash com "MAC invalid"` → `CA_PASSWORD` no `.env` dessincronizado com `keys/rootCA.p12`. Mesma solução.
+- Depois de rodar `make init-certs`, sempre rebuildar apps que carregam certs: `make up-build`.
+
+---
+
+### Implementação B — OAuth2/JWT (branch `alt/oauth2-jwt`)
+
+Broker Mosquitto com plugin `mosquitto-go-auth` que valida JWT emitido pelo Keycloak. Revoke via invalidação de token/client no Keycloak.
+
+```bash
+git checkout alt/oauth2-jwt
+make setup
+```
+
+`make setup` na branch `alt/oauth2-jwt` executa:
+
+| Passo | Target | O que faz |
+|---|---|---|
+| 1 | `check-env` | Valida `.env` e `HOST_IP` |
+| 2 | `init-secrets` | Gera secrets do Keycloak (`GOVAPI_CLIENT_SECRET`, `AGENT_MQTT_CLIENT_SECRET`, `BFF_CLIENT_SECRET`, `IOT_ADMIN_PASSWORD`) e passwords infra |
+| 3 | `up-build` | Build das imagens + `up` sequencial com healthcheck. Broker sobe com plugin gov-auth que consulta govApi em `/auth/mqtt-verify` e `/auth/mqtt-acl` |
+| 4 | `upload-bin` | Publica `platform-bins/*.bin` no MinIO |
+
+
+
+**Troubleshooting específico:**
+
+- Latência PUBACK sobe em burst inicial (~2min após ramp) → cache do plugin expirando (default `auth_opt_auth_cache_seconds 120`). Aumentar em `brokers/mosquitto/config/mosquitto.conf`.
+- `iot-broker` reinicia loop com log `AUTH_FAILED` → confira se `KEYCLOAK_ISSUER_URI` no `.env` bate com `KC_HOSTNAME` do Keycloak.
+- Token do device expira em runtime → aumentar `DEVICE_TOKEN_LIFESPAN_S` no `.env` (default 300s). Trade-off: revoke mais lento.
+
+---
+
+### Implementação C — DID (planejada)
+
+Autenticação descentralizada com DID emitido pelo próprio device, ancorada em blockchain. Broker gRPC em Rust (`brokers/broker-grpc/`). Ver.
+
+_Setup a ser documentado quando a variante estiver estável._
+
+---
+
+### Comandos do Makefile
+
+Alguns targets são específicos de uma implementação — coluna **Impl** indica.
+
+| Target | Impl | O que faz |
+|---|---|---|
+| `make help` | todas | Lista todos os targets |
+| `make init-secrets` | todas | Gera secrets aleatórios no `.env` (idempotente — não sobrescreve valores já preenchidos) |
+| `make init-certs` | **A** | Gera Root CA + certs mTLS e distribui |
+| `make init-minio` | todas | Cria bucket + access key no MinIO |
+| `make upload-bin` | todas | Publica `platform-bins/*.bin` no MinIO em `gov/firmware/platform/` |
+| `make setup` | todas | Wrapper: encadeia bootstrap + `up-build` (varia por branch) |
+| `make up` | todas | Sobe stack sem rebuild (imagens em cache) |
+| `make up-build` | todas | Rebuild imagens + sobe |
+| `make down` | todas | Para todos containers, mantém volumes |
+| `make restart` | todas | Restart sem rebuild |
+| `make status` | todas | Health + restart count de todos containers |
+| `make logs SVC=iot-govapi` | todas | Tail -f de um container específico |
+| `make clean` | todas | Para tudo E apaga volumes (postgres, minio, influx, redis) — **destrutivo**, pede confirmação |
+| `make clean-certs` | **A** | Apaga PKI local (força regeneração no próximo `init-certs`) |
+
+---
+
+### Troubleshooting comum
+
+- **Portas em conflito**: `SPA_HOST_PORT`, `GOVAPI_HOST_PORT`, etc no `.env`.
+- **Container fica restarting**: `make status` mostra restart count. `docker logs <container>` pra causa raiz.
+- **`make up` demora ou trava**: healthcheck sequencial aguarda cada serviço ficar healthy. Timeout de 120s por serviço — se estourar, cheque logs.
+- **Deploy em VM (rede, portas expostas, etc)**: [`docs/VM_SETUP.md`](docs/VM_SETUP.md).
 
   
 
