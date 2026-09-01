@@ -16,9 +16,9 @@ services:
       - "1883:1883"
       - "8884:8884"
     volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
+      - ./brokers/mosquitto/config:/mosquitto/config
+      - ./brokers/mosquitto/data:/mosquitto/data
+      - ./brokers/mosquitto/log:/mosquitto/log
    
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -1,0 +1,5 @@
+# Coloque aqui os binarios base do ESP32:
+#   platform-bins/bootloader.bin
+#   platform-bins/partition-table.bin
+#
+# Depois: make upload-bin  (publica no MinIO em gov/firmware/platform/)
