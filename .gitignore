@@ -34,7 +34,6 @@ brokers/mosquitto/data/
 brokers/mosquitto/log/
 brokers/mosquitto/config/regras_acesso.acl
 brokers/mosquitto/config/certs/
-platform-bins/*.bin
 
 backup/
 testcontrollers/
