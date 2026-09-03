@@ -89,7 +89,7 @@ init-certs:  ## Gera Root CA + certs (broker, agent) e distribui pros lugares ce
 
 clean-certs:  ## Apaga PKI local (forca regeneracao no proximo init-certs)
 	@if command -v docker >/dev/null 2>&1; then \
-		docker run --rm -v $(REPO_ROOT)/mosquitto/config:/cfg alpine:3 \
+		docker run --rm -v $(REPO_ROOT)/brokers/mosquitto/config:/cfg alpine:3 \
 			sh -c "rm -rf /cfg/certs /cfg/regras_acesso.acl" >/dev/null 2>&1 || true; \
 	fi
 	@rm -rf $(REPO_ROOT)/keys

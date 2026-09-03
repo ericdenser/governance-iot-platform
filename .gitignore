@@ -35,6 +35,11 @@ brokers/mosquitto/log/
 brokers/mosquitto/config/regras_acesso.acl
 brokers/mosquitto/config/certs/
 
+# rootCA.crt e embarcado no firmware em build time (via EMBED_TXTFILES).
+# Distribuido do keys/ pelo init_certs.sh — nao commitar copia local.
+perceptive-layer/mqtt_protobuff/*/main/rootCA.crt
+perceptive-layer/mqtt_protobuff/*/rootCA.crt
+
 backup/
 testcontrollers/
 tips.txt

@@ -300,11 +300,31 @@ make setup
 
 Se preferir controle passo-a-passo, os targets podem ser invocados individualmente na mesma ordem.
 
+**Permissões dos certs/ACL pro Mosquitto (obrigatório):**
+
+O container `iot-broker` roda como user `mosquitto` (UID 1883) e precisa ler os certs + `regras_acesso.acl`. O `init-certs` tenta fazer o `chown` via helper container, mas pode falhar em ambientes sem acesso ao Docker daemon. Se você vir `ERRO chown via docker falhou`, rode manualmente:
+
+```bash
+sudo chown -R 1883:1883 brokers/mosquitto/config/certs brokers/mosquitto/config/regras_acesso.acl
+sudo chmod 640 brokers/mosquitto/config/certs/*.key
+sudo chmod 644 brokers/mosquitto/config/certs/*.crt brokers/mosquitto/config/certs/*.crl
+sudo chmod 0700 brokers/mosquitto/config/regras_acesso.acl
+```
+
+Depois `docker restart iot-broker` — deve subir healthy.
+
 **Troubleshooting específico:**
 
-- `iot-broker unhealthy` → PKI mal-distribuída ou permissões dos certs. Rode `make clean-certs && make init-certs && docker restart iot-broker`.
-- `govApi crash com "MAC invalid"` → `CA_PASSWORD` no `.env` dessincronizado com `keys/rootCA.p12`. Mesma solução.
+- `iot-broker unhealthy` com `OpenSSL Error :: Permission denied` → cert files sem read pro UID 1883. Rode o `sudo chown` acima.
+- `iot-broker unhealthy` com `Unable to load certificate revocation file` → `revoked.crl` corrompido/vazio. Rode `make clean-certs && make init-certs`.
+- `govApi crash com "MAC invalid"` → `CA_PASSWORD` no `.env` dessincronizado com `keys/rootCA.p12`. Rode `make clean-certs && make init-certs && make up-build`.
 - Depois de rodar `make init-certs`, sempre rebuildar apps que carregam certs: `make up-build`.
+
+**Compilando o firmware (mTLS):**
+
+O firmware valida o cert do broker contra a mesma Root CA gerada por `init-certs`. O `init-certs` copia `keys/rootCA.crt` para dentro de cada firmware (`perceptive-layer/mqtt_protobuff/*/rootCA.crt` ou `.../main/rootCA.crt`), e os `CMakeLists.txt` fazem `EMBED_TXTFILES "rootCA.crt"` para embarcar o cert no `.bin` final via símbolo `_binary_rootCA_crt_start`. Se você trocar a Root CA (novo `make init-certs`), **recompile e re-flash** os firmwares — o cert antigo embarcado não valida contra o broker novo.
+
+Erro `undefined reference to _binary_rootCA_crt_start` no link do firmware → `rootCA.crt` não foi copiado pra pasta do firmware. Rode `make init-certs` novamente (na raiz do repo) antes de `idf.py build`.
 
 ---
 

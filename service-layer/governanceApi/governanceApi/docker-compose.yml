@@ -49,9 +49,14 @@ services:
       PROVISIONING_PARTITION_TABLE_BIN_PATH: ${PROVISIONING_PARTITION_TABLE_BIN_PATH:-/opt/provisioning-bins/partition-table.bin}
       SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
       CRYPTO_CA_PATH: file:/opt/certs/rootCA.p12
+      MQTT_CRL_PATH: /opt/certs/mosquitto/revoked.crl
+      INFRA_EXECUTOR_URL: ${INFRA_EXECUTOR_URL:-http://infra-executor:8089}
     volumes:
       - ${PROVISIONING_BINS_VOLUME:-./provisioning-bins}:/opt/provisioning-bins:ro
       - ../../../keys/rootCA.p12:/opt/certs/rootCA.p12:ro
+      # CRL gravado pelo govApi (revoke + scheduler) e lido pelo broker via bind mount
+      # em brokers/mosquitto/config/certs no host — mesmo diretorio pros dois lados.
+      - ../../../brokers/mosquitto/config/certs:/opt/certs/mosquitto:rw
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health 2>/dev/null | grep -q UP || exit 1"]
       interval: 10s

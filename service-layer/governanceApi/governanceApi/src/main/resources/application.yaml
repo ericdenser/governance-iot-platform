@@ -53,11 +53,12 @@ spring:
 infra:
   api-key: ${INFRA_API_KEY}
   ca-password: ${CA_PASSWORD}
+  executor-url: ${INFRA_EXECUTOR_URL:http://infra-executor:8089}
 
 mqtt:
   broker-url: mqtt://localhost:8883
   client-id: governance-api-publisher
-  crl-path: ../../mosquitto/config/certs/revoked.crl
+  crl-path: ${MQTT_CRL_PATH:/opt/certs/mosquitto/revoked.crl}
 
 agent:
   url: ${AGENT_MQTT_URL}

@@ -37,6 +37,9 @@ public class DeviceRevokeService {
     @Value("${infra.api-key}")
     private String infraApiKey;
 
+    @Value("${infra.executor-url}")
+    private String infraExecutorUrl;
+
     @Value("${mqtt.crl-path}")
     private String crlPath;
 
@@ -85,18 +88,18 @@ public class DeviceRevokeService {
             log.info("File CRL updated successfully.");
 
         } catch (Exception e) {
-            log.error("Falha ao gerar arquivo CRL no disco.", e);
-            throw new RuntimeException("Falha ao gravar arquivo CRL no disco");
+            log.error("Falha ao gerar arquivo CRL no disco (path={}).", crlPath, e);
+            throw new RuntimeException("Falha ao gravar arquivo CRL no disco: " + e.getMessage(), e);
         }
-         
+
 
         try {
             restClient.post()
-                .uri("http://localhost:8089/reload-crl")
+                .uri(infraExecutorUrl + "/restart-broker")
                 .header("X-API-Key", infraApiKey)
                 .retrieve()
                 .toBodilessEntity();
-            log.info("Broker updated.");
+            log.info("Broker restarted — sessoes TLS ativas derrubadas, revogado bloqueado no proximo handshake.");
         } catch (ResourceAccessException e) {
             log.error("Container infra-executor (Go) está offline ou inacessível. Causa raiz: {}", e.getMessage());
             throw new InfrastructureException(ErrorCode.INFRASTRUCTURE_UNAVAILABLE,

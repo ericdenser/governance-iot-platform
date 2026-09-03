@@ -5,7 +5,7 @@
 # depois distribui pros caminhos que cada container/servico espera.
 #
 # Idempotente: se um arquivo ja existe em keys/, nao regenera.
-# Pra recomecar do zero: rm -rf keys/ mosquitto/config/certs/
+# Pra recomecar do zero: make clean-certs
 #
 # Envs lidos do .env da raiz do repo:
 #   HOST_IP                 — usado no CN + SAN IP do cert do broker
@@ -43,7 +43,7 @@ for v in HOST_IP CA_PASSWORD AGENT_KEYSTORE_PASS AGENT_TRUSTSTORE_PASS; do
 done
 
 KEYS_DIR="$REPO_ROOT/keys"
-MOSQ_CERTS="$REPO_ROOT/mosquitto/config/certs"
+MOSQ_CERTS="$REPO_ROOT/brokers/mosquitto/config/certs"
 
 mkdir -p "$KEYS_DIR" "$MOSQ_CERTS"
 
@@ -163,13 +163,13 @@ printf "\n${CYAN}Distribuindo certs...${RESET}\n"
 # Reset ownership do MOSQ_CERTS pro user host antes de sobrescrever
 # (chown final abaixo passa pra 1883 pro mosquitto poder ler).
 if command -v docker >/dev/null 2>&1; then
-  docker run --rm -v "$MOSQ_CERTS:/certs" -v "$REPO_ROOT/mosquitto/config:/cfg" \
+  docker run --rm -v "$MOSQ_CERTS:/certs" -v "$REPO_ROOT/brokers/mosquitto/config:/cfg" \
     alpine:3 sh -c "chown -R $(id -u):$(id -g) /certs /cfg/regras_acesso.acl 2>/dev/null || true" \
     >/dev/null 2>&1 || true
 fi
 
 cp -f rootCA.crt mosquitto.crt mosquitto.key "$MOSQ_CERTS/"
-log_ok "mosquitto/config/certs/ (rootCA.crt, mosquitto.crt, mosquitto.key)"
+log_ok "brokers/mosquitto/config/certs/ (rootCA.crt, mosquitto.crt, mosquitto.key)"
 
 if [ ! -s "$MOSQ_CERTS/revoked.crl" ]; then
   # Mosquitto exige PEM valido (nao aceita arquivo vazio). Gera CRL sem
@@ -187,27 +187,41 @@ EOF
   openssl ca -batch -config "$KEYS_DIR/openssl-ca.cnf" -gencrl \
     -keyfile "$KEYS_DIR/rootCA.key" -cert "$KEYS_DIR/rootCA.crt" \
     -out "$MOSQ_CERTS/revoked.crl" 2>/dev/null
-  log_gen "mosquitto/config/certs/revoked.crl (vazio, assinado pela CA)"
+  log_gen "brokers/mosquitto/config/certs/revoked.crl (vazio, assinado pela CA)"
 else
   log_skip "revoked.crl (mantendo existente)"
 fi
 
-ACL_SRC="$REPO_ROOT/mosquitto/config/regras_acesso_example.acl"
-ACL_DST="$REPO_ROOT/mosquitto/config/regras_acesso.acl"
+ACL_SRC="$REPO_ROOT/brokers/mosquitto/config/regras_acesso_example.acl"
+ACL_DST="$REPO_ROOT/brokers/mosquitto/config/regras_acesso.acl"
 if [ ! -f "$ACL_DST" ] && [ -f "$ACL_SRC" ]; then
   cp "$ACL_SRC" "$ACL_DST"
-  log_gen "mosquitto/config/regras_acesso.acl (copia do example)"
+  log_gen "brokers/mosquitto/config/regras_acesso.acl (copia do example)"
 else
   log_skip "regras_acesso.acl"
 fi
 
+# rootCA.crt embarcado no firmware (via EMBED_TXTFILES no CMakeLists de cada firmware).
+# Copiado pro nivel do CMakeLists de cada projeto.
+FIRM_PROV_DIR="$REPO_ROOT/perceptive-layer/mqtt_protobuff/FIRM_PROVISIONING_MQTT_PROTOBUFF/main"
+FIRM_OP_DIR="$REPO_ROOT/perceptive-layer/mqtt_protobuff/governance_core"
+for target_dir in "$FIRM_PROV_DIR" "$FIRM_OP_DIR"; do
+  if [ -d "$target_dir" ]; then
+    cp -f "$KEYS_DIR/rootCA.crt" "$target_dir/rootCA.crt"
+    log_ok "$target_dir/rootCA.crt (firmware embed)"
+  fi
+done
+
 chmod 644 "$KEYS_DIR"/rootCA.p12 "$KEYS_DIR"/agents.p12 "$KEYS_DIR"/truststore.p12
 log_ok "keys/*.p12 (644 — apps Java montam via volume, UID 100 le)"
 
-chmod 644 "$MOSQ_CERTS"/*.crt "$MOSQ_CERTS"/*.crl 2>/dev/null || true
+chmod 644 "$MOSQ_CERTS"/*.crt 2>/dev/null || true
 chmod 640 "$MOSQ_CERTS"/*.key 2>/dev/null || true
+# CRL: 0666 pra govApi (uid app, nao root) poder reescrever via bind mount.
+# Seguro: CRL e publica por design (lista de certs revogados distribuida em rede).
+chmod 666 "$MOSQ_CERTS"/*.crl 2>/dev/null || true
 if command -v docker >/dev/null 2>&1; then
-  docker run --rm -v "$MOSQ_CERTS:/certs" -v "$REPO_ROOT/mosquitto/config:/cfg" \
+  docker run --rm -v "$MOSQ_CERTS:/certs" -v "$REPO_ROOT/brokers/mosquitto/config:/cfg" \
     alpine:3 sh -c "chown -R 1883:1883 /certs /cfg/regras_acesso.acl && chmod 0700 /cfg/regras_acesso.acl" \
     >/dev/null 2>&1 || log_err "chown via docker falhou (mosquitto pode nao conseguir ler certs)"
 fi

@@ -36,6 +36,9 @@ public class CrlScheduler {
     @Value("${infra.api-key}")
     private String infraApiKey;
 
+    @Value("${infra.executor-url}")
+    private String infraExecutorUrl;
+
     public CrlScheduler(CryptoService cryptoService,
                                 DeviceRepository deviceRepository,
                                 RestClient restClient) {
@@ -69,7 +72,7 @@ public class CrlScheduler {
             // Notifica o broker para recarregar
             try {
                 restClient.post()
-                    .uri("http://localhost:8089/reload-crl")
+                    .uri(infraExecutorUrl + "/reload-crl")
                     .header("X-API-Key", infraApiKey)
                     .retrieve()
                     .toBodilessEntity();
