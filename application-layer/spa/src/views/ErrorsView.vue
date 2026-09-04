@@ -105,6 +105,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 .detail-row td { background: var(--panel); border-top: none; padding: 0; }
 .detail-box { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border-left: 2px solid var(--danger); margin: var(--space-1) 0 var(--space-2); }
-.detail-message { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
+.detail-message { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 .detail-pre { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); white-space: pre-wrap; word-break: break-all; margin: 0; line-height: 1.5; }
 </style>
