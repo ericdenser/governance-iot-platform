@@ -439,9 +439,13 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .chevron { display: inline-block; font-size: var(--text-lg); color: var(--text-muted); transition: transform var(--transition); }
 .chevron.open { transform: rotate(90deg); }
 .detail-row td { background: var(--panel); padding: var(--space-3) var(--space-4); }
-.subtbl { width: 100%; border-collapse: collapse; }
+.subtbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .subtbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-2) 0; text-align: left; }
-.subtbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); }
+.subtbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); vertical-align: top; }
+.subtbl th:nth-child(1), .subtbl td:nth-child(1) { width: 22%; }
+.subtbl th:nth-child(2), .subtbl td:nth-child(2) { width: 16%; }
+.subtbl th:nth-child(4), .subtbl td:nth-child(4) { width: 20%; }
+.subtbl td:nth-child(3) { word-wrap: break-word; overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
 
 /* ── Modal shell ─────────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
