@@ -16,7 +16,6 @@ import type {
   CreateFirmwareRequest
 } from '@/types/models'
 import { errorMessage, errorMessageFromBlob } from '@/utils/errors'
-import { confirm } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
 
 const authStore = useAuthStore()
@@ -154,22 +153,6 @@ const doCreate = async () => {
   } finally { creating.value = false }
 }
 
-// ── Set Provisioning ──────────────────────────────────────────────────────────
-const doSetProvisioning = async (id: string) => {
-  const ok = await confirm({
-    title: 'Definir como firmware de provisionamento?',
-    message: 'O provisioning atual perderá esse status.',
-    confirmText: 'Definir',
-  })
-  if (!ok) return
-  try {
-    await firmwareApi.setProvisioning(id); await load()
-    toast.success('Firmware de provisionamento atualizado')
-  } catch (e: unknown) {
-    toast.error(errorMessage(e, 'Erro ao definir firmware de provisioning.'))
-  }
-}
-
 // ── Generate Flash Package ────────────────────────────────────────────────────
 const showPackage = ref(false)
 const packageForm = ref({ deviceName: '', wifiSsid: '', wifiPass: '', groupId: '' })
@@ -250,7 +233,6 @@ onMounted(async () => {
             <th>Provisioning</th>
             <th>Enviado por</th>
             <th>Criado em</th>
-            <th v-if="authStore.isAdmin">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -274,15 +256,9 @@ onMounted(async () => {
             </td>
             <td class="text-sm">{{ fw.createdByUsername ?? '—' }}</td>
             <td class="text-muted text-sm">{{ fmt(fw.createdAt) }}</td>
-            <td v-if="authStore.isAdmin" @click.stop>
-              <AppButton
-                v-if="!fw.ownerGroupId && !fw.provisioningFirmware"
-                size="sm" variant="ghost"
-                @click="doSetProvisioning(fw.firmwareId)">Provisioning</AppButton>
-            </td>
           </tr>
           <tr v-if="!firmwares.length">
-            <td :colspan="authStore.isAdmin ? 8 : 7" class="empty">Nenhum firmware cadastrado</td>
+            <td colspan="7" class="empty">Nenhum firmware cadastrado</td>
           </tr>
         </tbody>
       </table>
