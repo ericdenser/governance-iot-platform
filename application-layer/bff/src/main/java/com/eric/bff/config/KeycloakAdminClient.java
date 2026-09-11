@@ -84,41 +84,6 @@ public class KeycloakAdminClient {
                 .toBodilessEntity();
     }
 
-    // Atribui uma client role a um user. Keycloak nao aplica default roles em
-    // users criados via Admin API — precisa fazer o role mapping explicito apos
-    // o createUser pra o user receber ROLE_USER do client iot-bff.
-    public void assignClientRole(String userId, String clientId, String roleName) {
-        String token = fetchClientCredentialsToken();
-
-        // /clients?clientId=X retorna array; o id interno (UUID) e o [0].id
-        List<Map<String, Object>> clients = restClient.get()
-                .uri(adminUrl + "/clients?clientId=" + clientId)
-                .header("Authorization", "Bearer " + token)
-                .retrieve()
-                .body(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
-        if (clients == null || clients.isEmpty() || clients.get(0).get("id") == null) {
-            throw new IllegalStateException("Client '" + clientId + "' nao encontrado.");
-        }
-        String clientUuid = (String) clients.get(0).get("id");
-
-        Map<String, Object> role = restClient.get()
-                .uri(adminUrl + "/clients/" + clientUuid + "/roles/" + roleName)
-                .header("Authorization", "Bearer " + token)
-                .retrieve()
-                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
-        if (role == null || role.get("id") == null) {
-            throw new IllegalStateException("Client role '" + roleName + "' nao encontrada em '" + clientId + "'.");
-        }
-
-        restClient.post()
-                .uri(adminUrl + "/users/" + userId + "/role-mappings/clients/" + clientUuid)
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(List.of(Map.of("id", role.get("id"), "name", role.get("name"))))
-                .retrieve()
-                .toBodilessEntity();
-    }
-
     public void resetPassword(String userId, String newPassword, boolean temporary) {
         String token = fetchClientCredentialsToken();
         Map<String, Object> credential = Map.of(
