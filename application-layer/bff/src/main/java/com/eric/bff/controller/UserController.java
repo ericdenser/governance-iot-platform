@@ -78,6 +78,7 @@ public class UserController {
 
         String newId = keycloakAdminClient.createUser(rep);
         logger.info("Usuário criado no Keycloak: id={} username={}", newId, req.username());
+        // ROLE_USER e herdada automaticamente via composite default-roles-iot-bff do realm.
         Map<String, Object> created = keycloakAdminClient.getUser(newId);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created));
     }
