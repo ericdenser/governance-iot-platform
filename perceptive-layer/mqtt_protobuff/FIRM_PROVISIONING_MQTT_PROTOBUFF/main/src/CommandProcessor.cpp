@@ -20,6 +20,7 @@ static const char* TAG = "CommandProcessor";
 struct OtaTaskParams {
     std::string newVersion;
     std::string url_bin;
+    std::string newVersionSHA;
 };
 
 struct RebootParams { uint32_t delay_ms; };
@@ -55,9 +56,10 @@ static void ota_task_routine(void* pvParameters) {
     std::string msgOut;
     WatchdogManager::addToCurrentTask();
 
-    bool success = OtaManager::verify_and_update(
+    OtaManager::verify_and_update(
         params->newVersion,
         params->url_bin,
+        params->newVersionSHA,
         msgOut,
         []{ WatchdogManager::reset(); }
     );
@@ -160,6 +162,7 @@ bool CommandProcessor::manage(const std::string& payload) {
 
             cJSON* newVersion = cJSON_GetObjectItem(payloadJson, "version");
             cJSON* url = cJSON_GetObjectItem(payloadJson, "url");
+            cJSON* newVersionSHA = cJSON_GetObjectItem(payloadJson, "versionSHA");
 
             if (newVersion == NULL) {
                 ESP_LOGE(TAG, "Key 'version' not found in payload.");
@@ -171,6 +174,11 @@ bool CommandProcessor::manage(const std::string& payload) {
                 AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Missing 'url'", {TAG, "manage"});
                 break;
             }
+            if (newVersionSHA == NULL) {
+                ESP_LOGE(TAG, "Key 'versionSHA' not found in payload.");
+                AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Missing 'versionSHA'", {TAG, "manage"});
+                break;
+            }
 
             if (!cJSON_IsString(newVersion)) {
                 ESP_LOGE(TAG, "'version' is not a string.");
@@ -180,6 +188,11 @@ bool CommandProcessor::manage(const std::string& payload) {
             if (!cJSON_IsString(url)) {
                 ESP_LOGE(TAG, "'url' is not a string.");
                 AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "Url is not a string", {TAG, "manage"});
+                break;
+            }
+            if (!cJSON_IsString(newVersionSHA)) {
+                ESP_LOGE(TAG, "'versionSHA' is not a string.");
+                AppState::setError(ErrorCode::COMMAND_RESPONSE_INVALID, "versionSHA is not a string", {TAG, "manage"});
                 break;
             }
 
@@ -195,6 +208,7 @@ bool CommandProcessor::manage(const std::string& payload) {
             OtaTaskParams* params = new OtaTaskParams();
             params->newVersion = newVersion->valuestring;
             params->url_bin = url->valuestring;
+            params->newVersionSHA = newVersionSHA->valuestring;
 
             BaseType_t xReturned = xTaskCreate(
                 ota_task_routine,
@@ -323,40 +337,48 @@ bool CommandProcessor::manage(const std::string& payload) {
                 break;
             }
 
-            char prev_ver_buf[32] = {0};
-            char fw_ver_buf[32]   = {0};
+            char prev_ver_buf[32]  = {0};
+            char prev_sha_buf[65]  = {0};
+            char fw_ver_buf[32]    = {0};
+            char fw_sha_buf[65]    = {0};
             nvs_handle_t otaHandle;
             if (nvs_open("ota_store", NVS_READONLY, &otaHandle) == ESP_OK) {
                 size_t pv_len = sizeof(prev_ver_buf);
+                size_t ps_len = sizeof(prev_sha_buf);
                 nvs_get_str(otaHandle, "prev_ver", prev_ver_buf, &pv_len);
+                nvs_get_str(otaHandle, "prev_sha", prev_sha_buf, &ps_len);
                 nvs_close(otaHandle);
             }
             nvs_handle_t mainReadHandle;
             if (nvs_open("main_store", NVS_READONLY, &mainReadHandle) == ESP_OK) {
                 size_t fv_len = sizeof(fw_ver_buf);
+                size_t fs_len = sizeof(fw_sha_buf);
                 nvs_get_str(mainReadHandle, "fw_version", fw_ver_buf, &fv_len);
+                nvs_get_str(mainReadHandle, "fw_sha",     fw_sha_buf, &fs_len);
                 nvs_close(mainReadHandle);
             }
 
             std::string prev_ver   = prev_ver_buf;
+            std::string prev_sha   = prev_sha_buf;
             std::string fw_version = fw_ver_buf;
+            std::string fw_sha     = fw_sha_buf;
 
-            if (prev_ver.empty()) {
-                ESP_LOGE(TAG, "Nenhuma versão anterior registrada no NVS — rollback abortado.");
+            if (prev_sha.empty()) {
+                ESP_LOGE(TAG, "Nenhum SHA anterior registrado no NVS — rollback abortado.");
                 AppState::setError(ErrorCode::FIRMWARE_ROLLBACK_FAILED,
-                                   "Nenhuma versão anterior registrada", {TAG, "manage"});
+                                   "Nenhum firmware anterior registrado", {TAG, "manage"});
                 break;
             }
 
-            if (prev_ver == fw_version) {
-                ESP_LOGW(TAG, "Já na versão anterior (v%s) — rollback ignorado.", fw_version.c_str());
+            if (prev_sha == fw_sha) {
+                ESP_LOGW(TAG, "Já no firmware anterior (v%s) — rollback ignorado.", fw_version.c_str());
                 break;
             }
 
-            // Restaura fw_version e apaga prev_ver antes do reboot
             nvs_handle_t mainHandle;
             if (nvs_open("main_store", NVS_READWRITE, &mainHandle) == ESP_OK) {
                 nvs_set_str(mainHandle, "fw_version", prev_ver.c_str());
+                nvs_set_str(mainHandle, "fw_sha",     prev_sha.c_str());
                 nvs_commit(mainHandle);
                 nvs_close(mainHandle);
             }
@@ -364,6 +386,7 @@ bool CommandProcessor::manage(const std::string& payload) {
             nvs_handle_t otaWriteHandle;
             if (nvs_open("ota_store", NVS_READWRITE, &otaWriteHandle) == ESP_OK) {
                 nvs_erase_key(otaWriteHandle, "prev_ver");
+                nvs_erase_key(otaWriteHandle, "prev_sha");
                 nvs_commit(otaWriteHandle);
                 nvs_close(otaWriteHandle);
             }

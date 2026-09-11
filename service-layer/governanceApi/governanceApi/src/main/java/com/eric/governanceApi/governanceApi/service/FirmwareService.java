@@ -212,9 +212,9 @@ public class FirmwareService {
         FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
             .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
                 "Versão " + versionId + " não encontrada."));
-
+                
         requireFirmwareAccess(v.getFirmware());
-
+            
         if (v.getStatus() == FirmwareStatus.DEPRECATED) {
             throw new IllegalArgumentException(
                 "Versão v" + v.getVersion() + " está DEPRECATED e não pode ser deployada.");
@@ -230,7 +230,8 @@ public class FirmwareService {
 
         Map<String, Object> payload = Map.of(
             "version", v.getVersion(),
-            "url",     signedUrl
+            "url",     signedUrl,
+            "versionSHA", v.getSha256()
         );
 
         List<String> activeDevs = new ArrayList<>();

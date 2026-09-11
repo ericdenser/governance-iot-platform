@@ -11,7 +11,7 @@ class OtaManager {
   public:
 
   //Verifica se há atualizacão no servidor e inicia o download se necessário.
-  static bool verify_and_update(const std::string& newVersion, std::string &urlCheck, std::string &msgOut, std::function<void()> onProgressCallback = nullptr);
+  static bool verify_and_update(const std::string& newVersion, std::string &urlCheck, std::string &newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback = nullptr);
 
   //Marca o firmware atual como válido.
   static void set_valid_version();
@@ -23,7 +23,7 @@ class OtaManager {
   private:
 
   // Faz o download OTA do binário e aplica a atualizacão.
-  static bool download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const std::string& newVersion, std::string &msgOut, std::function<void()> onProgressCallback = nullptr);
+  static bool download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const std::string& newVersion, const std::string& newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback = nullptr);
 };
 
 #endif
