@@ -9,6 +9,7 @@
 
 static const char *TAG = "OtaManager";
 static std::string current_version;
+static std::string current_version_sha;
 
 static bool nvs_read_str(const char* ns, const char* key, char* buf, size_t len) {
     nvs_handle_t h;
@@ -19,19 +20,29 @@ static bool nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
 }
 
 
-bool OtaManager::verify_and_update(const std::string& newVersion, std::string &url_bin, std::string &msgOut, std::function<void()> onProgressCallback) {
+bool OtaManager::verify_and_update(const std::string& newVersion, std::string &url_bin, std::string &newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback) {
 
-    char fw_buf[32] = {0};
-    nvs_read_str("main_store", "fw_version", fw_buf, sizeof(fw_buf));
-    current_version = fw_buf;
+    char fw_buf[32]  = {0};
+    char fwSHA_buf[65] = {0};
+    nvs_read_str("main_store", "fw_version", fw_buf,    sizeof(fw_buf));
+    nvs_read_str("main_store", "fw_sha",     fwSHA_buf, sizeof(fwSHA_buf));
+    current_version     = fw_buf;
+    current_version_sha = fwSHA_buf;
 
-    if (current_version == newVersion) {
-        ESP_LOGE(TAG, "Stopping OTA download due same firmware version.");
-        msgOut = "Stopping OTA download due same firmware version";
+    if (current_version_sha == newVersionSHA) {
+        ESP_LOGE(TAG, "Stopping OTA download due same firmware SHA256.");
+        msgOut = "Stopping OTA download due same firmware SHA256";
+        AppState::setError(
+            ErrorCode::OTA_FAIL,
+            msgOut,
+            {TAG, "verify_and_update"},
+            {
+                {"attempted_versionSHA", newVersionSHA},
+                {"current_versionSHA",   current_version_sha}
+            }
+        );
         return false;
     }
-
-    // ============= VERIFICAÇÃO DE VERSÕES INVÁLIDAS ================
 
     nvs_handle_t nvsHandle;
     if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) != ESP_OK) {
@@ -40,39 +51,41 @@ bool OtaManager::verify_and_update(const std::string& newVersion, std::string &u
         return false;
     }
 
-    char invalid_ver_buf[32] = {0};
-    size_t iv_len = sizeof(invalid_ver_buf);
-    bool invalid_ver_exists = (nvs_get_str(nvsHandle, "invalid_ver", invalid_ver_buf, &iv_len) == ESP_OK)
-                               && (invalid_ver_buf[0] != '\0');
-    std::string invalid_ver = invalid_ver_buf;
+    char invalid_sha_buf[65] = {0};
+    size_t is_len = sizeof(invalid_sha_buf);
+    bool invalid_sha_exists = (nvs_get_str(nvsHandle, "invalid_sha", invalid_sha_buf, &is_len) == ESP_OK)
+                               && (invalid_sha_buf[0] != '\0');
+    std::string invalid_sha = invalid_sha_buf;
 
-    ESP_LOGI(TAG, "Versao Nova: %s | Versao atual: %s | Versao invalida: %s",
-             newVersion.c_str(), current_version.c_str(), invalid_ver.c_str());
+    ESP_LOGI(TAG, "Versao nova: %s (SHA %s) | SHA atual: %s | SHA banido: %s",
+             newVersion.c_str(), newVersionSHA.c_str(),
+             current_version_sha.c_str(),
+             invalid_sha.c_str());
 
-    if (invalid_ver_exists && newVersion == invalid_ver) {
-        msgOut = "Versao " + newVersion + " marcada como invalida. Update abortado.";
+    if (invalid_sha_exists && newVersionSHA == invalid_sha) {
+        msgOut = "Firmware v" + newVersion + " marcado como invalido (SHA banido). Update abortado.";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
         nvs_close(nvsHandle);
         return false;
     }
 
-    // ==========================================================
-
-    if (!newVersion.empty()) {
+    if (!newVersion.empty() && !newVersionSHA.empty()) {
         msgOut = "Atualizacao encontrada! Baixando v" + newVersion;
 
         nvs_set_str(nvsHandle, "prev_ver",   current_version.c_str());
         nvs_set_str(nvsHandle, "target_ver", newVersion.c_str());
+        nvs_set_str(nvsHandle, "prev_sha", current_version_sha.c_str());
+        nvs_set_str(nvsHandle, "target_sha", newVersionSHA.c_str());
         nvs_commit(nvsHandle);
 
         ESP_LOGI(TAG, "%s", msgOut.c_str());
 
-        bool result = download_OTA(url_bin, nvsHandle, newVersion, msgOut, onProgressCallback);
+        bool result = download_OTA(url_bin, nvsHandle, newVersion, newVersionSHA, msgOut, onProgressCallback);
         nvs_close(nvsHandle);
         return result;
 
     } else {
-        msgOut = "Firmware enviado nao possui versao.";
+        msgOut = "Firmware enviado nao possui versao ou nao possui sha reportado.";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
         nvs_close(nvsHandle);
         return true;
@@ -93,6 +106,7 @@ void OtaManager::set_valid_version() {
                 nvs_handle_t nvsHandle;
                 if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) == ESP_OK) {
                     nvs_erase_key(nvsHandle, "target_ver");
+                    nvs_erase_key(nvsHandle, "target_sha");
                     nvs_set_i8(nvsHandle, "ota_notified", 0);
                     nvs_commit(nvsHandle);
                     nvs_close(nvsHandle);
@@ -110,20 +124,27 @@ void OtaManager::set_invalid_version(std::string& reason) {
     nvs_handle_t nvsHandle;
     if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) == ESP_OK) {
 
-        char fw_buf[32] = {0};
-        nvs_read_str("main_store", "fw_version", fw_buf, sizeof(fw_buf));
-        current_version = fw_buf;
+        char fw_buf[32]  = {0};
+        char sha_buf[65] = {0};
+        nvs_read_str("main_store", "fw_version", fw_buf,  sizeof(fw_buf));
+        nvs_read_str("main_store", "fw_sha",     sha_buf, sizeof(sha_buf));
+        current_version     = fw_buf;
+        current_version_sha = sha_buf;
 
         ESP_LOGE(TAG, "ROLLBACK ATIVADO, REASON: [%s].", reason.c_str());
 
+        // invalid_ver = payload pro backend; invalid_sha = validacao interna.
         nvs_set_str(nvsHandle, "invalid_ver",    current_version.c_str());
+        nvs_set_str(nvsHandle, "invalid_sha",    current_version_sha.c_str());
         nvs_set_str(nvsHandle, "rollbackReason", reason.c_str());
         nvs_set_str(nvsHandle, "target_ver",     current_version.c_str());
+        nvs_set_str(nvsHandle, "target_sha",     current_version_sha.c_str());
 
         nvs_commit(nvsHandle);
         nvs_close(nvsHandle);
 
-        ESP_LOGW(TAG, "Versao [%s] banida no NVS. Iniciando rollback...", current_version.c_str());
+        ESP_LOGW(TAG, "Firmware v%s (SHA %s) banido no NVS. Iniciando rollback...",
+                 current_version.c_str(), current_version_sha.c_str());
         esp_ota_mark_app_invalid_rollback_and_reboot();
     }
 }
@@ -144,53 +165,70 @@ bool OtaManager::verify_rollback(std::string& msgOut, std::string& outInvalidVer
     }
 
     char target_ver_buf[32] = {0};
+    char target_sha_buf[65] = {0};
     size_t tv_len = sizeof(target_ver_buf);
+    size_t ts_len = sizeof(target_sha_buf);
     nvs_get_str(nvsHandle, "target_ver", target_ver_buf, &tv_len);
+    nvs_get_str(nvsHandle, "target_sha", target_sha_buf, &ts_len);
     std::string target_ver = target_ver_buf;
+    std::string target_sha = target_sha_buf;
 
-    if (target_ver.empty()) {
-        char invalid_ver_buf[32] = {0};
-        size_t iv_len = sizeof(invalid_ver_buf);
-        if (nvs_get_str(nvsHandle, "invalid_ver", invalid_ver_buf, &iv_len) == ESP_OK
-            && invalid_ver_buf[0] != '\0') {
+    if (target_sha.empty()) {
+        char invalid_sha_buf[65] = {0};
+        size_t is_len = sizeof(invalid_sha_buf);
+        if (nvs_get_str(nvsHandle, "invalid_sha", invalid_sha_buf, &is_len) == ESP_OK
+            && invalid_sha_buf[0] != '\0') {
             nvs_close(nvsHandle);
             ESP_LOGI(TAG, "Rollback ja foi processado neste boot");
             return false;
         }
 
         nvs_close(nvsHandle);
-        msgOut = "Rollback na particao '" + std::string(invalid_partition->label) + "' — versao alvo desconhecida";
+        msgOut = "Rollback na particao '" + std::string(invalid_partition->label) + "' — firmware alvo desconhecido";
         ESP_LOGW(TAG, "%s", msgOut.c_str());
         return true;
     }
 
-    ESP_LOGE(TAG, "ROLLBACK: particao='%s' versao_falhou=%s", invalid_partition->label, target_ver.c_str());
+    ESP_LOGE(TAG, "ROLLBACK: particao='%s' versao_falhou=v%s SHA=%s",
+             invalid_partition->label, target_ver.c_str(), target_sha.c_str());
 
     nvs_set_str(nvsHandle, "invalid_ver", target_ver.c_str());
+    nvs_set_str(nvsHandle, "invalid_sha", target_sha.c_str());
     nvs_erase_key(nvsHandle, "target_ver");
+    nvs_erase_key(nvsHandle, "target_sha");
 
     char prev_ver_buf[32] = {0};
+    char prev_sha_buf[65] = {0};
     size_t pv_len = sizeof(prev_ver_buf);
-    if (nvs_get_str(nvsHandle, "prev_ver", prev_ver_buf, &pv_len) == ESP_OK && prev_ver_buf[0] != '\0') {
+    size_t ps_len = sizeof(prev_sha_buf);
+    bool has_prev_ver = (nvs_get_str(nvsHandle, "prev_ver", prev_ver_buf, &pv_len) == ESP_OK)
+                         && (prev_ver_buf[0] != '\0');
+    bool has_prev_sha = (nvs_get_str(nvsHandle, "prev_sha", prev_sha_buf, &ps_len) == ESP_OK)
+                         && (prev_sha_buf[0] != '\0');
+    if (has_prev_ver || has_prev_sha) {
         nvs_handle_t mainHandle;
         if (nvs_open("main_store", NVS_READWRITE, &mainHandle) == ESP_OK) {
-            nvs_set_str(mainHandle, "fw_version", prev_ver_buf);
+            if (has_prev_ver) nvs_set_str(mainHandle, "fw_version", prev_ver_buf);
+            if (has_prev_sha) nvs_set_str(mainHandle, "fw_sha",     prev_sha_buf);
             nvs_commit(mainHandle);
             nvs_close(mainHandle);
-            ESP_LOGI(TAG, "fw_version restaurada para v%s apos rollback.", prev_ver_buf);
+            ESP_LOGI(TAG, "main_store restaurado apos rollback (v%s SHA %s).",
+                     has_prev_ver ? prev_ver_buf : "?",
+                     has_prev_sha ? prev_sha_buf : "?");
         }
     }
 
     nvs_commit(nvsHandle);
     nvs_close(nvsHandle);
 
+    // outInvalidVer vai no payload (contrato backend: params.invalid_ver = versao).
     outInvalidVer = target_ver;
-    msgOut = "Versao " + target_ver +
-             " causou rollback na particao '" + invalid_partition->label + "'. Banida.";
+    msgOut = "Firmware v" + target_ver +
+             " causou rollback na particao '" + invalid_partition->label + "'. Banido.";
     return true;
 }
 
-bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const std::string& newVersion, std::string &msgOut, std::function<void()> onProgressCallback) {
+bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const std::string& newVersion, const std::string& newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback) {
 
     esp_http_client_config_t http_config {};
     http_config.url = urlBin.c_str();
@@ -245,11 +283,12 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const
         nvs_handle_t mainHandle;
         if (nvs_open("main_store", NVS_READWRITE, &mainHandle) == ESP_OK) {
             nvs_set_str(mainHandle, "fw_version", newVersion.c_str());
+            nvs_set_str(mainHandle, "fw_sha", newVersionSHA.c_str());
             nvs_commit(mainHandle);
             nvs_close(mainHandle);
-            ESP_LOGI(TAG, "Versao %s salva em main_store/fw_version.", newVersion.c_str());
+            ESP_LOGI(TAG, "Versao %s e SHA %s salvos em main_store/fw_version e fw_sha.", newVersion.c_str(), newVersionSHA.c_str());
         } else {
-            ESP_LOGW(TAG, "Nao foi possivel salvar fw_version na main_store.");
+            ESP_LOGW(TAG, "Nao foi possivel salvar fw_version ou fw_sha na main_store.");
         }
 
         msgOut = "Upgrade successful. Rebooting...";

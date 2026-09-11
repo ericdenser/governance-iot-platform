@@ -584,15 +584,13 @@ static void handle_error() {
 
     // Fila drenada — decide próximo estado com base nos erros ainda ativos
     if (AppState::hasActiveErrors()) {
-        // Há erros sem resolução confirmada: aguarda instrução do MDM
-        SLOG_W("Erros ativos sem resolução. Aguardando instrução do MDM...");
-        //AppState::transition(DeviceState::WAITING_RESPONSE, {TAG, "handle_error"});
-        AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_error"});
+        SLOG_W("Erros ativos sem resolução. Tentando retomar operação...");
     } else {
         // Todos os erros foram resolvidos
         SLOG_I("Todos os erros resolvidos. Retomando operação.");
-        AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_error"});
+        
     }
+    AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_error"});
 }
 
 // ---- REBOOTING --------------------------------------------------------------

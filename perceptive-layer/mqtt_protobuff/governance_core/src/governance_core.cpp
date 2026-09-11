@@ -691,10 +691,39 @@ static void handle_boot_audit() {
         nvs_get_i8(otaHandler, "ota_notified", &otaNotified);
 
         if (!otaNotified) {
-            AppState::transition(DeviceState::OTA_SUCCESSFUL, {TAG, "handle_boot_audit"});
-            SLOG_I("OTA_SUCCESSFUL detectado, publicando status.");
-            publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(),
-                                 ssid.c_str(), (uint32_t)AppState::get());
+            // OTA e rollback comandado zeram ota_notified via mesmo mecanismo do
+            // bootloader — distingue pelo lastCommand pra publicar o estado certo.
+            bool wasRollback = false;
+            char lastCmdBuf[32] = {0};
+            nvs_handle_t cmdRO;
+            if (nvs_open("command_store", NVS_READONLY, &cmdRO) == ESP_OK) {
+                int8_t cmdNotified = 1;
+                size_t lc_len = sizeof(lastCmdBuf);
+                nvs_get_i8(cmdRO, "commandNotified", &cmdNotified);
+                nvs_get_str(cmdRO, "lastCommand", lastCmdBuf, &lc_len);
+                nvs_close(cmdRO);
+                wasRollback = (!cmdNotified && std::string(lastCmdBuf) == "FIRMWARE_ROLLBACK");
+            }
+
+            if (wasRollback) {
+                char detail[64];
+                snprintf(detail, sizeof(detail), "{\"command\":\"FIRMWARE_ROLLBACK\"}");
+                AppState::transition(DeviceState::COMMAND_COMPLETE, {TAG, "handle_boot_audit"});
+                SLOG_I("Rollback comandado concluído — publicando COMMAND_COMPLETE.");
+                publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(),
+                                     ssid.c_str(), (uint32_t)AppState::get(), detail);
+                nvs_handle_t cmdRW;
+                if (nvs_open("command_store", NVS_READWRITE, &cmdRW) == ESP_OK) {
+                    nvs_set_i8(cmdRW, "commandNotified", 1);
+                    nvs_commit(cmdRW);
+                    nvs_close(cmdRW);
+                }
+            } else {
+                AppState::transition(DeviceState::OTA_SUCCESSFUL, {TAG, "handle_boot_audit"});
+                SLOG_I("OTA_SUCCESSFUL detectado, publicando status.");
+                publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(),
+                                     ssid.c_str(), (uint32_t)AppState::get());
+            }
             nvs_set_i8(otaHandler, "ota_notified", 1);
             nvs_commit(otaHandler);
             nvs_close(otaHandler);
@@ -814,7 +843,7 @@ static void boot_timeout_task(void* /*pv*/) {
     // #if !defined(CONFIG_GOV_FIRMWARE_DEEP_SLEEP)
     //     if (s_operational_reached) {  };
     // #endif
-   // Correção: Adicionado o %d para casar com a variável inteira do timeout
+
     ESP_LOGE(TAG, "Boot timeout: device ligado a mais de %d segundos (estado atual: %s)",
         (int)CONFIG_GOV_BOOT_TIMEOUT_S, AppState::toString(AppState::get()));
     
