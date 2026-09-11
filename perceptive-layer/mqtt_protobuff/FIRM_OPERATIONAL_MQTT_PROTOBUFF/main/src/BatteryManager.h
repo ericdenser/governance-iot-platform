@@ -1,4 +1,5 @@
 #pragma once
+#include <bmp280.h>
 
 class BatteryManager {
 public:
