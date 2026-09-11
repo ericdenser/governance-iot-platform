@@ -23,10 +23,14 @@ public record DeviceDetailDTO(
     String issuedByUsername,
     Double lastLatitude,
     Double lastLongitude,
-    // Bateria vem só do hot state (não persiste no CMDB) — null se device sem ADC
-    // ou se ainda não publicou telemetria com battery_mv.
+    // Bateria/RSSI/tempC vem só do hot state (não persiste no CMDB) — null se
+    // device sem sensor correspondente ou ainda não publicou a reading.
     Double batteryMv,
-    Instant batteryTs
+    Instant batteryTs,
+    Double rssi,
+    Instant rssiTs,
+    Double tempC,
+    Instant tempTs
 ) {
     public static DeviceDetailDTO from(Device device, LiveState liveState) {
         FirmwareVersion v = device.getFirmwareVersion();
@@ -46,7 +50,11 @@ public record DeviceDetailDTO(
             preferLive(liveState.latitude(), device.getLastLatitude()),
             preferLive(liveState.longitude(), device.getLastLongitude()),
             liveState.batteryMv(),
-            liveState.batteryTs()
+            liveState.batteryTs(),
+            liveState.rssi(),
+            liveState.rssiTs(),
+            liveState.tempC(),
+            liveState.tempTs()
         );
     }
 

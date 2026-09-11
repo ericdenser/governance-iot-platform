@@ -13,18 +13,25 @@ import type {
   CommandBatchDTO,
   CommandRecordResponseDTO,
   CommandRequest,
-  CommandResultResponseDTO,
   CommandStatus,
   DeviceCommands,
   DeviceSummaryDTO,
   DeployableVersionProjection,
 } from '@/types/models'
 import { errorMessage } from '@/utils/errors'
+import { toast } from '@/composables/useToast'
+import { confirm } from '@/composables/useConfirm'
 
 type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
+// ── State ──────────────────────────────────────────────────────────────────
+
+const devices = ref<DeviceSummaryDTO[]>([])
+const loadingDevices = ref(true)
+const selectedDeviceIds = ref<Set<string>>(new Set())
+
 const batches = ref<CommandBatchDTO[]>([])
-const loading = ref(true)
+const loadingBatches = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
 
@@ -32,119 +39,174 @@ const expanded = ref<Set<string>>(new Set())
 const recordsByBatch = ref<Record<string, CommandRecordResponseDTO[]>>({})
 const loadingRecords = ref<Set<string>>(new Set())
 
-// ── Wizard state ──────────────────────────────────────────────────────────────
-type Step = 'command' | 'firmware' | 'devices' | 'params' | 'result'
+const runningCommand = ref<DeviceCommands | null>(null)
 
-const showWizard = ref(false)
-const wizardStep = ref<Step>('command')
-const sending = ref(false)
-const sendError = ref('')
+// ── Static commands ────────────────────────────────────────────────────────
 
-const selectedCommand = ref<DeviceCommands | ''>('')
-const selectedFirmware = ref<DeployableVersionProjection | null>(null)
-const selectedDeviceIds = ref<Set<string>>(new Set())
-const durationS = ref(60)
+interface CommandDef {
+  value: DeviceCommands
+  label: string
+  desc: string
+  destructive?: boolean
+  needsFirmware?: boolean
+  needsDuration?: boolean
+}
 
-const allDevices = ref<DeviceSummaryDTO[]>([])
-const allFirmwares = ref<DeployableVersionProjection[]>([])
-const loadingDevices = ref(false)
-const loadingFirmwares = ref(false)
-
-const sendResult = ref<CommandResultResponseDTO | null>(null)
-
-const COMMANDS: Array<{ value: DeviceCommands; label: string; desc: string }> = [
-  { value: 'UPDATE',            label: 'Atualizar Firmware',  desc: 'OTA — instala uma versão específica no device' },
-  { value: 'REBOOT',            label: 'Reiniciar',            desc: 'Reinicia o ESP imediatamente' },
-  { value: 'DEEP_SLEEP',        label: 'Deep Sleep',           desc: 'Coloca o device em modo de economia por N segundos' },
-  { value: 'FIRMWARE_ROLLBACK', label: 'Rollback de Firmware', desc: 'Reverte para a versão anterior registrada no NVS' },
+const COMMANDS: CommandDef[] = [
+  { value: 'UPDATE',            label: 'Atualizar Firmware', desc: 'OTA — instala uma versão específica no device', needsFirmware: true },
+  { value: 'REBOOT',            label: 'Reiniciar',           desc: 'Reinicia o ESP imediatamente' },
+  { value: 'DEEP_SLEEP',        label: 'Deep Sleep',          desc: 'Modo de economia por N segundos', needsDuration: true },
+  { value: 'FIRMWARE_ROLLBACK', label: 'Rollback Firmware',   desc: 'Reverte pra versão anterior no NVS', destructive: true },
 ]
 
-// ── Wizard navigation ─────────────────────────────────────────────────────────
+// ── Filtered devices (ACTIVE only — reachable) ─────────────────────────────
 
-const openWizard = async () => {
-  selectedCommand.value = ''
-  selectedFirmware.value = null
-  selectedDeviceIds.value = new Set()
-  durationS.value = 60
-  sendError.value = ''
-  sendResult.value = null
-  wizardStep.value = 'command'
-  showWizard.value = true
-}
+const targetDevices = computed(() => devices.value.filter(d => d.status === 'ACTIVE'))
 
-const pickCommand = async (cmd: DeviceCommands) => {
-  selectedCommand.value = cmd
-  if (cmd === 'UPDATE') {
-    wizardStep.value = 'firmware'
-    await loadFirmwares()
-  } else {
-    wizardStep.value = 'devices'
-    await loadDevices()
-  }
-}
+const selectedCount = computed(() => {
+  let n = 0
+  for (const d of targetDevices.value) if (selectedDeviceIds.value.has(d.deviceId)) n++
+  return n
+})
 
-const pickFirmware = async (fw: DeployableVersionProjection) => {
-  selectedFirmware.value = fw
-  wizardStep.value = 'devices'
-  await loadDevices()
-}
-
-const finishDevices = () => {
-  if (!selectedDeviceIds.value.size) { sendError.value = 'Selecione ao menos um device.'; return }
-  sendError.value = ''
-  if (selectedCommand.value === 'DEEP_SLEEP') {
-    wizardStep.value = 'params'
-  } else {
-    doSend()
-  }
-}
-
-const toggleDevice = (deviceId: string) => {
+const toggleDevice = (id: string) => {
   const next = new Set(selectedDeviceIds.value)
-  if (next.has(deviceId)) next.delete(deviceId); else next.add(deviceId)
+  if (next.has(id)) next.delete(id); else next.add(id)
   selectedDeviceIds.value = next
 }
 
-const loadDevices = async () => {
-  loadingDevices.value = true
-  try {
-    allDevices.value = await devicesApi.listAll()
-  } finally { loadingDevices.value = false }
+const selectAll = () => {
+  selectedDeviceIds.value = new Set(targetDevices.value.map(d => d.deviceId))
 }
 
-const loadFirmwares = async () => {
+const clearSelection = () => {
+  selectedDeviceIds.value = new Set()
+}
+
+// ── Firmware picker modal (UPDATE) ─────────────────────────────────────────
+
+const showFirmwareModal = ref(false)
+const firmwareList = ref<DeployableVersionProjection[]>([])
+const loadingFirmwares = ref(false)
+const pickedFirmware = ref<DeployableVersionProjection | null>(null)
+
+const openFirmwareModal = async () => {
+  pickedFirmware.value = null
+  showFirmwareModal.value = true
   loadingFirmwares.value = true
   try {
     const r = await firmwareApi.listDeployable()
-    allFirmwares.value = Array.isArray(r.data) ? r.data : []
+    firmwareList.value = Array.isArray(r.data) ? r.data : []
   } finally { loadingFirmwares.value = false }
 }
 
-// ── Send ──────────────────────────────────────────────────────────────────────
-
-const doSend = async () => {
-  if (!selectedCommand.value) return
-  sending.value = true; sendError.value = ''
-  try {
-    const payload: CommandRequest = {
-      command: selectedCommand.value,
-      targetDevices: [...selectedDeviceIds.value],
-    }
-    if (selectedCommand.value === 'UPDATE' && selectedFirmware.value) {
-      payload.params = { versionId: selectedFirmware.value.versionId }
-    } else if (selectedCommand.value === 'DEEP_SLEEP') {
-      payload.params = { duration_s: Number(durationS.value) }
-    }
-    const r = await commandsApi.send(payload)
-    sendResult.value = r.data
-    wizardStep.value = 'result'
-    page.value = 0; await load()
-  } catch (e: unknown) {
-    sendError.value = errorMessage(e, 'Erro ao enviar comando.')
-  } finally { sending.value = false }
+const confirmFirmwareAndSend = async () => {
+  if (!pickedFirmware.value) return
+  showFirmwareModal.value = false
+  await send('UPDATE', { versionId: pickedFirmware.value.versionId })
 }
 
-// ── History table ─────────────────────────────────────────────────────────────
+// filtra devices que ja tem a versao escolhida
+const deviceHasVersion = (d: DeviceSummaryDTO) =>
+  !!pickedFirmware.value && d.firmwareVersionId === pickedFirmware.value.versionId
+
+// ── Deep sleep modal ───────────────────────────────────────────────────────
+
+const showDeepSleepModal = ref(false)
+const durationS = ref(300)
+const durationError = ref('')
+
+const openDeepSleepModal = () => {
+  durationS.value = 300
+  durationError.value = ''
+  showDeepSleepModal.value = true
+}
+
+const confirmDeepSleepAndSend = async () => {
+  const v = Number(durationS.value)
+  if (!Number.isFinite(v) || v < 10 || v > 259200) {
+    durationError.value = 'Duração deve estar entre 10 e 259200 segundos (3 dias).'
+    return
+  }
+  showDeepSleepModal.value = false
+  await send('DEEP_SLEEP', { duration_s: v })
+}
+
+// ── Command dispatch ───────────────────────────────────────────────────────
+
+const onCommandClick = async (cmd: CommandDef) => {
+  if (selectedCount.value === 0) {
+    toast.error('Selecione ao menos um device.')
+    return
+  }
+  if (runningCommand.value) return
+
+  if (cmd.needsFirmware) return openFirmwareModal()
+  if (cmd.needsDuration) return openDeepSleepModal()
+
+  if (cmd.destructive) {
+    const ok = await confirm({
+      title: 'Rollback de firmware',
+      message: `Reverte ${selectedCount.value} device(s) para a versão anterior no NVS. Ação irreversível.`,
+      confirmText: 'Reverter',
+    })
+    if (!ok) return
+  } else {
+    const ok = await confirm({
+      title: 'Reiniciar devices',
+      message: `Reinicia ${selectedCount.value} device(s) agora.`,
+      confirmText: 'Reiniciar',
+    })
+    if (!ok) return
+  }
+
+  await send(cmd.value)
+}
+
+const send = async (command: DeviceCommands, params?: Record<string, unknown>) => {
+  runningCommand.value = command
+  try {
+    const targetIds = [...selectedDeviceIds.value].filter(id =>
+      targetDevices.value.some(d => d.deviceId === id)
+    )
+    if (!targetIds.length) {
+      toast.error('Nenhum device válido selecionado.')
+      return
+    }
+    const payload: CommandRequest = { command, targetDevices: targetIds }
+    if (params) payload.params = params
+    const r = await commandsApi.send(payload)
+    const { publishedTo, failed, skipped } = r.data
+    const parts: string[] = []
+    if (publishedTo.length) parts.push(`${publishedTo.length} publicado(s)`)
+    if (failed.length) parts.push(`${failed.length} falhou no broker`)
+    if (skipped.length) parts.push(`${skipped.length} ignorado(s)`)
+    if (publishedTo.length && !failed.length) {
+      toast.success(`${command}: ${parts.join(' · ')}`)
+    } else if (!publishedTo.length && (failed.length || skipped.length)) {
+      toast.error(`${command}: ${parts.join(' · ') || 'nenhum device processado'}`)
+    } else {
+      toast.info(`${command}: ${parts.join(' · ')}`)
+    }
+    page.value = 0
+    await loadBatches()
+    clearSelection()
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, `Erro ao enviar ${command}.`))
+  } finally { runningCommand.value = null }
+}
+
+// ── History (batches) ──────────────────────────────────────────────────────
+
+const aggregateVariant = (s: CommandAggregateStatus): BadgeVariant =>
+  (({ IN_PROGRESS: 'warning', SUCCESS: 'success', PARTIAL: 'warning', FAILED: 'danger' } as Record<CommandAggregateStatus, BadgeVariant>)[s] ?? 'muted')
+
+const AGGREGATE_LABEL: Record<CommandAggregateStatus, string> = {
+  IN_PROGRESS: 'EM ANDAMENTO',
+  SUCCESS: 'SUCESSO',
+  PARTIAL: 'PARCIAL',
+  FAILED: 'FALHOU',
+}
 
 const statusVariant = (s: CommandStatus): BadgeVariant =>
   (({
@@ -156,32 +218,19 @@ const statusVariant = (s: CommandStatus): BadgeVariant =>
     SKIPPED: 'muted',
   } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
 
-const aggregateVariant = (s: CommandAggregateStatus): BadgeVariant =>
-  (({
-    IN_PROGRESS: 'warning',
-    SUCCESS: 'success',
-    PARTIAL: 'warning',
-    FAILED: 'danger',
-  } as Record<CommandAggregateStatus, BadgeVariant>)[s] ?? 'muted')
-
-const AGGREGATE_LABEL: Record<CommandAggregateStatus, string> = {
-  IN_PROGRESS: 'EM ANDAMENTO',
-  SUCCESS: 'SUCESSO',
-  PARTIAL: 'PARCIAL',
-  FAILED: 'FALHOU',
-}
-
 const countsSummary = (b: CommandBatchDTO) => {
   const parts: string[] = []
   if (b.success) parts.push(`${b.success} ok`)
   if (b.pending) parts.push(`${b.pending} pendente(s)`)
-  if (b.failed) parts.push(`${b.failed} falhou/falharam`)
-  if (b.skipped) parts.push(`${b.skipped} pulado(s)`)
+  if (b.failed) parts.push(`${b.failed} falhou`)
+  if (b.skipped) parts.push(`${b.skipped} ignorado(s)`)
   if (b.notFound) parts.push(`${b.notFound} não encontrado(s)`)
   return parts.join(' · ') || '—'
 }
 
-const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmtTime = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
+const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
+const fmtFull = (iso: string | null) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const toggleExpand = async (batchId: string) => {
   const next = new Set(expanded.value)
@@ -207,288 +256,295 @@ const toggleExpand = async (batchId: string) => {
   }
 }
 
-const load = async () => {
-  const r = await commandsApi.list(page.value)
-  batches.value = r.data.content ?? []
-  totalPages.value = r.data.page?.totalPages ?? 1
-  expanded.value = new Set()
-  recordsByBatch.value = {}
+// ── Loaders ────────────────────────────────────────────────────────────────
+
+const loadDevices = async () => {
+  loadingDevices.value = true
+  try {
+    devices.value = await devicesApi.listAll()
+  } finally { loadingDevices.value = false }
 }
-const changePage = (p: number) => { page.value = p; load() }
 
-// `listDeployable` já filtra DEPRECATED e o escopo do usuário no backend
-const deployableList = computed(() => allFirmwares.value)
+const loadBatches = async () => {
+  loadingBatches.value = true
+  try {
+    const r = await commandsApi.list(page.value)
+    batches.value = r.data.content ?? []
+    totalPages.value = r.data.page?.totalPages ?? 1
+    expanded.value = new Set()
+    recordsByBatch.value = {}
+  } finally { loadingBatches.value = false }
+}
 
-const deviceNameById = computed(() => {
-  const m: Record<string, string> = {}
-  for (const d of allDevices.value) m[d.deviceId] = d.name
-  return m
-})
+const changePage = async (p: number) => { page.value = p; await loadBatches() }
 
-// Compara pelo versionId (UUID único) — antes comparava só a string da versão, ambíguo com múltiplos firmwares
-const isSameVersion = (d: DeviceSummaryDTO) =>
-  selectedCommand.value === 'UPDATE' && !!selectedFirmware.value && d.firmwareVersionId === selectedFirmware.value.versionId
-
-onMounted(async () => { try { await load() } finally { loading.value = false } })
+onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
 </script>
 
 <template>
   <AppLayout>
-    <AppCard title="Comandos">
-      <template #actions>
-        <AppButton size="lg" variant="primary" @click="openWizard">
-          Enviar Comando
-        </AppButton>
-      </template>
+    <div class="cmd-grid">
+      <!-- ── Target Devices ───────────────────────────────────────────── -->
+      <AppCard title="Devices Alvo">
+        <template #actions>
+          <div class="target-actions">
+            <button v-if="targetDevices.length && selectedCount < targetDevices.length"
+              class="mini-btn" @click="selectAll">Todos</button>
+            <button v-if="selectedCount" class="mini-btn" @click="clearSelection">Limpar</button>
+          </div>
+        </template>
 
-      <div v-if="loading" class="empty">Carregando...</div>
-      <table v-else class="tbl">
-        <thead>
-          <tr>
-            <th></th><th>Tipo</th><th>Status</th><th>Resultado</th>
-            <th>Enviado por</th><th>Enviado em</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="b in batches" :key="b.batchId">
-            <tr class="batch-row" @click="toggleExpand(b.batchId)">
-              <td class="chevron-cell">
-                <span class="chevron" :class="{ open: expanded.has(b.batchId) }">›</span>
-              </td>
-              <td class="mono text-sm">
-                {{ b.commandType }}<span v-if="b.targetVersionLabel" class="text-muted"> v{{ b.targetVersionLabel }}</span>
-              </td>
-              <td><AppBadge :variant="aggregateVariant(b.aggregateStatus)">{{ AGGREGATE_LABEL[b.aggregateStatus] ?? b.aggregateStatus }}</AppBadge></td>
-              <td class="text-muted text-sm">{{ countsSummary(b) }}</td>
-              <td class="text-sm">{{ b.createdByUsername ?? '—' }}</td>
-              <td class="text-muted text-sm">{{ fmt(b.sentAt) }}</td>
-            </tr>
-            <tr v-if="expanded.has(b.batchId)" class="detail-row">
-              <td colspan="6">
-                <div v-if="loadingRecords.has(b.batchId)" class="empty">Carregando devices...</div>
-                <table v-else class="subtbl">
-                  <thead>
-                    <tr><th>Dispositivo</th><th>Status</th><th>Razão</th><th>Concluído em</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="c in recordsByBatch[b.batchId] ?? []" :key="c.commandId">
-                      <td class="text-sm">{{ c.deviceName ?? c.deviceId ?? '—' }}</td>
-                      <td><AppBadge :variant="statusVariant(c.status)">{{ c.status }}</AppBadge></td>
-                      <td class="text-muted text-sm">{{ c.errorMessage ?? '—' }}</td>
-                      <td class="text-muted text-sm">{{ fmt(c.completedAt) }}</td>
-                    </tr>
-                    <tr v-if="!(recordsByBatch[b.batchId] ?? []).length">
-                      <td colspan="4" class="empty">Nenhum device visível neste batch</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          </template>
-          <tr v-if="!batches.length"><td colspan="6" class="empty">Nenhum comando encontrado</td></tr>
-        </tbody>
-      </table>
+        <p class="panel-hint mono">
+          {{ targetDevices.length }} ACTIVE
+          <span v-if="selectedCount" class="selected-count"> · {{ selectedCount }} selecionado(s)</span>
+        </p>
 
-      <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />
-    </AppCard>
+        <div v-if="loadingDevices" class="empty">Carregando devices...</div>
+        <div v-else-if="!targetDevices.length" class="empty">Nenhum device ACTIVE disponível</div>
+        <div v-else class="device-list">
+          <label v-for="d in targetDevices" :key="d.deviceId"
+            class="device-row"
+            :class="{ selected: selectedDeviceIds.has(d.deviceId) }">
+            <input type="checkbox"
+              :checked="selectedDeviceIds.has(d.deviceId)"
+              @change="toggleDevice(d.deviceId)" />
+            <div class="dev-body">
+              <span class="dev-name">{{ d.name }}</span>
+              <span class="dev-meta mono">{{ d.firmwareVersion ? 'v' + d.firmwareVersion : '—' }}</span>
+            </div>
+            <span class="status-dot ok"></span>
+          </label>
+        </div>
+      </AppCard>
 
-    <!-- ── Wizard ───────────────────────────────────────────────────────────── -->
-    <div v-if="showWizard" class="modal-overlay" @click.self="showWizard = false">
-      <div class="modal">
+      <!-- ── Available Commands ───────────────────────────────────────── -->
+      <AppCard title="Comandos Disponíveis">
+        <p class="panel-hint mono">Clique pra disparar nos selecionados</p>
 
-        <!-- Step: choose command -->
-        <template v-if="wizardStep === 'command'">
-          <h3 class="modal-title">Selecionar Comando</h3>
-          <div class="cmd-grid">
-            <button
-              v-for="cmd in COMMANDS"
-              :key="cmd.value"
-              class="cmd-card"
-              @click="pickCommand(cmd.value)"
-            >
+        <div class="cmd-list">
+          <button v-for="cmd in COMMANDS" :key="cmd.value"
+            class="cmd-card"
+            :class="{ destructive: cmd.destructive, running: runningCommand === cmd.value }"
+            :disabled="selectedCount === 0 || runningCommand !== null"
+            @click="onCommandClick(cmd)">
+            <span class="cmd-icon-slot" :class="{ destructive: cmd.destructive }">
+              <!-- Icon per command -->
+              <svg v-if="cmd.value === 'UPDATE'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+              <svg v-else-if="cmd.value === 'REBOOT'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{ spin: runningCommand === cmd.value }"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <svg v-else-if="cmd.value === 'DEEP_SLEEP'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              <svg v-else-if="cmd.value === 'FIRMWARE_ROLLBACK'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            </span>
+            <div class="cmd-body">
               <span class="cmd-label">{{ cmd.label }}</span>
-              <span class="cmd-desc">{{ cmd.desc }}</span>
-            </button>
-          </div>
-          <div class="modal-footer" style="justify-content: flex-end;">
-            <AppButton variant="ghost" @click="showWizard = false">Cancelar</AppButton>
-          </div>
-        </template>
+              <span class="cmd-desc mono">{{ cmd.desc }}</span>
+            </div>
+          </button>
+        </div>
+      </AppCard>
 
-        <!-- Step: choose firmware (UPDATE only) -->
-        <template v-else-if="wizardStep === 'firmware'">
-          <h3 class="modal-title">Selecionar Versão de Firmware</h3>
-          <div v-if="loadingFirmwares" class="empty">Carregando firmwares...</div>
-          <div v-else-if="!deployableList.length" class="empty">Nenhum firmware disponível para deploy.</div>
-          <div v-else class="fw-list">
-            <button
-              v-for="fw in deployableList"
-              :key="fw.versionId"
-              class="fw-row"
-              :class="{ selected: selectedFirmware?.versionId === fw.versionId }"
-              @click="pickFirmware(fw)"
-            >
-              <span class="fw-version"><strong>{{ fw.firmwareName }}</strong> <span class="mono">v{{ fw.version }}</span></span>
-              <AppBadge :variant="fw.status === 'DEPLOYED' ? 'success' : 'muted'" class="fw-badge">{{ fw.status }}</AppBadge>
-              <span class="fw-date text-muted">{{ fw.uploadedAt ? new Date(fw.uploadedAt).toLocaleDateString('pt-BR') : '' }}</span>
-            </button>
-          </div>
-          <div class="modal-footer">
-            <AppButton variant="ghost" @click="wizardStep = 'command'">Voltar</AppButton>
-          </div>
-        </template>
+      <!-- ── Dispatch History ─────────────────────────────────────────── -->
+      <AppCard title="Histórico">
+        <p class="panel-hint mono">Últimos comandos · clique pra expandir</p>
 
-        <!-- Step: choose devices -->
-        <template v-else-if="wizardStep === 'devices'">
-          <h3 class="modal-title">Selecionar Dispositivos</h3>
-          <p v-if="selectedCommand === 'UPDATE' && selectedFirmware" class="step-hint">
-            Firmware: <strong>{{ selectedFirmware.firmwareName }}</strong> <span class="mono">v{{ selectedFirmware.version }}</span>
-          </p>
-          <div v-if="loadingDevices" class="empty">Carregando dispositivos...</div>
-          <div v-else-if="!allDevices.length" class="empty">Nenhum dispositivo registrado.</div>
-          <div v-else class="device-grid">
-            <button
-              v-for="d in allDevices"
-              :key="d.deviceId"
-              class="device-chip"
-              :class="{ selected: selectedDeviceIds.has(d.deviceId) }"
-              :disabled="isSameVersion(d)"
-              @click="toggleDevice(d.deviceId)"
-            >
-              <span class="chip-name">{{ d.name }}</span>
-              <span class="chip-ver">{{ d.firmwareVersion ? 'v' + d.firmwareVersion : '—' }}</span>
-              <span v-if="isSameVersion(d)" class="chip-cur-label">já instalado</span>
+        <div v-if="loadingBatches" class="empty">Carregando histórico...</div>
+        <div v-else-if="!batches.length" class="empty">Nenhum comando enviado</div>
+        <div v-else class="hist-list">
+          <div v-for="b in batches" :key="b.batchId" class="hist-card">
+            <button class="hist-header" @click="toggleExpand(b.batchId)">
+              <div class="hist-top">
+                <span class="hist-cmd mono">
+                  {{ b.commandType }}<span v-if="b.targetVersionLabel" class="text-muted"> · v{{ b.targetVersionLabel }}</span>
+                </span>
+                <AppBadge :variant="aggregateVariant(b.aggregateStatus)">
+                  {{ AGGREGATE_LABEL[b.aggregateStatus] ?? b.aggregateStatus }}
+                </AppBadge>
+              </div>
+              <div class="hist-meta mono">
+                <span>{{ b.total }} device(s)</span>
+                <span class="sep">·</span>
+                <span class="counts">{{ countsSummary(b) }}</span>
+              </div>
+              <div class="hist-footer mono">
+                <span>{{ b.createdByUsername ?? '—' }}</span>
+                <span class="sep">·</span>
+                <span :title="fmtFull(b.sentAt)">{{ fmtDate(b.sentAt) }} {{ fmtTime(b.sentAt) }}</span>
+                <span class="chevron" :class="{ open: expanded.has(b.batchId) }">›</span>
+              </div>
             </button>
-          </div>
-          <p v-if="sendError" class="field-error">{{ sendError }}</p>
-          <div class="modal-footer">
-            <span class="text-muted text-sm">{{ selectedDeviceIds.size }} selecionado(s)</span>
-            <div style="display:flex;gap:8px">
-              <AppButton variant="ghost" @click="selectedCommand === 'UPDATE' ? (wizardStep = 'firmware') : (wizardStep = 'command')">Voltar</AppButton>
-              <AppButton variant="primary" :loading="sending && selectedCommand !== 'DEEP_SLEEP'" @click="finishDevices">
-                {{ selectedCommand === 'DEEP_SLEEP' ? 'Próximo' : 'Enviar' }}
-              </AppButton>
+
+            <div v-if="expanded.has(b.batchId)" class="hist-detail">
+              <div v-if="loadingRecords.has(b.batchId)" class="empty">Carregando...</div>
+              <div v-else-if="!(recordsByBatch[b.batchId] ?? []).length" class="empty">Nenhum device visível</div>
+              <div v-else class="record-list">
+                <div v-for="c in recordsByBatch[b.batchId]" :key="c.commandId" class="record-row">
+                  <span class="rec-name">{{ c.deviceName ?? c.deviceId ?? '—' }}</span>
+                  <AppBadge :variant="statusVariant(c.status)" class="rec-status">{{ c.status }}</AppBadge>
+                  <span v-if="c.errorMessage" class="rec-reason mono">{{ c.errorMessage }}</span>
+                  <span v-else class="rec-reason mono text-muted">—</span>
+                  <span class="rec-time mono">{{ fmtTime(c.completedAt) }}</span>
+                </div>
+              </div>
             </div>
           </div>
-        </template>
+        </div>
 
-        <!-- Step: params (DEEP_SLEEP) -->
-        <template v-else-if="wizardStep === 'params'">
-          <h3 class="modal-title">Parâmetros — DEEP_SLEEP</h3>
-          <div class="form-group">
-            <label>Duração do sleep <span class="text-muted">(segundos)</span></label>
-            <input
-              v-model.number="durationS"
-              type="number"
-              min="10"
-              max="259200"
-              class="field"
-              placeholder="Ex: 3600"
-            />
-            <span class="field-hint">Mínimo 10s · Máximo 259200s (3 dias)</span>
-          </div>
-          <p v-if="sendError" class="field-error">{{ sendError }}</p>
-          <div class="modal-footer">
-            <AppButton variant="ghost" @click="wizardStep = 'devices'">Voltar</AppButton>
-            <AppButton variant="primary" :loading="sending" @click="doSend">Enviar</AppButton>
-          </div>
-        </template>
+        <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />
+      </AppCard>
+    </div>
 
-        <!-- Step: result -->
-        <template v-else-if="wizardStep === 'result' && sendResult">
-          <h3 class="modal-title">Resultado — {{ sendResult.command }}</h3>
-          <div class="result-section" v-if="sendResult.publishedTo.length">
-            <p class="result-label success-label">Publicado ({{ sendResult.publishedTo.length }})</p>
-            <p v-for="id in sendResult.publishedTo" :key="id" class="text-sm">{{ deviceNameById[id] ?? id }}</p>
-          </div>
-          <div class="result-section" v-if="sendResult.failed.length">
-            <p class="result-label danger-label">Falhou no broker ({{ sendResult.failed.length }})</p>
-            <p v-for="id in sendResult.failed" :key="id" class="text-sm text-muted">{{ deviceNameById[id] ?? id }}</p>
-          </div>
-          <div class="result-section" v-if="sendResult.skipped.length">
-            <p class="result-label warn-label">Ignorado — inativo, inexistente ou comando pendente ({{ sendResult.skipped.length }})</p>
-            <p v-for="id in sendResult.skipped" :key="id" class="text-sm text-muted">{{ deviceNameById[id] ?? id }}</p>
-          </div>
-          <div v-if="!sendResult.publishedTo.length && !sendResult.failed.length && !sendResult.skipped.length">
-            <p class="text-muted text-sm">Nenhum device processado.</p>
-          </div>
-          <div class="modal-footer">
-            <AppButton variant="primary" @click="showWizard = false">Fechar</AppButton>
-          </div>
-        </template>
+    <!-- ── UPDATE: firmware picker modal ────────────────────────────────── -->
+    <div v-if="showFirmwareModal" class="modal-overlay" @click.self="showFirmwareModal = false">
+      <div class="modal">
+        <h3 class="modal-title">Escolher Firmware — UPDATE</h3>
+        <p class="modal-hint mono">{{ selectedCount }} device(s) alvo</p>
 
+        <div v-if="loadingFirmwares" class="empty">Carregando firmwares...</div>
+        <div v-else-if="!firmwareList.length" class="empty">Nenhum firmware disponível</div>
+        <div v-else class="fw-list">
+          <button v-for="fw in firmwareList" :key="fw.versionId"
+            class="fw-row"
+            :class="{ selected: pickedFirmware?.versionId === fw.versionId }"
+            @click="pickedFirmware = fw">
+            <span class="fw-name">{{ fw.firmwareName }}</span>
+            <span class="fw-version mono">v{{ fw.version }}</span>
+            <AppBadge :variant="fw.status === 'DEPLOYED' ? 'success' : 'muted'">{{ fw.status }}</AppBadge>
+          </button>
+        </div>
+
+        <p v-if="pickedFirmware" class="modal-hint mono warn">
+          {{ targetDevices.filter(d => selectedDeviceIds.has(d.deviceId) && deviceHasVersion(d)).length }} device(s) selecionados já rodam essa versão — serão ignorados pelo backend.
+        </p>
+
+        <div class="modal-footer">
+          <AppButton variant="ghost" @click="showFirmwareModal = false">Cancelar</AppButton>
+          <AppButton variant="primary" :disabled="!pickedFirmware" @click="confirmFirmwareAndSend">Enviar UPDATE</AppButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── DEEP_SLEEP: duration modal ───────────────────────────────────── -->
+    <div v-if="showDeepSleepModal" class="modal-overlay" @click.self="showDeepSleepModal = false">
+      <div class="modal">
+        <h3 class="modal-title">Duração — DEEP_SLEEP</h3>
+        <p class="modal-hint mono">{{ selectedCount }} device(s) alvo</p>
+
+        <div class="form-group">
+          <label>Duração <span class="text-muted">(segundos)</span></label>
+          <input type="number" min="10" max="259200" class="field" v-model.number="durationS" placeholder="ex: 300" />
+          <span class="field-hint mono">Mínimo 10s · Máximo 259200s (3 dias)</span>
+        </div>
+        <p v-if="durationError" class="field-error">{{ durationError }}</p>
+
+        <div class="modal-footer">
+          <AppButton variant="ghost" @click="showDeepSleepModal = false">Cancelar</AppButton>
+          <AppButton variant="primary" @click="confirmDeepSleepAndSend">Enviar DEEP_SLEEP</AppButton>
+        </div>
       </div>
     </div>
   </AppLayout>
 </template>
 
 <style scoped>
-/* ── Table ───────────────────────────────────────────────────────────────── */
-.tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
-.tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); }
+/* ── Grid ─────────────────────────────────────────────────────────────── */
+.cmd-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr) minmax(320px, 1.4fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+/* 3 colunas -> 1 direto (evita 2-col intermediario com gap embaixo). */
+@media (max-width: 1024px) {
+  .cmd-grid { grid-template-columns: 1fr; }
+}
+
+.panel-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0 0 var(--space-3) 0; letter-spacing: .3px; }
+.panel-hint .selected-count { color: var(--primary); }
+
+.target-actions { display: flex; gap: var(--space-1); }
+.mini-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 8px; font-size: var(--text-xs); color: var(--text-muted); cursor: pointer; font-family: var(--font-mono); transition: border-color var(--transition), color var(--transition); }
+.mini-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+.empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; font-size: var(--text-sm); }
 .mono { font-family: var(--font-mono); }
-.text-sm { font-size: var(--text-sm); }
 .text-muted { color: var(--text-muted); }
-.empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 
-/* ── Batch expansion ─────────────────────────────────────────────────────── */
-.batch-row { cursor: pointer; }
-.batch-row:hover td { background: var(--panel); }
-.chevron-cell { width: 24px; }
-.chevron { display: inline-block; font-size: var(--text-lg); color: var(--text-muted); transition: transform var(--transition); }
-.chevron.open { transform: rotate(90deg); }
-.detail-row td { background: var(--panel); padding: var(--space-3) var(--space-4); }
-.subtbl { width: 100%; border-collapse: collapse; }
-.subtbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-2) 0; text-align: left; }
-.subtbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); }
+/* ── Target devices ───────────────────────────────────────────────────── */
+.device-list { display: flex; flex-direction: column; gap: 4px; max-height: 480px; overflow-y: auto; }
+.device-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; border: 1px solid transparent; transition: background var(--transition), border-color var(--transition); }
+.device-row:hover { background: var(--panel); }
+.device-row.selected { background: var(--panel); border-color: var(--primary); }
+.device-row input[type="checkbox"] { accent-color: var(--primary); width: 14px; height: 14px; margin: 0; }
+.dev-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.dev-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-meta { font-size: var(--text-xs); color: var(--text-muted); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.ok { background: var(--success); }
 
-/* ── Modal shell ─────────────────────────────────────────────────────────── */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
+/* ── Commands list ────────────────────────────────────────────────────── */
+.cmd-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.cmd-card { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3); background: none; border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; text-align: left; transition: border-color var(--transition), background var(--transition); }
+.cmd-card:hover:not(:disabled) { border-color: var(--primary); background: var(--panel); }
+.cmd-card:disabled { opacity: 0.35; cursor: not-allowed; }
+.cmd-card.destructive:hover:not(:disabled) { border-color: var(--danger); background: rgba(239, 68, 68, 0.05); }
+.cmd-card.running { opacity: 0.7; }
+
+.cmd-icon-slot { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: var(--radius-sm); background: rgba(6, 182, 212, 0.1); color: var(--primary); flex-shrink: 0; }
+.cmd-icon-slot.destructive { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+.cmd-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cmd-label { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); }
+.cmd-desc { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.35; }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
+
+/* ── History cards ────────────────────────────────────────────────────── */
+.hist-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 520px; overflow-y: auto; }
+/* flex-shrink: 0 pra cards nao serem comprimidos — scroll do .hist-list assume. */
+.hist-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; flex-shrink: 0; }
+
+.hist-header { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: var(--space-3); background: none; border: none; cursor: pointer; text-align: left; color: inherit; }
+.hist-header:hover { background: rgba(255, 255, 255, 0.02); }
+
+.hist-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.hist-cmd { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
+
+.hist-meta { font-size: var(--text-xs); color: var(--text-muted); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.hist-meta .counts { color: var(--text-secondary); }
+.sep { color: var(--text-muted); opacity: 0.5; }
+
+.hist-footer { display: flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--text-muted); }
+.hist-footer .chevron { margin-left: auto; font-size: var(--text-md); transition: transform var(--transition); }
+.hist-footer .chevron.open { transform: rotate(90deg); }
+
+.hist-detail { border-top: 1px solid var(--border); padding: var(--space-2) var(--space-3); background: var(--surface); }
+.record-list { display: flex; flex-direction: column; gap: 4px; }
+.record-row { display: grid; grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 2fr) auto; gap: var(--space-2); align-items: center; padding: 4px 0; font-size: var(--text-xs); border-bottom: 1px solid var(--border); }
+.record-row:last-child { border-bottom: none; }
+.rec-name { font-family: var(--font-sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-status { justify-self: start; }
+.rec-reason { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; }
+.rec-time { color: var(--text-muted); text-align: right; }
+
+/* ── Modals ───────────────────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); width: 520px; max-width: 94vw; max-height: 85vh; display: flex; flex-direction: column; gap: var(--space-4); overflow: hidden; }
-.modal-title { font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0; flex-shrink: 0; }
-.modal-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: auto; flex-shrink: 0; padding-top: var(--space-2); border-top: 1px solid var(--border); }
+.modal-title { font-family: var(--font-sans); font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0; }
+.modal-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
+.modal-hint.warn { color: var(--warning, #f59e0b); }
+.modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); margin-top: auto; }
 
-/* ── Step: command grid ──────────────────────────────────────────────────── */
-.cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); overflow-y: auto; }
-.cmd-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: var(--space-1); transition: border-color var(--transition), background var(--transition); }
-.cmd-card:hover { border-color: var(--primary); background: var(--primary-dim); }
-.cmd-label { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 600; color: var(--text); }
-.cmd-desc { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.4; }
-
-/* ── Step: firmware list ─────────────────────────────────────────────────── */
-.fw-list { display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; max-height: 300px; }
-.fw-row { display: flex; align-items: center; gap: var(--space-3); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); cursor: pointer; text-align: left; transition: border-color var(--transition); }
+.fw-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 320px; overflow-y: auto; }
+.fw-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; text-align: left; transition: border-color var(--transition); color: inherit; }
 .fw-row:hover { border-color: var(--primary); }
-.fw-row.selected { border-color: var(--primary); background: var(--primary-dim); }
-.fw-version { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 600; color: var(--text); flex: 1; }
-.fw-badge { flex-shrink: 0; }
-.fw-date { font-size: var(--text-xs); flex-shrink: 0; }
+.fw-row.selected { border-color: var(--primary); background: rgba(6, 182, 212, 0.06); }
+.fw-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-version { font-size: var(--text-sm); color: var(--text-muted); }
 
-/* ── Step: device chips ──────────────────────────────────────────────────── */
-.step-hint { font-size: var(--text-sm); color: var(--text-muted); margin: 0; flex-shrink: 0; }
-.device-grid { display: flex; flex-wrap: wrap; gap: var(--space-2); overflow-y: auto; max-height: 300px; align-content: flex-start; }
-.device-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); cursor: pointer; transition: border-color var(--transition), background var(--transition); min-width: 120px; }
-.device-chip:hover { border-color: var(--primary); }
-.device-chip.selected { border-color: var(--primary); background: var(--primary-dim); }
-.chip-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); }
-.chip-ver { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
-.chip-cur-label { font-size: 10px; color: var(--text-muted); font-style: italic; }
-.device-chip:disabled { opacity: 0.35; cursor: not-allowed; }
-.device-chip:disabled:hover { border-color: var(--border); background: var(--panel); }
-
-/* ── Step: params ────────────────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; }
+.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-mono); }
 .field:focus { border-color: var(--primary); }
 .field-hint { font-size: var(--text-xs); color: var(--text-muted); }
 .field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
-
-/* ── Step: result ────────────────────────────────────────────────────────── */
-.result-section { display: flex; flex-direction: column; gap: var(--space-1); }
-.result-label { font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin: 0; }
-.success-label { color: var(--success); }
-.warn-label { color: #f59e0b; }
-.danger-label { color: var(--danger); }
 </style>
