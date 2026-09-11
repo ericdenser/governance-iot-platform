@@ -75,7 +75,8 @@
         "composites": {
           "realm": [
             "offline_access",
-            "uma_authorization"
+            "uma_authorization",
+            "ROLE_USER"
           ],
           "client": {
             "account": [
@@ -84,6 +85,15 @@
             ]
           }
         },
+        "clientRole": false,
+        "containerId": "dd1ba216-f987-41fa-9385-0a608a3e891e",
+        "attributes": {}
+      },
+      {
+        "id": "b7a1a6c2-5f4e-4d1f-9d0b-6c3a8e7f1234",
+        "name": "ROLE_USER",
+        "description": "Papel padrão herdado por todo usuário do realm via default-roles-iot-bff.",
+        "composite": false,
         "clientRole": false,
         "containerId": "dd1ba216-f987-41fa-9385-0a608a3e891e",
         "attributes": {}
@@ -327,15 +337,6 @@
         }
       ],
       "iot-bff": [
-        {
-          "id": "eeaf5aa4-a547-4b1b-af77-2e8a8f509e78",
-          "name": "ROLE_USER",
-          "description": "",
-          "composite": false,
-          "clientRole": true,
-          "containerId": "4e7c942f-aa80-4322-9016-3cdd58957cff",
-          "attributes": {}
-        },
         {
           "id": "48aa2502-2554-4b9b-94e7-295fb30f9178",
           "name": "ROLE_ADMIN",
