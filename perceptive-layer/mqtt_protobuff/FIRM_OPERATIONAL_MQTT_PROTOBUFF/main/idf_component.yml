@@ -2,3 +2,4 @@ dependencies:
   espressif/led_strip: ^3.0.0
   espressif/mdns: '*'
   esp-idf-lib/ds3231: '*'
+  esp-idf-lib/bmp280: '*'

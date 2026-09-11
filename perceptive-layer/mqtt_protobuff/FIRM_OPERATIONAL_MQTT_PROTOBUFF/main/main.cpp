@@ -20,13 +20,15 @@
 #include "esp_sleep.h"
 #include "ds3231.h"
 #include "i2cdev.h"
-
+#include "esp_wifi.h"
+#include "driver/temperature_sensor.h"
 #include "governance_core.h"
 
 // Drivers de sensor específicos deste hardware
 #include "src/SensorDiscovery.h"
 #include "src/GpsManager.h"
 #include "src/BatteryManager.h"
+#include "src/BmpManager.h"
 #include "src/AdcManager.h"
 
 // =============================================================================
@@ -34,6 +36,7 @@
 // =============================================================================
 static SensorMap   g_sensors      = {};
 static GpsManager  g_gpsManager;
+static BmpManager  g_bmpManager;
 static std::string g_activeSensorsCSV;
 
 // =============================================================================
@@ -82,6 +85,10 @@ static const char* my_sensor_discovery(void) {
     if (g_sensors.gps)         appendSensor("gps");
     if (g_sensors.battery_adc) appendSensor("battery_adc");
 
+    if (g_sensors.bmp280) {
+        g_bmpManager.init();
+    }
+
     // Se GPS detectado, cria task dedicada de leitura contínua
     if (g_sensors.gps) {
         xTaskCreate(GpsManager::taskWrapper, "gps", 4096, &g_gpsManager, 3, NULL);
@@ -105,9 +112,7 @@ static int my_read_telemetry(sensor_reading_t* out, int max) {
     }
 
     if (g_sensors.battery_adc && n < max) {
-        // -1 = leitura invalida (fantasma < 2700mV, ADC ainda instavel etc).
-        // Nao adiciona o field pra nao poluir telemetria com valor ruim —
-        // datalogger e SPA veem "sem leitura" nesse ciclo (batteryMv null).
+
         float bat = BatteryManager::readBattery();
         if (bat > 0.0f) {
             strncpy(out[n].key, "battery_mv", sizeof(out[n].key) - 1);
@@ -116,13 +121,54 @@ static int my_read_telemetry(sensor_reading_t* out, int max) {
     }
 
     if (g_sensors.bmp280 && n + 2 <= max) {
-        strncpy(out[n].key, "temperature", sizeof(out[n].key) - 1);
-        out[n].value = 1.0f; // TODO: implementar leitura bmp280
-        n++;
-        strncpy(out[n].key, "humidity", sizeof(out[n].key) - 1);
-        out[n].value = 2.0f; // TODO: implementar leitura bmp280
+        float temp = 0.0f;
+        float hum = 0.0f;
+ 
+        if (g_bmpManager.readTemp(temp)) {
+            strncpy(out[n].key, "temperature", sizeof(out[n].key) - 1);
+            out[n].value = temp;
+            n++;
+        }
+
+        if (g_bmpManager.readHumidity(hum)) {
+            strncpy(out[n].key, "humidity", sizeof(out[n].key) - 1);
+            out[n].value = hum;
+            n++;
+        }
+    }
+
+    // get RSSI
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK && n < max) {
+        strncpy(out[n].key, "rssi", sizeof(out[n].key) -1 );
+        while(true){
+            printf("loop infinito");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        };
+        out[n].value = (float)ap_info.rssi;
         n++;
     }
+
+    // Internal temp of SoC
+    #if SOC_TEMP_SENSOR_SUPPORTED
+    {
+        static temperature_sensor_handle_t s_temp_handle = NULL;
+        if (s_temp_handle == NULL) {
+            temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 80);
+            if (temperature_sensor_install(&cfg, &s_temp_handle) == ESP_OK) {
+                temperature_sensor_enable(s_temp_handle);
+            }
+        }
+        float tsens_c = 0.0f;
+        if (s_temp_handle != NULL &&
+            temperature_sensor_get_celsius(s_temp_handle, &tsens_c) == ESP_OK &&
+            n < max) {
+            strncpy(out[n].key, "temp_c", sizeof(out[n].key) - 1);
+            out[n].value = tsens_c;
+            n++;
+        }
+    }
+    #endif
 
     return n;
 }
