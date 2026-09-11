@@ -21,7 +21,11 @@ public record DeviceSummaryDTO(
     String issuedByActorId,
     String issuedByUsername,
     Double batteryMv,
-    Instant batteryTs
+    Instant batteryTs,
+    Double rssi,
+    Instant rssiTs,
+    Double tempC,
+    Instant tempTs
 ) {
 
 }

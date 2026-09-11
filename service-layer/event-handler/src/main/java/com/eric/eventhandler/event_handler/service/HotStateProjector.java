@@ -160,11 +160,21 @@ public class HotStateProjector {
                 Object lat = map.get("latitude");
                 Object lon = map.get("longitude");
                 Object batteryMv = map.get("battery_mv");
+                Object rssi = map.get("rssi");
+                Object tempC = map.get("temp_c");
                 if (lat != null) fields.put("latitude", String.valueOf(lat));
                 if (lon != null) fields.put("longitude", String.valueOf(lon));
                 if (batteryMv != null) {
                     fields.put("battery_mv", String.valueOf(batteryMv));
                     fields.put("battery_ts", envelopeTimestamp);
+                }
+                if (rssi != null) {
+                    fields.put("rssi", String.valueOf(rssi));
+                    fields.put("rssi_ts", envelopeTimestamp);
+                }
+                if (tempC != null) {
+                    fields.put("temp_c", String.valueOf(tempC));
+                    fields.put("temp_ts", envelopeTimestamp);
                 }
             }
 
@@ -222,6 +232,10 @@ public class HotStateProjector {
             if (raw.get("longitude") != null) payload.put("lon", raw.get("longitude"));
             if (raw.get("battery_mv") != null) payload.put("batteryMv", raw.get("battery_mv"));
             if (raw.get("battery_ts") != null) payload.put("batteryTs", raw.get("battery_ts"));
+            if (raw.get("rssi") != null) payload.put("rssi", raw.get("rssi"));
+            if (raw.get("rssi_ts") != null) payload.put("rssiTs", raw.get("rssi_ts"));
+            if (raw.get("temp_c") != null) payload.put("tempC", raw.get("temp_c"));
+            if (raw.get("temp_ts") != null) payload.put("tempTs", raw.get("temp_ts"));
 
             String json = objectMapper.writeValueAsString(payload);
             redisTemplate.convertAndSend(CHANNEL_DEVICE_LIVE, json);

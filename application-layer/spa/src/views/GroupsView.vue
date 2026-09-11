@@ -334,12 +334,19 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <!-- Devices -->
             <div class="section">
               <h4 class="section-title">Dispositivos ({{ groupDevices.length }})</h4>
-              <table class="tbl">
+              <table class="tbl aligned">
+                <colgroup>
+                  <col class="col-name" />
+                  <col class="col-role" />
+                  <col class="col-assigned" />
+                  <col class="col-actions" />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style="width: 40%;">Dispositivo</th>
-                    <th style="width: 20%;">Atribuído por</th>
-                    <th v-if="canManageDevices" style="width: 12%; text-align: right;"></th>
+                    <th>Dispositivo</th>
+                    <th></th>
+                    <th>Atribuído por</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -348,13 +355,14 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
                       <div class="cell-main">{{ d.name }}</div>
                       <div class="mono text-xs text-muted">{{ d.deviceId }}</div>
                     </td>
+                    <td></td>
                     <td class="text-xs text-muted">{{ d.addedByUsername ?? '—' }}</td>
-                    <td v-if="canManageDevices" style="text-align: right;">
-                      <AppButton size="sm" variant="ghost" @click="doRemoveDevice(d.deviceId)">Remover</AppButton>
+                    <td class="col-actions-cell">
+                      <AppButton v-if="canManageDevices" size="sm" variant="ghost" @click="doRemoveDevice(d.deviceId)">Remover</AppButton>
                     </td>
                   </tr>
                   <tr v-if="!groupDevices.length">
-                    <td :colspan="canManageDevices ? 3 : 2" class="empty">Nenhum dispositivo</td>
+                    <td colspan="4" class="empty">Nenhum dispositivo</td>
                   </tr>
                 </tbody>
               </table>
@@ -363,13 +371,19 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <!-- Users -->
             <div class="section">
               <h4 class="section-title">Usuários ({{ groupUsers.length }})</h4>
-              <table class="tbl">
+              <table class="tbl aligned">
+                <colgroup>
+                  <col class="col-name" />
+                  <col class="col-role" />
+                  <col class="col-assigned" />
+                  <col class="col-actions" />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style="width: 35%;">Usuário</th>
-                    <th style="width: 15%;">Papel</th>
-                    <th style="width: 25%;">Atribuído por</th>
-                    <th style="text-align: right;"></th>
+                    <th>Usuário</th>
+                    <th>Papel</th>
+                    <th>Atribuído por</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -380,7 +394,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
                     </td>
                     <td class="text-sm">{{ u.role }}</td>
                     <td class="text-xs text-muted">{{ u.assignedByUsername ?? '—' }}</td>
-                    <td style="text-align: right;">
+                    <td class="col-actions-cell">
                       <div style="display: flex; gap: var(--space-1); justify-content: flex-end;">
                         <AppButton v-if="canUpdateRole(u)" size="sm" variant="secondary" @click="openUpdateRole(u)">Atualizar Papel</AppButton>
                         <AppButton v-if="canManageUsers" size="sm" variant="ghost" @click="doRemoveUser(u.keycloakUserId)">Remover</AppButton>
@@ -515,6 +529,15 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
 .tbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); }
+
+/* Alinhamento consistente entre tabelas de Dispositivos e Usuários — colunas
+   compartilhadas mesmo quando uma delas não tem valor (Papel só em usuários). */
+.tbl.aligned { table-layout: fixed; }
+.tbl.aligned .col-name     { width: 40%; }
+.tbl.aligned .col-role     { width: 15%; }
+.tbl.aligned .col-assigned { width: 25%; }
+.tbl.aligned .col-actions  { width: 20%; }
+.tbl.aligned .col-actions-cell { text-align: right; }
 .mono { font-family: var(--font-mono); }
 .cell-main { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 .font-medium { font-weight: 500; }

@@ -145,6 +145,10 @@ export interface DeviceSummaryDTO {
   issuedByUsername: string | null
   batteryMv: number | null
   batteryTs: string | null
+  rssi: number | null
+  rssiTs: string | null
+  tempC: number | null
+  tempTs: string | null
 }
 
 export interface DeviceDetailDTO {

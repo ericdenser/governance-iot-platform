@@ -452,10 +452,8 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
   gap: var(--space-4);
   align-items: start;
 }
-@media (max-width: 1200px) {
-  .cmd-grid { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 768px) {
+/* 3 colunas -> 1 direto (evita 2-col intermediario com gap embaixo). */
+@media (max-width: 1024px) {
   .cmd-grid { grid-template-columns: 1fr; }
 }
 
@@ -502,7 +500,8 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
 
 /* ── History cards ────────────────────────────────────────────────────── */
 .hist-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 520px; overflow-y: auto; }
-.hist-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+/* flex-shrink: 0 pra cards nao serem comprimidos — scroll do .hist-list assume. */
+.hist-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; flex-shrink: 0; }
 
 .hist-header { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: var(--space-3); background: none; border: none; cursor: pointer; text-align: left; color: inherit; }
 .hist-header:hover { background: rgba(255, 255, 255, 0.02); }

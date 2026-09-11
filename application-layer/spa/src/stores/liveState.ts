@@ -9,6 +9,10 @@ export interface DeviceLiveState {
   lon?: number
   batteryMv?: number
   batteryTs?: string
+  rssi?: number
+  rssiTs?: string
+  tempC?: number
+  tempTs?: string
 }
 
 export type SseConnectionStatus = 'disconnected' | 'connecting' | 'live'
@@ -65,6 +69,10 @@ export const useLiveStateStore = defineStore('liveState', {
             lon: toNum(p.lon) ?? prev?.lon,
             batteryMv: toNum(p.batteryMv) ?? prev?.batteryMv,
             batteryTs: toIso(p.batteryTs) ?? prev?.batteryTs,
+            rssi: toNum(p.rssi) ?? prev?.rssi,
+            rssiTs: toIso(p.rssiTs) ?? prev?.rssiTs,
+            tempC: toNum(p.tempC) ?? prev?.tempC,
+            tempTs: toIso(p.tempTs) ?? prev?.tempTs,
           })
         } catch {
           // payload inválido — ignora

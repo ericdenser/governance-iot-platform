@@ -102,7 +102,11 @@ public class DeviceService {
                 row.issuedByActorId(),
                 row.issuedByUsername(),
                 lv.batteryMv(),
-                lv.batteryTs()
+                lv.batteryTs(),
+                lv.rssi(),
+                lv.rssiTs(),
+                lv.tempC(),
+                lv.tempTs()
             );
         });
     }

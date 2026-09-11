@@ -28,6 +28,10 @@ public class HotStateService {
     public static final String FIELD_LON = "longitude";
     public static final String FIELD_BATTERY_MV = "battery_mv";
     public static final String FIELD_BATTERY_TS = "battery_ts";
+    public static final String FIELD_RSSI = "rssi";
+    public static final String FIELD_RSSI_TS = "rssi_ts";
+    public static final String FIELD_TEMP_C = "temp_c";
+    public static final String FIELD_TEMP_TS = "temp_ts";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -96,17 +100,21 @@ public class HotStateService {
             Double latitude,
             Double longitude,
             Double batteryMv,
-            Instant batteryTs
+            Instant batteryTs,
+            Double rssi,
+            Instant rssiTs,
+            Double tempC,
+            Instant tempTs
     ) {
 
         public static LiveState empty() {
-            return new LiveState(null, null, null, null, null, null);
+            return new LiveState(null, null, null, null, null, null, null, null, null, null);
         }
 
         public boolean isPresent() {
             return lastSeen != null || status != null
                 || latitude != null || longitude != null
-                || batteryMv != null;
+                || batteryMv != null || rssi != null || tempC != null;
         }
 
         static LiveState fromRawMap(Map<?, ?> raw) {
@@ -117,7 +125,11 @@ public class HotStateService {
             Double lon = parseDouble(raw.get(FIELD_LON));
             Double batteryMv = parseDouble(raw.get(FIELD_BATTERY_MV));
             Instant batteryTs = parseInstant(raw.get(FIELD_BATTERY_TS));
-            return new LiveState(lastSeen, status, lat, lon, batteryMv, batteryTs);
+            Double rssi = parseDouble(raw.get(FIELD_RSSI));
+            Instant rssiTs = parseInstant(raw.get(FIELD_RSSI_TS));
+            Double tempC = parseDouble(raw.get(FIELD_TEMP_C));
+            Instant tempTs = parseInstant(raw.get(FIELD_TEMP_TS));
+            return new LiveState(lastSeen, status, lat, lon, batteryMv, batteryTs, rssi, rssiTs, tempC, tempTs);
         }
 
         private static Instant parseInstant(Object o) {

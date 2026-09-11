@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
+import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
@@ -153,6 +154,16 @@ public class DeviceProvisioningService {
         FirmwareVersion provisioningFirmware = firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
                                                                         .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND, 
                                                                             "No provisioning firmware registered"));
+
+        // MAC ja usado por outro device -> 409 em vez de 500 do unique constraint.
+        deviceRepository.findByMacAddress(request.getMacAddress())
+            .filter(existing -> !existing.getDeviceId().equals(device.getDeviceId()))
+            .ifPresent(existing -> {
+                throw new ConflictException(ErrorCode.DEVICE_ALREADY_PROVISIONED,
+                    "MAC " + request.getMacAddress() + " ja registrado no device "
+                    + existing.getDeviceId() + " (status=" + existing.getStatus()
+                    + "). Revogue o device anterior antes de reprovisionar o mesmo hardware.");
+            });
 
         CreatedKeycloakClient created = keycloakDeviceClientService.createClient(device.getDeviceId());
         device.setDeviceId(request.getDeviceId());
