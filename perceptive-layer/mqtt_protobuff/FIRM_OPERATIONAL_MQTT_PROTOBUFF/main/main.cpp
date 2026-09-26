@@ -141,10 +141,10 @@ static int my_read_telemetry(sensor_reading_t* out, int max) {
     wifi_ap_record_t ap_info;
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK && n < max) {
         strncpy(out[n].key, "rssi", sizeof(out[n].key) -1 );
-        while(true){
-            printf("loop infinito");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        };
+        // while(true){
+        //     printf("loop infinito");
+        //     vTaskDelay(pdMS_TO_TICKS(1000));
+        // };
         out[n].value = (float)ap_info.rssi;
         n++;
     }
@@ -246,6 +246,7 @@ extern "C" void app_main(void) {
     // Init do bus I2C (DS3231 usa)
 
     i2cdev_init();
+
 
     // GPIO de controle do transistor PNP que liga/desliga VCC do GPS
     gpio_reset_pin((gpio_num_t)CONFIG_GOV_GPS_POWER_PIN);

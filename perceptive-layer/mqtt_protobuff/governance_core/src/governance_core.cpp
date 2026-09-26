@@ -292,7 +292,10 @@ static void publish_proto_status(const char* topic,
 // =============================================================================
 
 static void telemetry_task(void* /*pvParameters*/) {
+    
+    WatchdogManager::addToCurrentTask();
     while (true) {
+        WatchdogManager::reset();
         if (!AppState::is(DeviceState::OPERATIONAL)) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
