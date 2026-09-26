@@ -34,6 +34,8 @@ const sort = ref<SortKey>('name')
 const onlyActive = ref(true)
 const topN = ref<number>(50)
 
+// Status vem sempre do DB (fonte de verdade — handlers HTTP escrevem la).
+// Live state so sobrescreve metricas transientes (bateria/rssi/temp/lastSeen).
 const merged = computed<Extended[]>(() =>
   devices.value.map((d) => {
     const lv = liveStore.devices.get(d.deviceId)
@@ -233,7 +235,7 @@ onMounted(load)
 
 <template>
   <AppLayout>
-    <AppCard title="Analytics" description="Métrica por device (snapshot atual — atualiza via SSE)">
+    <AppCard title="Analytics">
       <template #actions>
         <LiveIndicator />
       </template>

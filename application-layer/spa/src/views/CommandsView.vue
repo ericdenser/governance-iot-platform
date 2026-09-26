@@ -110,6 +110,10 @@ const confirmFirmwareAndSend = async () => {
 const deviceHasVersion = (d: DeviceSummaryDTO) =>
   !!pickedFirmware.value && d.firmwareVersionId === pickedFirmware.value.versionId
 
+const sameVersionSelectedCount = computed(() =>
+  targetDevices.value.filter(d => selectedDeviceIds.value.has(d.deviceId) && deviceHasVersion(d)).length,
+)
+
 // ── Deep sleep modal ───────────────────────────────────────────────────────
 
 const showDeepSleepModal = ref(false)
@@ -411,8 +415,8 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
           </button>
         </div>
 
-        <p v-if="pickedFirmware" class="modal-hint mono warn">
-          {{ targetDevices.filter(d => selectedDeviceIds.has(d.deviceId) && deviceHasVersion(d)).length }} device(s) selecionados já rodam essa versão — serão ignorados pelo backend.
+        <p v-if="pickedFirmware && sameVersionSelectedCount > 0" class="modal-hint mono warn">
+          {{ sameVersionSelectedCount }} device(s) selecionados já rodam essa versão — serão ignorados pelo backend.
         </p>
 
         <div class="modal-footer">

@@ -14,7 +14,8 @@ public record FirmwareVersionSummaryDTO(
     int deployCount,
     long sizeBytes,
     boolean deepSleepEnabled,
-    Integer deepSleepIntervalS
+    Integer deepSleepIntervalS,
+    String releaseNotes
 ) {
     public static FirmwareVersionSummaryDTO from(FirmwareVersion v) {
         return new FirmwareVersionSummaryDTO(
@@ -26,7 +27,8 @@ public record FirmwareVersionSummaryDTO(
             v.getDeployCount(),
             v.getSizeBytes(),
             v.isDeepSleepEnabled(),
-            v.getDeepSleepIntervalS()
+            v.getDeepSleepIntervalS(),
+            v.getReleaseNotes()
         );
     }
 }
