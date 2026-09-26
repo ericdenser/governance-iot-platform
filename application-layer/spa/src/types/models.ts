@@ -46,6 +46,7 @@ export interface FirmwareVersionSummaryDTO {
   sizeBytes: number
   deepSleepEnabled: boolean
   deepSleepIntervalS: number | null
+  releaseNotes: string | null
 }
 
 export interface FirmwareResponseDTO {

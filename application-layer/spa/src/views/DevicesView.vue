@@ -8,7 +8,7 @@ import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
-import type { DeviceSummaryDTO, DeviceStatus } from '@/types/models'
+import type { DeviceSummaryDTO } from '@/types/models'
 
 // ── Derivação de connection state (client-side) ──────────────────────────
 // Backend so tem lastSeen + status de negocio. Derivo online/warning/offline
@@ -52,9 +52,10 @@ const mergedDevices = computed<MergedDevice[]>(() =>
       rssi: d.rssi,
       tempC: d.tempC,
     }
+    // status vem sempre do DB (fonte de verdade — handlers HTTP escrevem la
+    // mas nao invalidam o Redis hot state). Live so sobrescreve metricas.
     return {
       ...d,
-      status: (lv.status as DeviceStatus) ?? d.status,
       lastSeen: lv.lastSeen ?? d.lastSeen,
       batteryMv: lv.batteryMv ?? d.batteryMv,
       batteryTs: lv.batteryTs ?? d.batteryTs,

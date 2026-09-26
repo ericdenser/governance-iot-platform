@@ -317,6 +317,7 @@ onMounted(async () => {
             <tr>
               <th>Versão</th>
               <th>Status</th>
+              <th>Release Notes</th>
               <th>Enviado por</th>
               <th>Data upload</th>
               <th>Deploys</th>
@@ -328,6 +329,10 @@ onMounted(async () => {
             <tr v-for="v in versions" :key="v.versionId" class="tbl-row" @click="openVersionDetail(v)">
               <td class="mono font-medium">v{{ v.version }}</td>
               <td><AppBadge :variant="statusVariant(v.status)">{{ v.status }}</AppBadge></td>
+              <td class="text-sm text-muted release-notes-cell" :title="v.releaseNotes ?? ''">
+                <span v-if="v.releaseNotes">{{ v.releaseNotes }}</span>
+                <span v-else>—</span>
+              </td>
               <td class="text-sm">{{ v.createdByUsername ?? '—' }}</td>
               <td class="text-muted text-sm">{{ fmt(v.uploadedAt) }}</td>
               <td class="text-sm">{{ v.deployCount }}</td>
@@ -348,7 +353,7 @@ onMounted(async () => {
               </td>
             </tr>
             <tr v-if="!versions.length">
-              <td :colspan="canManage ? 7 : 6" class="empty">Nenhuma versão registrada</td>
+              <td :colspan="canManage ? 8 : 7" class="empty">Nenhuma versão registrada</td>
             </tr>
           </tbody>
         </table>
@@ -551,6 +556,7 @@ onMounted(async () => {
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
 .row-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.release-notes-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; color: var(--text); }
