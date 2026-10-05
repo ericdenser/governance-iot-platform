@@ -27,6 +27,7 @@ static esp_timer_handle_t s_refresh_timer   = NULL;  // refresh JWT
 static bool               s_is_connected    = false;
 static bool               s_error_reported  = false;
 static bool               s_boot_audited    = false;
+static bool               s_jwt_pending     = false;
 
 static std::vector<std::pair<std::string, int>> s_subscriptions;
 
@@ -185,9 +186,12 @@ void MqttManager::init_mqtt(void) {
 
     s_current_jwt = AuthManager::getJwt();
     if (s_current_jwt.empty()) {
-        ESP_LOGE(TAG, "Falha ao obter JWT do Keycloak - abortando init MQTT");
+        // Keycloak fora: o tryReconnect chama o init_mqtt de novo
+        ESP_LOGE(TAG, "Falha ao obter JWT do Keycloak - nova tentativa no tryReconnect");
+        s_jwt_pending = true;
         return;
     }
+    s_jwt_pending = false;
 
     s_device_id = AuthManager::getDeviceId();
     if (s_device_id.empty()) {
@@ -291,7 +295,11 @@ bool MqttManager::isConnected() {
 }
 
 void MqttManager::tryReconnect() {
-    if (mqtt_client == NULL) return;
+    if (mqtt_client == NULL) {
+        // client nao foi criado por falta de JWT no init
+        if (s_jwt_pending) init_mqtt();
+        return;
+    }
     s_reconnect_count = 0;
     schedule_reconnect();
 }
