@@ -20,8 +20,9 @@ if [ -f "$TEMPLATE" ]; then
 fi
 
 if [ -f "$TARGET" ]; then
-  echo "[import-entrypoint] Importing realm (--override true: reaplica template a cada boot)"
-  /opt/keycloak/bin/kc.sh import --file "$TARGET" --override true || \
+  # --override false: so importa se o realm nao existir (preserva clients dos devices e usuarios)
+  echo "[import-entrypoint] Importing realm (--override false)"
+  /opt/keycloak/bin/kc.sh import --file "$TARGET" --override false || \
     echo "[import-entrypoint] Import falhou — seguindo."
 fi
 

@@ -33,6 +33,7 @@
 #define MAX_CRASH_COUNT         3 // Maximum allowed crashes before forcing a rollback
 #define URL_PROVISIONING        CONFIG_GOV_MDM_BASE_URL "/provisioning/activate"
 #define ADVERTISE_INTERVAL_MS   10000
+#define BOOT_TIMEOUT_MS         300000 // reinicia se nao chegar em PROVISIONING_SUCCESS
 
 #define GPS_UART_PORT    UART_NUM_1
 #define GPS_UART_RX_PIN  GPIO_NUM_17
@@ -43,6 +44,8 @@ static const char* TAG           = "MAIN";
 static const char* NVS_NAMESPACE = "main_store";
 static bool valid_firmware       = false;
 static bool time_synced          = false;
+static bool mqtt_started         = false;
+static volatile bool boot_completed = false;
 
 // =============================================================================
 //  Macros de log contextuais — prefixam automaticamente o estado atual
@@ -226,6 +229,7 @@ static void handle_nvs_init() {
 
 // ---- WIFI_AP_MODE -----------------------------------------------------------
 static void handle_wifi_ap_mode() {
+    boot_completed = true; // aguarda o usuario, sem timeout
     static bool started = false;
     if (!started) {
         SLOG_I("Primeiro boot sem configuração. Iniciando SoftAP + CaptivePortal...");
@@ -284,10 +288,12 @@ static void handle_wifi_connecting() {
            WifiManager::getRssi());
 
 
-    // Conectou no wifi com sucesso e leu as configurações da nvs, valida firmware
-    if (!valid_firmware) {
-        OtaManager::set_valid_version();
-        valid_firmware = true;
+    AppState::resolveError(ErrorCode::WIFI_TIMEOUT);
+
+    // reconexao apos queda: cliente MQTT ja existe e reconecta sozinho, handle_error drena a fila
+    if (mqtt_started) {
+        AppState::transition(DeviceState::ERROR, {TAG, "handle_wifi_connecting"});
+        return;
     }
 
     AppState::transition(DeviceState::TIME_SYNC, {TAG, "handle_wifi_connecting"});
@@ -301,7 +307,7 @@ static void handle_time_sync() {
 
     // Helper local: grava struct tm no DS3231 (pula silenciosamente se não detectado)
     auto writeToRTC = [&](const char* source) {
-        // Probe rápido via i2c_master_probe — retorno imediato, sem retry loop
+        // Probe rápido via i2c_master_probe, sem retry loop
         i2c_dev_t probe = {};
         probe.port               = I2C_NUM_0;
         probe.addr               = 0x68;
@@ -335,7 +341,7 @@ static void handle_time_sync() {
         }
     };
 
-    // --- 1. GPS (mais preciso, não depende de rede) ---------------------------
+    // 1. GPS
     SLOG_I("Ligando GPS (GPIO%d)...", GPS_POWER_PIN);
     gpio_set_level(GPS_POWER_PIN, 1);
     vTaskDelay(pdMS_TO_TICKS(500)); // aguarda módulo inicializar
@@ -391,7 +397,7 @@ static void handle_time_sync() {
         SLOG_I("GPS desligado.");
     }
 
-    // --- 2. NTP (fallback via rede) -------------------------------------------
+    // 2. NTP
     if (!time_synced) {
         esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
         esp_sntp_setservername(0, "pool.ntp.org");
@@ -416,7 +422,7 @@ static void handle_time_sync() {
         }
     }
 
-    // --- 3. MDM timestamp: fallback final tratado em CryptoManager::handleProvisioningResponse
+    // 3. MDM timestamp
 
     // Verificação de próximo estado
     bool isProvisioned = CryptoManager::isProvisioned();
@@ -478,8 +484,6 @@ static void handle_provisioning() {
 // ---- MQTT_CONNECTING --------------------------------------------------------
 static void handle_mqtt_connecting() {
 
-    MqttManager::init_mqtt();
-
     MqttManager::setCallback([](const std::string& topic, const std::string& payload) {
         ESP_LOGI(TAG, "Processador Central recebeu o payload %s do tópico: %s", payload.c_str(), topic.c_str());
 
@@ -489,12 +493,16 @@ static void handle_mqtt_connecting() {
         }
     });
 
+    // transita antes do start: o CONNECTED pode chegar antes desta funcao terminar
     AppState::transition(DeviceState::MQTT_WAITING_CONNECT, {TAG, "handle_mqtt_connecting"});
+    MqttManager::init_mqtt();
+    mqtt_started = true;
 }
 
 // ---- PROVISIONING SUCCESS ------------------------------------------------------------
 static void handle_provisioning_success() {
 
+    boot_completed = true;
     int64_t now = esp_timer_get_time() / 1000;
 
     // Avisa periodicamente que esta pronto para operação
@@ -527,10 +535,13 @@ static void handle_error() {
 
     // Sem IP = sem WiFi = sem MQTT: aguarda e tenta reconectar pelo fluxo normal.
     // O resolveError(WIFI_TIMEOUT) será chamado quando o WiFi reconectar em handle_wifi_connecting.
-    if (WifiManager::getIp().empty()) {
+    if (!WifiManager::isConnected()) {
         SLOG_W("Sem conectividade. Aguardando 10s antes de tentar reconectar WiFi...");
         vTaskDelay(pdMS_TO_TICKS(10000));
-        AppState::transition(DeviceState::WIFI_CONNECTING, {TAG, "handle_error"});
+        // pode ter reconectado sozinho durante a espera
+        if (!WifiManager::isConnected()) {
+            AppState::transition(DeviceState::WIFI_CONNECTING, {TAG, "handle_error"});
+        }
         return;
     }
 
@@ -602,6 +613,12 @@ static void handle_rebooting() {
 
 // ---- ROLLBACK/OTA_SUCCESSFUL/CRASH_DETECT ----[TRANSICIONA PRA OPERATIONAL]--------------
 static void handle_boot_audit() {
+
+    // so valida depois de conectar no broker; se reiniciar antes disso o bootloader faz rollback
+    if (!valid_firmware) {
+        OtaManager::set_valid_version();
+        valid_firmware = true;
+    }
 
     // Se chegou aqui, mqtt conectou com sucesso. Subscribe no topico 
     std::string topicCmd = "commands/" + g_deviceId + "/#";
@@ -754,6 +771,17 @@ static void handle_waiting_instruction() {
     };
 }
 
+// Reinicia se o boot travar antes de PROVISIONING_SUCCESS 
+static void boot_timeout_task(void*) {
+    vTaskDelay(pdMS_TO_TICKS(BOOT_TIMEOUT_MS));
+    if (!boot_completed) {
+        ESP_LOGE(TAG, "Boot timeout (%ds) no estado %s. Reiniciando...",
+                 BOOT_TIMEOUT_MS / 1000, AppState::toString(AppState::get()));
+        esp_restart();
+    }
+    vTaskDelete(NULL);
+}
+
 // =============================================================================
 //  app_main 
 // =============================================================================
@@ -765,6 +793,8 @@ extern "C" void app_main(void) {
     gpio_reset_pin(GPS_POWER_PIN);
     gpio_set_direction(GPS_POWER_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(GPS_POWER_PIN, 0); // GPS começa desligado
+
+    xTaskCreate(boot_timeout_task, "boot_wd", 3072, NULL, 1, NULL);
 
     WatchdogManager::init(300000, true);
     WatchdogManager::addToCurrentTask();
@@ -784,15 +814,15 @@ extern "C" void app_main(void) {
             case DeviceState::ERROR:            handle_error();            break;
             case DeviceState::REBOOTING:        handle_rebooting();        break;
             case DeviceState::BOOT_AUDIT:  handle_boot_audit();       break; 
-            case DeviceState::OTA_FOUND:                                   break;
-            case DeviceState::OTA_DOWNLOADING:                             break;
             case DeviceState::WAITING_RESPONSE: handle_waiting_instruction(); break;
-            case DeviceState::OPERATIONAL:    
+            case DeviceState::OTA_FOUND:
+            case DeviceState::OTA_DOWNLOADING:
+            case DeviceState::OPERATIONAL:
             case DeviceState::HTTP_INIT:
             case DeviceState::HTTP_REQUEST:
-            case DeviceState::OTA_SUCCESSFUL:                                 break;
-            case DeviceState::FIRMWARE_ROLLBACK: break;
-            case DeviceState::COMMAND_COMPLETE: break;
+            case DeviceState::OTA_SUCCESSFUL:
+            case DeviceState::FIRMWARE_ROLLBACK:
+            case DeviceState::COMMAND_COMPLETE: vTaskDelay(pdMS_TO_TICKS(100)); break;
         }
     }
 }

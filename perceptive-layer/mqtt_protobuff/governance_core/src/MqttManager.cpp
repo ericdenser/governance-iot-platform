@@ -25,6 +25,7 @@ static int                s_reconnect_count = 0;
 static esp_timer_handle_t s_reconnect_timer = NULL;
 static bool               s_is_connected    = false;
 static bool               s_error_reported  = false;
+static bool               s_boot_audited    = false;
 
 static std::vector<std::pair<std::string, int>> s_subscriptions;
 
@@ -81,7 +82,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             s_reconnect_count = 0;
             s_error_reported  = false;
             esp_timer_stop(s_reconnect_timer);
-            if (AppState::is(DeviceState::MQTT_WAITING_CONNECT)) {
+            // primeira conexao do boot sempre passa pelo BOOT_AUDIT (subscribe + validacao do fw),
+            // mesmo que o broker tenha caido antes e o estado ja esteja em ERROR
+            if (!s_boot_audited) {
+                s_boot_audited = true;
                 AppState::transition(DeviceState::BOOT_AUDIT, {TAG, "mqtt_event_handler"});
             } else {
                 resubscribe_all();
