@@ -64,6 +64,7 @@ static esp_reset_reason_t g_reset_reason;
 static std::string        firmware_version;
 static int                crashCount = 0;
 static bool               valid_firmware = false;
+static bool               mqtt_started   = false;
 static std::string        g_activeSensors;   // populado via hook sensor_discovery()
 static governance_hooks_t s_hooks = {};
 
@@ -572,9 +573,10 @@ static void handle_wifi_connecting() {
 
     AppState::resolveError(ErrorCode::WIFI_TIMEOUT);
 
-    if (!valid_firmware) {
-        OtaManager::set_valid_version();
-        valid_firmware = true;
+    // reconexao apos queda: cliente MQTT ja existe e reconecta sozinho, handle_error drena a fila
+    if (mqtt_started) {
+        AppState::transition(DeviceState::ERROR, {TAG, "handle_wifi_connecting"});
+        return;
     }
 
     AppState::transition(DeviceState::TIME_SYNC, {TAG, "handle_wifi_connecting"});
@@ -669,18 +671,25 @@ static void handle_sensor_discovery() {
 }
 
 static void handle_mqtt_connecting() {
-    MqttManager::init_mqtt();
-
     MqttManager::setCallback([](const std::string& topic, const std::string& payload) {
         ESP_LOGI(TAG, "MQTT recv topic=%s payload=%s", topic.c_str(), payload.c_str());
         bool success = CommandProcessor::manage(payload);
         if (!success) SLOG_E("Command Processor falhou.");
     });
 
+    // transita antes do start: o CONNECTED pode chegar antes desta funcao terminar
     AppState::transition(DeviceState::MQTT_WAITING_CONNECT, {TAG, "handle_mqtt_connecting"});
+    MqttManager::init_mqtt();
+    mqtt_started = true;
 }
 
 static void handle_boot_audit() {
+    // so valida depois de conectar no broker; se reiniciar antes disso o bootloader faz rollback
+    if (!valid_firmware) {
+        OtaManager::set_valid_version();
+        valid_firmware = true;
+    }
+
     std::string topicCmd = "commands/" + g_deviceId + "/#";
     MqttManager::subscribe(topicCmd, 1);
 
@@ -730,7 +739,7 @@ static void handle_boot_audit() {
             nvs_set_i8(otaHandler, "ota_notified", 1);
             nvs_commit(otaHandler);
             nvs_close(otaHandler);
-            // Vai pra SENSORS_INIT (não OPERATIONAL direto) — precisa descobrir sensores
+            // Vai pra SENSORS_INIT (não OPERATIONAL direto), precisa descobrir sensores
             AppState::transition(DeviceState::SENSORS_INIT, {TAG, "handle_boot_audit"});
             return;
         }
@@ -886,10 +895,13 @@ static void handle_error() {
         return;
     }
 
-    if (WifiManager::getIp().empty()) {
+    if (!WifiManager::isConnected()) {
         SLOG_W("Sem conectividade. Aguardando 10s antes de reconectar WiFi...");
         vTaskDelay(pdMS_TO_TICKS(10000));
-        AppState::transition(DeviceState::WIFI_CONNECTING, {TAG, "handle_error"});
+        // pode ter reconectado sozinho durante a espera
+        if (!WifiManager::isConnected()) {
+            AppState::transition(DeviceState::WIFI_CONNECTING, {TAG, "handle_error"});
+        }
         return;
     }
 
@@ -1016,18 +1028,18 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
             case DeviceState::SENSORS_INIT:          handle_sensor_discovery();       break;
             case DeviceState::WAITING_RESPONSE:      handle_waiting_instruction();    break;
             case DeviceState::OPERATIONAL:           handle_operational();            break;
-            case DeviceState::OTA_FOUND:                                              break;
-            case DeviceState::OTA_DOWNLOADING:                                        break;
-            case DeviceState::FIRMWARE_ROLLBACK:                                      break;
-            case DeviceState::OTA_SUCCESSFUL:                                         break;
-            case DeviceState::HTTP_INIT:                                              break;
-            case DeviceState::HTTP_REQUEST:                                           break;
-            case DeviceState::REBOOTING:                                              break;
-            case DeviceState::PROVISIONING_SUCCESS:                                   break;
-            case DeviceState::PROVISIONING:                                           break;
-            case DeviceState::WIFI_AP_MODE:                                           break;
-            case DeviceState::COMMAND_COMPLETE:                                       break;
-            case DeviceState::CRITICAL_BATTERY:                                       break;
+            case DeviceState::OTA_FOUND:
+            case DeviceState::OTA_DOWNLOADING:
+            case DeviceState::FIRMWARE_ROLLBACK:
+            case DeviceState::OTA_SUCCESSFUL:
+            case DeviceState::HTTP_INIT:
+            case DeviceState::HTTP_REQUEST:
+            case DeviceState::REBOOTING:
+            case DeviceState::PROVISIONING_SUCCESS:
+            case DeviceState::PROVISIONING:
+            case DeviceState::WIFI_AP_MODE:
+            case DeviceState::COMMAND_COMPLETE:
+            case DeviceState::CRITICAL_BATTERY:      vTaskDelay(pdMS_TO_TICKS(100));  break;
         }
     }
 
