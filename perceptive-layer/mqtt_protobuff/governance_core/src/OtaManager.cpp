@@ -32,15 +32,6 @@ bool OtaManager::verify_and_update(const std::string& newVersion, std::string &u
     if (current_version_sha == newVersionSHA) {
         ESP_LOGE(TAG, "Stopping OTA download due same firmware SHA256.");
         msgOut = "Stopping OTA download due same firmware SHA256";
-        AppState::setError(
-            ErrorCode::OTA_FAIL,
-            msgOut,
-            {TAG, "verify_and_update"},
-            {
-                {"attempted_versionSHA", newVersionSHA},
-                {"current_versionSHA",   current_version_sha}
-            }
-        );
         return false;
     }
 

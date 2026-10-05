@@ -56,7 +56,7 @@ static void ota_task_routine(void* pvParameters) {
     std::string msgOut;
     WatchdogManager::addToCurrentTask();
 
-    OtaManager::verify_and_update(
+    bool success = OtaManager::verify_and_update(
         params->newVersion,
         params->url_bin,
         params->newVersionSHA,
