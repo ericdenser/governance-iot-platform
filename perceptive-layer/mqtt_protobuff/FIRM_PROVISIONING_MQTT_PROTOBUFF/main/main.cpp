@@ -5,6 +5,7 @@
 #include "nvs.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_ota_ops.h"
 #include "esp_sntp.h"
 #include "i2cdev.h"
 #include "ds3231.h"
@@ -64,6 +65,7 @@ static int64_t            g_lastAdvertiseMs = 0;
 static esp_reset_reason_t g_reset_reason; // last reset reason
 static std::string        firmware_version;
 static int                crashCount = 0;
+static bool               boot_part_changed = false;
 static bool hasBrokerConnection;
 
 PayloadManager json;
@@ -78,6 +80,26 @@ static void nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
     size_t sz = len;
     nvs_get_str(h, key, buf, &sz);
     nvs_close(h);
+}
+
+// Grava a particao deste boot e diz se o boot anterior foi em outra.
+// Panic seguido de boot em outra particao = rollback do bootloader:
+// o crash foi da imagem anterior, nao desta.
+static bool boot_partition_changed() {
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    if (running == nullptr) return false;
+
+    char last[17] = {0};
+    nvs_read_str(NVS_NAMESPACE, "boot_part", last, sizeof(last));
+    bool changed = last[0] != '\0' && strcmp(last, running->label) != 0;
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, "boot_part", running->label);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    return changed;
 }
 
 // =============================================================================
@@ -118,7 +140,15 @@ static void publish_proto_error(const char* topic,
     }
 
     pb_ostream_t os = pb_ostream_from_buffer(proto_buf, sizeof(proto_buf));
-    if (!pb_encode(&os, DeviceError_fields, &msg)) {
+    bool encoded = pb_encode(&os, DeviceError_fields, &msg);
+    if (!encoded && extra) {
+        // details nao couberam no buffer: publica sem eles pra nao perder o erro
+        ESP_LOGW(TAG, "DeviceError excedeu %u bytes, publicando sem details", (unsigned)sizeof(proto_buf));
+        msg.extra.funcs.encode = nullptr;
+        os = pb_ostream_from_buffer(proto_buf, sizeof(proto_buf));
+        encoded = pb_encode(&os, DeviceError_fields, &msg);
+    }
+    if (!encoded) {
         ESP_LOGE(TAG, "pb_encode DeviceError falhou: %s", PB_GET_ERROR(&os));
         return;
     }
@@ -131,7 +161,8 @@ static void publish_proto_status(const char* topic,
                                  const char* fw_ver, 
                                  const char* ssid, 
                                  uint32_t state, 
-                                 const char* detail = nullptr) {
+                                 const char* detail = nullptr,
+                                 int qos = 0) {
 
     uint8_t proto_buf[256] = {};
     DeviceStatus msg = DeviceStatus_init_zero;
@@ -150,7 +181,7 @@ static void publish_proto_status(const char* topic,
         ESP_LOGE(TAG, "pb_encode falhou: %s", PB_GET_ERROR(&os));
         return;
     }
-    MqttManager::publish(proto_buf, os.bytes_written, topic);
+    MqttManager::publish(proto_buf, os.bytes_written, topic, qos);
 }
 
 
@@ -176,6 +207,7 @@ static void handle_nvs_init() {
     }
 
     SLOG_I("NVS inicializada com sucesso.");
+    boot_part_changed = boot_partition_changed();
 
     SLOG_I("Verificando versao do Firmware.");
     char fw_buf[32] = {0};
@@ -641,7 +673,7 @@ static void handle_boot_audit() {
             AppState::transition(DeviceState::OTA_SUCCESSFUL, {TAG, "handle_boot_audit"});
             publish_proto_status(topic, g_macAddress.c_str(),
                                  firmware_version.c_str(), ssid.c_str(),
-                                 (uint32_t)AppState::get());
+                                 (uint32_t)AppState::get(), nullptr, 1);
             nvs_set_i8(otaHandler, "ota_notified", 1);
             nvs_commit(otaHandler);
             nvs_close(otaHandler);
@@ -664,9 +696,14 @@ static void handle_boot_audit() {
 
         g_reset_reason = esp_reset_reason();
         SLOG_I("VERIFICANDO MOTIVO DO ULTIMO RESET:");
-        if (g_reset_reason == ESP_RST_WDT || 
-            g_reset_reason == ESP_RST_TASK_WDT || 
-            g_reset_reason == ESP_RST_PANIC) {
+        bool crashed = g_reset_reason == ESP_RST_WDT ||
+                       g_reset_reason == ESP_RST_TASK_WDT ||
+                       g_reset_reason == ESP_RST_PANIC;
+        if (crashed && boot_part_changed) {
+            SLOG_W("Crash veio da outra particao (rollback do bootloader), nao conta pra esta imagem.");
+            crashed = false;
+        }
+        if (crashed) {
             int8_t saved = 0;
             nvs_get_i8(mainHandler, "crash_count", &saved);
             crashCount = saved + 1;
@@ -712,7 +749,7 @@ static void handle_boot_audit() {
 
         publish_proto_status(topic, g_macAddress.c_str(),
                              firmware_version.c_str(), ssid.c_str(),
-                             (uint32_t)AppState::get(), detail);
+                             (uint32_t)AppState::get(), detail, 1);
     } else if (!lastTarget.empty()) {
         // OTA foi iniciado mas o download foi interrompido (ex: WDT crash).
         // esp_ota_get_last_invalid_partition() retorna NULL porque a partição
@@ -752,7 +789,7 @@ static void handle_boot_audit() {
 
             publish_proto_status(topic, g_macAddress.c_str(),
                                  firmware_version.c_str(), ssid.c_str(),
-                                 (uint32_t)AppState::get(), detail);
+                                 (uint32_t)AppState::get(), detail, 1);
 
             nvs_set_i8(commandHandler, "commandNotified", 1);
             nvs_commit(commandHandler);
