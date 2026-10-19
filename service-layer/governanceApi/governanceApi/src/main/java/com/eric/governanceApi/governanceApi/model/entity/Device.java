@@ -7,7 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.eric.governanceApi.governanceApi.enums.status.DeviceHealth;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
+import org.hibernate.annotations.ColumnDefault;
 import lombok.Data;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.CollectionTable;
@@ -67,6 +69,16 @@ public class Device {
 
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
+
+    // Atualizado pelos eventos DEVICE_HEALTH_* do event-handler
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'OK'")
+    @Column(nullable = false, length = 20)
+    private DeviceHealth health = DeviceHealth.OK;
+
+    // Motivos separados por virgula (LOW_BATTERY,HIGH_TEMP); null quando OK
+    @Column(name = "health_reason", length = 100)
+    private String healthReason;
 
     // Sub UUID of the operator who generated the flash package that provisioned this device. 
     @Column(name = "issued_by_actor_id", length = 36)
