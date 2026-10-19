@@ -1,12 +1,14 @@
 package com.eric.eventhandler.event_handler.service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Range;
@@ -28,6 +30,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.eric.eventhandler.event_handler.enums.DeviceState;
+import com.eric.eventhandler.event_handler.enums.EventType;
+import com.eric.eventhandler.event_handler.model.entity.DeviceEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -59,6 +63,8 @@ public class HotStateProjector {
     private final RedisConnectionFactory connectionFactory;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final HealthEvaluator healthEvaluator;
+    private final EventDispatcher eventDispatcher;
 
     // Estável entre restarts (sem PID) — herda o próprio PEL ao subir de novo.
     private final String consumerName;
@@ -70,10 +76,14 @@ public class HotStateProjector {
     public HotStateProjector(RedisConnectionFactory connectionFactory,
                              StringRedisTemplate redisTemplate,
                              ObjectMapper objectMapper,
+                             HealthEvaluator healthEvaluator,
+                             EventDispatcher eventDispatcher,
                              @Value("${app.streams.replica-id:0}") String replicaId) {
         this.connectionFactory = connectionFactory;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.healthEvaluator = healthEvaluator;
+        this.eventDispatcher = eventDispatcher;
         this.consumerName = "eventhandler-hotstate-" + replicaId;
     }
 
@@ -151,6 +161,8 @@ public class HotStateProjector {
 
             Map<String, String> fields = new HashMap<>();
             fields.put("last_seen", envelopeTimestamp);
+            Double batteryReading = null;
+            Double tempReading = null;
 
             // TelemetryDTO.readings = Map<String, Float> — extrai lat/lon/bateria se presentes.
             // battery_ts é gravado SEPARADO do last_seen porque nem toda telemetria traz
@@ -165,6 +177,7 @@ public class HotStateProjector {
                 if (lat != null) fields.put("latitude", String.valueOf(lat));
                 if (lon != null) fields.put("longitude", String.valueOf(lon));
                 if (batteryMv != null) {
+                    batteryReading = toDouble(batteryMv);
                     fields.put("battery_mv", String.valueOf(batteryMv));
                     fields.put("battery_ts", envelopeTimestamp);
                 }
@@ -173,16 +186,76 @@ public class HotStateProjector {
                     fields.put("rssi_ts", envelopeTimestamp);
                 }
                 if (tempC != null) {
+                    tempReading = toDouble(tempC);
                     fields.put("temp_c", String.valueOf(tempC));
                     fields.put("temp_ts", envelopeTimestamp);
                 }
             }
 
+            // health so muda (e gera evento) quando o conjunto de motivos muda
+            Set<String> previousReasons = parseReasons(
+                    redisTemplate.opsForHash().get(hashKey(deviceId), "health_reason"));
+            Set<String> reasons = healthEvaluator.evaluate(previousReasons, batteryReading, tempReading);
+            boolean healthChanged = !reasons.equals(previousReasons);
+            if (healthChanged) {
+                fields.put("health", reasons.isEmpty() ? "OK" : "WARNING");
+                fields.put("health_reason", String.join(",", reasons));
+            }
+
             redisTemplate.opsForHash().putAll(hashKey(deviceId), fields);
             publishLive(deviceId);
+
+            if (healthChanged) {
+                dispatchHealth(deviceId, reasons, batteryReading, tempReading, envelopeTimestamp, record);
+            }
             redisTemplate.opsForStream().acknowledge(GROUP, record);
         } catch (Exception e) {
             log.error("Falha projetando telemetry id={}: {}", record.getId(), e.getMessage());
+        }
+    }
+
+    private void dispatchHealth(String deviceId, Set<String> reasons, Double batteryMv, Double tempC,
+                                String envelopeTimestamp, MapRecord<String, String, String> record) {
+        Map<String, Object> details = new HashMap<>();
+        details.put("health", reasons.isEmpty() ? "OK" : "WARNING");
+        details.put("reasons", String.join(",", reasons));
+        if (batteryMv != null) details.put("batteryMv", batteryMv);
+        if (tempC != null) details.put("tempC", tempC);
+
+        DeviceEvent event = DeviceEvent.builder()
+                .eventType(reasons.isEmpty() ? EventType.DEVICE_HEALTH_RECOVERED : EventType.DEVICE_HEALTH_WARNING)
+                .deviceId(deviceId)
+                .details(details)
+                .timestamp(parseEpochMillis(envelopeTimestamp))
+                .build();
+
+        // prefixo evita colisao com ids do stream:status no dedupe do EventLog
+        eventDispatcher.dispatch(event, "telemetry:" + record.getId().getValue());
+    }
+
+    private Set<String> parseReasons(Object raw) {
+        Set<String> reasons = new TreeSet<>();
+        if (raw == null) return reasons;
+        for (String r : String.valueOf(raw).split(",")) {
+            if (!r.isBlank()) reasons.add(r.trim());
+        }
+        return reasons;
+    }
+
+    private Double toDouble(Object o) {
+        if (o instanceof Number n) return n.doubleValue();
+        try {
+            return Double.valueOf(String.valueOf(o));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Instant parseEpochMillis(String value) {
+        try {
+            return Instant.ofEpochMilli(Long.parseLong(value));
+        } catch (Exception e) {
+            return Instant.now();
         }
     }
 
@@ -236,6 +309,8 @@ public class HotStateProjector {
             if (raw.get("rssi_ts") != null) payload.put("rssiTs", raw.get("rssi_ts"));
             if (raw.get("temp_c") != null) payload.put("tempC", raw.get("temp_c"));
             if (raw.get("temp_ts") != null) payload.put("tempTs", raw.get("temp_ts"));
+            if (raw.get("health") != null) payload.put("health", raw.get("health"));
+            if (raw.get("health_reason") != null) payload.put("healthReason", raw.get("health_reason"));
 
             String json = objectMapper.writeValueAsString(payload);
             redisTemplate.convertAndSend(CHANNEL_DEVICE_LIVE, json);

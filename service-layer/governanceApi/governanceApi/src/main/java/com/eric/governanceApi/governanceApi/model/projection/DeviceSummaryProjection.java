@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.model.projection;
 
 import java.time.Instant;
 
+import com.eric.governanceApi.governanceApi.enums.status.DeviceHealth;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 
 public record DeviceSummaryProjection(
@@ -18,5 +19,7 @@ public record DeviceSummaryProjection(
     Instant createdAt, 
     Instant lastSeen,
     String issuedByActorId, 
-    String issuedByUsername
+    String issuedByUsername,
+    DeviceHealth health,
+    String healthReason
 ) {}

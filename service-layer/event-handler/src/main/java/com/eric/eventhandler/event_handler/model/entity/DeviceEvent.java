@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.Map;
 import com.eric.eventhandler.event_handler.enums.DeviceState;
 import com.eric.eventhandler.event_handler.enums.EventType;
 import com.eric.eventhandler.event_handler.model.dto.StatusDTO;
@@ -28,6 +29,9 @@ public class DeviceEvent {
     private DeviceState newStatus;
 
     private StatusDTO deviceInfo;
+
+    // Dados extras de eventos que nao vem de status (ex: health por telemetria)
+    private Map<String, Object> details;
 
     private Instant timestamp;
 }
