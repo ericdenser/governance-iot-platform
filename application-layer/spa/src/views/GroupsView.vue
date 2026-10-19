@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppModal from '@/components/AppModal.vue'
 import { groupsApi } from '@/services/groups'
@@ -14,7 +14,6 @@ import type {
   GroupMemberResponseDTO,
   GroupDeviceMemberDTO,
   DeviceSummaryDTO,
-  DeviceStatus,
   KeycloakUserDTO,
   GroupRole,
 } from '@/types/models'
@@ -22,7 +21,6 @@ import { errorMessage } from '@/utils/errors'
 import { confirm } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const authStore = useAuthStore()
 
@@ -50,8 +48,6 @@ const loadingAllDevices = ref(false)
 const deviceSearch = ref('')
 const selectedDeviceId = ref('')
 
-const statusVariant = (s: DeviceStatus): BadgeVariant =>
-  (({ ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger' } as Record<string, BadgeVariant>)[s] ?? 'muted')
 
 const alreadyInGroup = computed(() => new Set(groupDevices.value.map(d => d.deviceId)))
 
@@ -447,7 +443,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         >
           <span class="picker-name">{{ d.name }}</span>
           <span class="picker-id">{{ d.deviceId.slice(0, 8) }}…</span>
-          <AppBadge :variant="statusVariant(d.status)" dot />
+          <StatusLabel kind="device" :code="d.status" label="" />
         </button>
       </div>
       <p v-if="addDeviceError" class="error">{{ addDeviceError }}</p>
@@ -524,10 +520,10 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 .detail-sections { display: flex; flex-direction: column; gap: var(--space-10); }
 .section {}
-.section-title { font-size: var(--text-muted); font-weight: 600; color: var(--text-sm); text-transform: uppercase; letter-spacing: .5px; margin: 0 0 var(--space-10); }
+.section-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0 0 var(--space-10); }
 
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
 .tbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); }
 
 /* Alinhamento consistente entre tabelas de Dispositivos e Usuários — colunas

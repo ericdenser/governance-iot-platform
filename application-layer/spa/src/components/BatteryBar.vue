@@ -37,7 +37,7 @@ const bins = computed(() => {
 const isHibernating = computed(() => props.deviceStatus === 'CRITICAL_BATTERY')
 
 // Bateria < 3200 sem CRITICAL_BATTERY = anomalia (hibernação off no Kconfig,
-// firmware antigo, ou crash antes de reportar). Mostra 1 vermelho piscando.
+// firmware antigo, ou crash antes de reportar). Mostra 1 segmento vermelho.
 const isCriticalActive = computed(
   () => !isHibernating.value && props.mv != null && props.mv < CRITICAL_THRESHOLD_MV,
 )
@@ -130,24 +130,12 @@ const tooltip = computed(() => {
   transition: background var(--transition);
 }
 
-.battery-seg--filled.battery-seg--green  { background: #22c55e; }
-.battery-seg--filled.battery-seg--yellow { background: #eab308; }
-.battery-seg--filled.battery-seg--red    { background: #ef4444; }
+.battery-seg--filled.battery-seg--green  { background: var(--success); }
+.battery-seg--filled.battery-seg--yellow { background: var(--warning); }
+.battery-seg--filled.battery-seg--red    { background: var(--danger); }
 
-.battery-seg--critical {
-  background: #ef4444;
-  animation: battery-blink 1.2s ease-in-out infinite;
-}
+.battery-seg--critical { background: var(--danger); }
 
-.battery-seg--hibernating {
-  background: #6b7280;
-}
-.battery-bar--hibernating {
-  border-color: #6b7280;
-}
-
-@keyframes battery-blink {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.35; }
-}
+.battery-seg--hibernating { background: var(--text-muted); }
+.battery-bar--hibernating { border-color: var(--text-muted); }
 </style>

@@ -4,11 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import BatteryBar from '@/components/BatteryBar.vue'
 import EventList from '@/components/EventList.vue'
-import LiveIndicator from '@/components/LiveIndicator.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
@@ -19,13 +19,10 @@ import type {
   DeviceDetailDTO,
   DeviceStatus,
   CommandRecordResponseDTO,
-  CommandStatus,
   EventRegistryResponseDTO,
   ErrorRecordResponseDTO,
-  ErrorStatus,
 } from '@/types/models'
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,6 +37,12 @@ const loading = ref(true)
 const liveState = computed(() => liveStore.devices.get(deviceId))
 const liveStatus = computed(() => (liveState.value?.status as DeviceStatus) ?? device.value?.status)
 const liveLastSeen = computed(() => liveState.value?.lastSeen ?? device.value?.lastSeen ?? '')
+const liveHealth = computed(() => liveState.value?.health ?? device.value?.health)
+const liveHealthReason = computed(() => {
+  const r = liveState.value?.healthReason !== undefined ? liveState.value.healthReason : device.value?.healthReason
+  const labels: Record<string, string> = { LOW_BATTERY: 'Bateria baixa', HIGH_TEMP: 'Temperatura alta' }
+  return (r ?? '').split(',').filter(Boolean).map(x => labels[x] ?? x).join(' · ')
+})
 
 const commands = ref<CommandRecordResponseDTO[]>([])
 const events = ref<EventRegistryResponseDTO[]>([])
@@ -51,17 +54,9 @@ const errPage = ref(0); const errTotal = ref(0)
 const revoking = ref(false)
 const deleting = ref(false)
 
-const statusVariant = (s: DeviceStatus): BadgeVariant => {
-  const m: Record<string, BadgeVariant> = { ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info', COMMAND_PENDING: 'info', REVOKED: 'danger', CRITICAL_BATTERY: 'muted' }
-  return m[s] ?? 'muted'
-}
 
 const liveBatteryMv = computed(() => liveState.value?.batteryMv ?? device.value?.batteryMv ?? null)
 const liveBatteryTs = computed(() => liveState.value?.batteryTs ?? device.value?.batteryTs ?? null)
-const cmdVariant = (s: CommandStatus): BadgeVariant =>
-  (({ PENDING: 'warning', COMPLETED_SUCCESS: 'success', FAILED: 'danger', TIMEOUT: 'danger' } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
-const errVariant = (s: ErrorStatus): BadgeVariant =>
-  (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const errExpanded = ref<Set<string>>(new Set())
@@ -152,9 +147,10 @@ onMounted(async () => {
           <button class="back-btn" @click="$router.push('/devices')">← Dispositivos</button>
           <h1 class="device-name">{{ device.name }}</h1>
           <div class="device-meta">
-            <AppBadge v-if="liveStatus" :variant="statusVariant(liveStatus)" dot>{{ liveStatus }}</AppBadge>
+            <StatusLabel v-if="liveStatus" kind="device" :code="liveStatus" />
+            <StatusLabel v-if="liveHealth === 'WARNING'" kind="health" code="WARNING"
+                         :label="liveHealthReason ? `Alerta: ${liveHealthReason}` : undefined" />
             <span class="mono text-muted text-sm">{{ device.deviceId }}</span>
-            <LiveIndicator />
           </div>
         </div>
         <AppButton v-if="authStore.isAdmin && device.status !== 'REVOKED'"
@@ -181,7 +177,7 @@ onMounted(async () => {
             <span v-if="device.firmware && device.firmwareVersion">
               {{ device.firmware.firmwareName }}
               <span class="mono text-muted"> v{{ device.firmwareVersion.version }}</span>
-              <AppBadge v-if="device.firmware.isProvisioning" variant="primary" dot class="badge-inline">Provisioning</AppBadge>
+              <AppBadge v-if="device.firmware.isProvisioning" variant="primary" class="badge-inline">Provisioning</AppBadge>
             </span>
             <span v-else class="text-muted">—</span>
           </div>
@@ -208,7 +204,7 @@ onMounted(async () => {
             <div class="sensor-chips">
               <span v-for="(active, name) in device.sensorStatus" :key="name" class="sensor-chip">
                 <span class="sensor-name">{{ name }}</span>
-                <AppBadge :variant="active ? 'success' : 'muted'" dot>{{ active ? 'Ativo' : 'Inativo' }}</AppBadge>
+                <StatusLabel kind="sensor" :code="active ? 'ON' : 'OFF'" />
               </span>
             </div>
           </div>
@@ -222,7 +218,7 @@ onMounted(async () => {
           <tbody>
             <tr v-for="c in commands" :key="c.commandId">
               <td class="mono text-sm">{{ c.commandType }}</td>
-              <td><AppBadge :variant="cmdVariant(c.status)">{{ c.status }}</AppBadge></td>
+              <td><StatusLabel kind="command" :code="c.status" /></td>
               <td class="text-muted text-sm">{{ fmt(c.sentAt) }}</td>
               <td class="text-muted text-sm">{{ fmt(c.completedAt) }}</td>
             </tr>
@@ -245,8 +241,8 @@ onMounted(async () => {
           <tbody>
             <template v-for="e in errors" :key="e.errorId">
               <tr>
-                <td><AppBadge variant="danger">{{ e.error }}</AppBadge></td>
-                <td><AppBadge :variant="errVariant(e.status)">{{ e.status }}</AppBadge></td>
+                <td><span class="code-tag">{{ e.error }}</span></td>
+                <td><StatusLabel kind="error" :code="e.status" /></td>
                 <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
                 <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
                 <td>
@@ -299,7 +295,7 @@ onMounted(async () => {
 .sensor-name { color: var(--text); font-weight: 500; }
 
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 0 var(--space-3); text-align: left; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 0 var(--space-3); text-align: left; }
 .tbl td { padding: var(--space-3) 0; border-top: 1px solid var(--border); }
 .mono { font-family: var(--font-mono); }
 .text-sm { font-size: var(--text-sm); }

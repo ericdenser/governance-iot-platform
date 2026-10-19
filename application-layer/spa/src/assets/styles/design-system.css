@@ -1,63 +1,81 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500&family=Geist+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-/* ─── Tokens ────────────────────────────────────────────────────────────── */
+/* ─── Tokens ────────────────────────────────────────────────────────────────
+   Para mudar a cara do SPA, mexa so aqui:
+   - Destaque: --accent (botoes, links, item ativo, foco). Hover/fundo/borda derivam dele.
+   - Status:   --success / --warning / --danger. Fundo e borda derivam deles.
+   - Neutros:  --bg, --surface, --panel, --border e --text*.
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces */
-  --bg:              #070d1a;
-  --surface:         #0d1527;
-  --sidebar:         #0a1120;
-  --panel:           #131f38;
-  --muted:           #111c32;
-  --border:          rgba(255, 255, 255, 0.07);
-  --border-strong:   rgba(255, 255, 255, 0.14);
+  /* Destaque (unica cor de marca) e cor do texto/icone sobre ele */
+  --accent:          #5b8def;
+  --accent-contrast: #ffffff;
 
-  /* Brand */
-  --primary:         #06b6d4;
-  --primary-hover:   #22d3ee;
-  --primary-dim:     rgba(6, 182, 212, 0.12);
+  /* Status: usados em texto/icone, nao em fundo cheio */
+  --success:         #5fb38a;
+  --warning:         #d6a54f;
+  --danger:          #e07070;
 
-  /* Semantic */
-  --success:         #22c55e;
-  --success-dim:     rgba(34, 197, 94, 0.12);
-  --warning:         #f59e0b;
-  --warning-dim:     rgba(245, 158, 11, 0.12);
-  --danger:          #ef4444;
-  --danger-dim:      rgba(239, 68, 68, 0.12);
-  --info:            #3b82f6;
-  --info-dim:        rgba(59, 130, 246, 0.12);
-  --primary-border:  rgba(6, 182, 212, 0.3);
+  /* Neutros */
+  --bg:              #111214;
+  --sidebar:         #141517;
+  --surface:         #17181b;
+  --panel:           #1d1f23;
+  --muted:           #1a1b1e;
+  --border:          #26282c;
+  --border-strong:   #34373c;
 
-  /* Device status (badges, chips, markers do mapa) */
+  --text:            #e4e5e7;
+  --text-secondary:  #a6a9ae;
+  --text-muted:      #7a7e85;
+  --text-inverse:    #111214;
+
+  /* ── Derivados (nao precisa editar) ── */
+  --accent-hover:    color-mix(in srgb, var(--accent) 82%, white);
+  --accent-dim:      color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-border:   color-mix(in srgb, var(--accent) 45%, transparent);
+  --success-dim:     color-mix(in srgb, var(--success) 14%, transparent);
+  --warning-dim:     color-mix(in srgb, var(--warning) 14%, transparent);
+  --danger-dim:      color-mix(in srgb, var(--danger) 14%, transparent);
+
+  /* Apelidos de compatibilidade (componentes antigos usam esses nomes) */
+  --primary:         var(--accent);
+  --primary-hover:   var(--accent-hover);
+  --primary-dim:     var(--accent-dim);
+  --primary-border:  var(--accent-border);
+  --info:            var(--text-secondary);
+  --info-dim:        var(--panel);
+
+  /* Status do device (mapa e listas) */
   --status-active:          var(--success);
   --status-pending:         var(--warning);
-  --status-provisioning:    var(--info);
-  --status-command-pending: var(--info);
+  --status-provisioning:    var(--text-secondary);
+  --status-command-pending: var(--accent);
   --status-revoked:         var(--danger);
   --status-error:           var(--danger);
   --status-unknown:         var(--text-muted);
 
-  /* Text */
-  --text:            #e8edf5;
-  --text-secondary:  #a3b4cc;
-  --text-muted:      #6b7e9a;
-  --text-inverse:    #070d1a;
+  /* Graficos (Analytics): bom / atencao / ruim / sem dado */
+  --chart-good:      var(--success);
+  --chart-warn:      var(--warning);
+  --chart-bad:       var(--danger);
+  --chart-empty:     var(--border-strong);
 
-  /* Typography */
-  --font-sans:  'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  --font-body:  'Inter', system-ui, sans-serif;
-  --font-mono:  'Geist Mono', 'Fira Code', monospace;
+  /* Tipografia: uma sans pra tudo, mono so pra ID/MAC/versao/horario */
+  --font-sans:  'IBM Plex Sans', system-ui, sans-serif;
+  --font-body:  var(--font-sans);
+  --font-mono:  'IBM Plex Mono', ui-monospace, monospace;
 
-  /* Font sizes */
-  --text-xs:   11px;
+  --text-xs:   12px;
   --text-sm:   13px;
   --text-base: 14px;
   --text-md:   15px;
   --text-lg:   18px;
   --text-xl:   20px;
   --text-2xl:  24px;
-  --text-3xl:  30px;
+  --text-3xl:  28px;
 
-  /* Spacing */
+  /* Espacamento */
   --space-1:  4px;
   --space-2:  8px;
   --space-3:  12px;
@@ -67,24 +85,22 @@
   --space-8:  32px;
   --space-10: 40px;
 
-  /* Radius */
-  --radius-sm:   4px;
-  --radius-md:   8px;
-  --radius-lg:   12px;
+  /* Raio */
+  --radius-sm:   3px;
+  --radius-md:   6px;
+  --radius-lg:   8px;
   --radius-pill: 999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
-  --glow-primary: 0 0 20px rgba(6, 182, 212, 0.2);
+  /* Sombra (modal, toast, menu) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
 
   /* Layout */
   --sidebar-width: 220px;
   --sidebar-collapsed-width: 60px;
   --header-height: 77px;
 
-  /* Transitions */
   --transition: 150ms ease;
 }
 
@@ -143,6 +159,8 @@ code, pre, .mono {
   font-size: var(--text-sm);
 }
 
+table, .mono, .num { font-variant-numeric: tabular-nums; }
+
 /* ─── Scrollbar ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--muted); }
@@ -167,6 +185,46 @@ code, pre, .mono {
 .text-sm        { font-size: var(--text-sm); }
 .text-xs        { font-size: var(--text-xs); }
 .mono           { font-family: var(--font-mono); }
+
+/* Checkbox */
+input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-content: center;
+  vertical-align: middle;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+input[type="checkbox"]:hover:not(:disabled) { border-color: var(--text-muted); }
+input[type="checkbox"]::before {
+  content: '';
+  width: 4px;
+  height: 8px;
+  margin-top: -2px;
+  border: solid var(--accent-contrast);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 100ms ease;
+}
+input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+input[type="checkbox"]:checked::before { transform: rotate(45deg) scale(1); }
+input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 2px; }
+input[type="checkbox"]:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Identificador tecnico (nome de erro, comando) */
+.code-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
 
 .divider {
   height: 1px;

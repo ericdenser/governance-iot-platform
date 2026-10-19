@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// Etiqueta neutra pra marcar atributos (ex: "Provisioning", "Admin").
+// Pra status (sucesso/falha/pendente) use o StatusLabel.
 defineProps<{
   variant?: 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
   dot?: boolean
@@ -7,7 +9,6 @@ defineProps<{
 
 <template>
   <span class="badge" :class="variant || 'muted'">
-    <span v-if="dot" class="badge-dot" />
     <slot />
   </span>
 </template>
@@ -16,28 +17,18 @@ defineProps<{
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  font-family: var(--font-sans);
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  font-weight: 500;
+  line-height: 1.5;
   white-space: nowrap;
+  color: var(--text-secondary);
 }
 
-.badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-  flex-shrink: 0;
-}
-
-.success { color: var(--success); background: var(--success-dim); }
-.warning { color: var(--warning); background: var(--warning-dim); }
-.danger  { color: var(--danger);  background: var(--danger-dim);  }
-.info    { color: var(--info);    background: var(--info-dim);    }
-.primary { color: var(--primary); background: var(--primary-dim); }
-.muted   { color: var(--text-muted); background: var(--panel);   }
+.primary { color: var(--accent);  border-color: var(--accent-border); }
+.success { color: var(--success); }
+.warning { color: var(--warning); }
+.danger  { color: var(--danger); }
 </style>

@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import type { EventRegistryResponseDTO } from '@/types/models'
+import { absoluteTime, relativeTime } from '@/utils/format'
 
 defineProps<{ events: EventRegistryResponseDTO[] }>()
-
-const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 </script>
 
 <template>
   <ul class="activity-list">
     <li v-for="e in events" :key="e.eventId" class="activity-item">
       <div class="item-top">
-        <AppBadge variant="info">{{ e.eventType }}</AppBadge>
-        <span class="date">{{ fmt(e.occurredAt) }}</span>
+        <StatusLabel kind="event" :code="e.eventType" />
+        <span class="date" :title="absoluteTime(e.occurredAt)">{{ relativeTime(e.occurredAt) }}</span>
       </div>
       <span class="device-name">{{ e.deviceName ?? e.deviceId ?? '—' }}</span>
     </li>

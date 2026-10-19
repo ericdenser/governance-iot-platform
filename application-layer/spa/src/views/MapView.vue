@@ -2,7 +2,6 @@
 import { ref, watch } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import DeviceMap from '@/components/DeviceMap.vue'
-import LiveIndicator from '@/components/LiveIndicator.vue'
 import type { DeviceStatus } from '@/types/models'
 
 const STORAGE_KEY = 'map_view_config'
@@ -67,7 +66,6 @@ const clearFilter = () => { config.value.statusFilter = [] }
             <input v-model="config.autoFit" type="checkbox" />
             Auto-ajustar zoom
           </label>
-          <LiveIndicator />
         </div>
       </div>
 

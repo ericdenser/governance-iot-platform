@@ -2,12 +2,11 @@
 import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { auditApi } from '@/services/audit'
 import type { AuditLogResponseDTO } from '@/types/models'
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const entries = ref<AuditLogResponseDTO[]>([])
 const loading = ref(true)
@@ -16,7 +15,6 @@ const totalPages = ref(1)
 
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
-const successVariant = (ok: boolean): BadgeVariant => ok ? 'success' : 'danger'
 
 const load = async () => {
   const r = await auditApi.list(page.value)
@@ -48,7 +46,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <td class="text-sm text-muted">{{ e.targetType ?? '—' }}</td>
             <td class="mono text-xs text-muted">{{ e.targetId ?? '—' }}</td>
             <td>
-              <AppBadge :variant="successVariant(e.success)">{{ e.success ? 'OK' : 'FALHA' }}</AppBadge>
+              <StatusLabel kind="result" :code="e.success ? 'OK' : 'FAIL'" />
               <span v-if="!e.success && e.errorMessage" class="error-msg text-xs text-muted" :title="e.errorMessage">
                 {{ e.errorMessage.slice(0, 40) }}{{ e.errorMessage.length > 40 ? '…' : '' }}
               </span>
@@ -66,7 +64,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <style scoped>
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
 .tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); vertical-align: top; }
 .mono { font-family: var(--font-mono); }
 .text-sm { font-size: var(--text-sm); }
