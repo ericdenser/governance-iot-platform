@@ -222,7 +222,7 @@ bool AuthManager::fetchJwt(std::string& jwtOut, int& expiresInOut, std::string& 
     std::string responseBuf;
 
     if (!HttpService::post(url, body, responseBuf, errOut,
-         "application/x-www-form-urlencoded", NULL)) {
+         "application/x-www-form-urlencoded", NULL, false)) {
         return false; // HttpService already set AppState
     }
 

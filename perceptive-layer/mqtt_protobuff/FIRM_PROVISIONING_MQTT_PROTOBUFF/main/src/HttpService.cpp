@@ -23,19 +23,19 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 }
 
 // GET
-bool HttpService::get(const std::string &url, std::string &response_buffer, std::string &msgOut, const char* authorization) {
-    return perform_request(url, HTTP_METHOD_GET, "", response_buffer, msgOut, NULL, authorization);
+bool HttpService::get(const std::string &url, std::string &response_buffer, std::string &msgOut, const char* authorization, bool trackState) {
+    return perform_request(url, HTTP_METHOD_GET, "", response_buffer, msgOut, NULL, authorization, trackState);
 }
 
 // POST
-bool HttpService::post(const std::string &url, const std::string &payload, std::string &response_buffer, std::string &msgOut, const char* content_type, const char* authorization) {
-    return perform_request(url, HTTP_METHOD_POST, payload, response_buffer, msgOut, content_type, authorization);
+bool HttpService::post(const std::string &url, const std::string &payload, std::string &response_buffer, std::string &msgOut, const char* content_type, const char* authorization, bool trackState) {
+    return perform_request(url, HTTP_METHOD_POST, payload, response_buffer, msgOut, content_type, authorization, trackState);
 }
 
 // LÓGICA CENTRAL
-bool HttpService::perform_request(const std::string &url, esp_http_client_method_t method, const std::string &payload, std::string &response_buffer, std::string &msgOut, const char* content_type, const char* authorization) {
+bool HttpService::perform_request(const std::string &url, esp_http_client_method_t method, const std::string &payload, std::string &response_buffer, std::string &msgOut, const char* content_type, const char* authorization, bool trackState) {
     
-    AppState::transition(DeviceState::HTTP_INIT, {TAG, "perform_request"});
+    if (trackState) AppState::transition(DeviceState::HTTP_INIT, {TAG, "perform_request"});
 
     // Limpa o buffer de resposta ANTES de cada requisição
     response_buffer.clear();
@@ -79,7 +79,7 @@ bool HttpService::perform_request(const std::string &url, esp_http_client_method
 
     // Executa
     esp_err_t err = esp_http_client_perform(client);
-    AppState::transition(DeviceState::HTTP_REQUEST, {TAG, "perform_request"});
+    if (trackState) AppState::transition(DeviceState::HTTP_REQUEST, {TAG, "perform_request"});
     bool success = false;
 
     if (err == ESP_OK) {
