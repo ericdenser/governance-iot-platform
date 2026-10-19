@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 
@@ -23,6 +24,8 @@ public interface CommandRecordRepository extends JpaRepository<CommandRecord, Lo
     Page<CommandRecord> findByTargetDevice_DeviceId(String deviceId, Pageable pageable);
 
     Optional<CommandRecord> findFirstByTargetDevice_DeviceIdAndStatus(String deviceId, CommandStatus status);
+
+    Optional<CommandRecord> findFirstByTargetDevice_DeviceIdAndStatusAndCommandType(String deviceId, CommandStatus status, DeviceCommands commandType);
 
     List<CommandRecord> findByBatch_BatchIdOrderByIdAsc(String batchId);
 

@@ -12,6 +12,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.HandlerMapping;
@@ -130,6 +131,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AsyncRequestTimeoutException.class)
     public void handleAsyncRequestTimeout(HttpServletRequest request) {
         log.debug("SSE emitter expirou (recycle normal) em {}", request.getRequestURI());
+    }
+
+    // Cliente SSE fechou a conexao (reload, troca de rede, restart do BFF)
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(HttpServletRequest request) {
+        log.debug("Cliente desconectou de {}", request.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)

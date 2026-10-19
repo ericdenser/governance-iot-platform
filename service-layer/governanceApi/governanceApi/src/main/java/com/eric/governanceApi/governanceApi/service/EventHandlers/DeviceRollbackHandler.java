@@ -7,7 +7,9 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
 import com.eric.governanceApi.governanceApi.enums.EventType;
+import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
@@ -15,6 +17,7 @@ import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
+import com.eric.governanceApi.governanceApi.repository.CommandRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
 
@@ -36,6 +39,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DeviceRollbackHandler implements DeviceEventHandler {
     private final DeviceRepository deviceRepository;
     private final EventRegistryRepository eventRegistryRepository;
+    private final CommandRecordRepository commandRecordRepository;
 
     @Override
     public EventType handles() { return EventType.DEVICE_FIRMWARE_ROLLBACK; }
@@ -73,15 +77,18 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         String reportedVersion = event.deviceInfo().firmwareVersion();
         Map<String, Object> params = event.deviceInfo().params();
         String reason = params.get("reason") != null ? params.get("reason").toString() : null;
+        String invalidSha = params.get("invalid_sha") != null ? params.get("invalid_sha").toString() : null;
 
         // Detecta cenário
         boolean scenarioA = attemptedVersion != null;
 
+        // Produtos diferentes podem ter o mesmo numero de versao do firmware atual; firmware antigo (sem SHA) cai na versao reportada == anterior.
         boolean scenarioB = attemptedVersion == null
                             && currentFirmware != null
                             && previousVersion != null
-                            && !currentFirmware.getVersion().equals(reportedVersion)
-                            && previousVersion.getVersion().equals(reportedVersion);
+                            && (invalidSha != null && !invalidSha.isBlank()
+                                    ? invalidSha.equalsIgnoreCase(currentFirmware.getSha256())
+                                    : previousVersion.getVersion().equals(reportedVersion));
                             
         FirmwareVersion invalidVersion = null;
 
@@ -100,9 +107,20 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
                 "Rollback durante OTA. Device continua em v" + reportedVersion +
                 ". Versão que falhou instalar: v" + invalidVersion.getVersion() + ".");
 
+            // O device nao confirma o UPDATE nesse caso; fecha o comando pendente como falha
+            String failedMsg = "Rollback durante OTA: v" + invalidVersion.getVersion() + " não validou"
+                    + (reason != null ? " (reason: " + reason + ")." : ".");
+            commandRecordRepository
+                    .findFirstByTargetDevice_DeviceIdAndStatusAndCommandType(
+                            device.getDeviceId(), CommandStatus.PENDING, DeviceCommands.UPDATE)
+                    .ifPresent(record -> {
+                        record.setStatus(CommandStatus.FAILED);
+                        record.setCompletedAt(event.timestamp());
+                        record.setErrorMessage(failedMsg);
+                    });
+
         } else if (scenarioB) {
-            // Rollback tardio: currentFirmware operou por um tempo e falhou.
-            // Swap current ↔ previous, ajusta deployCounts.
+            // Rollback tardio: currentFirmware operou por um tempo e falhou
             invalidVersion = currentFirmware;
 
             currentFirmware.setDeployCount(currentFirmware.getDeployCount() - 1);
