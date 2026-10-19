@@ -72,7 +72,7 @@ public class FirmwareService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    @Value("${ota.max-firmware-size-mb:4}")
+    @Value("${ota.max-firmware-size-mb:8}")
     private int maxSizeMb;
 
     // TTL da presigned URL: base + tempo do rollout em waves do agent.

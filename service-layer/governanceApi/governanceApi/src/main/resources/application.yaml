@@ -73,7 +73,7 @@ keycloak:
   url: ${KEYCLOAK_ADMIN_URL}
 
 ota:
-  max-firmware-size-mb: 4
+  max-firmware-size-mb: 8
   # TTL da presigned URL = base + waves * interval. wave-size e wave-interval-ms
   # devem espelhar broadcast do agent-mqtt.
   presign-base-ttl-min: 10
