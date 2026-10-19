@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import LiveIndicator from '@/components/LiveIndicator.vue'
 import { Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -16,6 +15,7 @@ import {
 } from 'chart.js'
 import { devicesApi } from '@/services/devices'
 import { useLiveStateStore } from '@/stores/liveState'
+import { cssVar } from '@/utils/cssVar'
 import type { DeviceSummaryDTO } from '@/types/models'
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
@@ -80,21 +80,20 @@ const metricTs = (d: Extended, m: Metric): string | null | undefined => {
   return d.tempTs
 }
 
-const colorFor = (m: Metric, v: number | null): string => {
-  if (v == null) return 'rgba(148, 163, 184, 0.35)'
-  if (m === 'battery') {
-    if (v < 25) return 'rgba(239, 68, 68, 0.85)'
-    if (v < 50) return 'rgba(251, 191, 36, 0.85)'
-    return 'rgba(34, 197, 94, 0.85)'
-  }
-  if (m === 'rssi') {
-    if (v < -85) return 'rgba(239, 68, 68, 0.85)'
-    if (v < -70) return 'rgba(251, 191, 36, 0.85)'
-    return 'rgba(34, 197, 94, 0.85)'
-  }
-  if (v > 55) return 'rgba(239, 68, 68, 0.85)'
-  if (v > 45) return 'rgba(251, 191, 36, 0.85)'
-  return 'rgba(34, 197, 94, 0.85)'
+// Bateria e temperatura usam os limites do alerta do backend (app.health.*)
+type Level = 'good' | 'warn' | 'bad'
+const levelOf = (d: Extended, m: Metric): Level | null => {
+  const raw = rawValue(d, m)
+  if (raw == null) return null
+  if (m === 'battery') return raw < 3500 ? 'bad' : raw < 3700 ? 'warn' : 'good'
+  if (m === 'rssi') return raw < -85 ? 'bad' : raw < -70 ? 'warn' : 'good'
+  return raw > 70 ? 'bad' : raw > 60 ? 'warn' : 'good'
+}
+
+const LEVEL_TOKEN: Record<Level, string> = { good: '--chart-good', warn: '--chart-warn', bad: '--chart-bad' }
+const colorFor = (d: Extended, m: Metric): string => {
+  const lvl = levelOf(d, m)
+  return cssVar(lvl ? LEVEL_TOKEN[lvl] : '--chart-empty')
 }
 
 const scopedDevices = computed<Extended[]>(() => {
@@ -128,8 +127,8 @@ const chartData = computed(() => {
     datasets: [{
       label: METRIC_LABEL[metric.value],
       data: items.map(d => chartValue(d, metric.value) ?? 0),
-      backgroundColor: items.map(d => colorFor(metric.value, chartValue(d, metric.value))),
-      borderColor: items.map(d => colorFor(metric.value, chartValue(d, metric.value)).replace('0.85', '1')),
+      backgroundColor: items.map(d => colorFor(d, metric.value)),
+      borderColor: items.map(d => colorFor(d, metric.value)),
       borderWidth: 1,
       borderRadius: 3,
     }],
@@ -152,15 +151,15 @@ const chartOptions = computed(() => {
     },
     scales: {
       x: {
-        ticks: { color: '#94a3b8', maxRotation: 60, minRotation: 45, autoSkip: false, font: { size: 10 } },
+        ticks: { color: cssVar('--text-muted'), maxRotation: 60, minRotation: 45, autoSkip: false, font: { size: 10 } },
         grid: { display: false },
       },
       y: {
         min: yMin,
         max: yMax,
-        ticks: { color: '#94a3b8', font: { size: 11 } },
-        grid: { color: 'rgba(148, 163, 184, 0.12)' },
-        title: { display: true, text: METRIC_LABEL[m], color: '#94a3b8', font: { size: 11 } },
+        ticks: { color: cssVar('--text-muted'), font: { size: 11 } },
+        grid: { color: cssVar('--border') },
+        title: { display: true, text: METRIC_LABEL[m], color: cssVar('--text-muted'), font: { size: 11 } },
       },
     },
     plugins: {
@@ -206,13 +205,7 @@ const stats = computed(() => {
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
   const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-  const critical = items.filter(d => {
-    const v = chartValue(d, metric.value)
-    if (v == null) return false
-    if (metric.value === 'battery') return v < 25
-    if (metric.value === 'rssi') return v < -85
-    return v > 55
-  }).length
+  const critical = items.filter(d => levelOf(d, metric.value) === 'bad').length
   return { count: items.length, avg, median, critical, missing }
 })
 
@@ -235,10 +228,7 @@ onMounted(load)
 
 <template>
   <AppLayout>
-    <AppCard title="Analytics">
-      <template #actions>
-        <LiveIndicator />
-      </template>
+    <AppCard title="Métricas por dispositivo">
 
       <div class="toolbar">
         <label class="ctl">
@@ -300,9 +290,8 @@ onMounted(load)
 <style scoped>
 .toolbar { display: flex; align-items: flex-end; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
 .ctl { display: flex; flex-direction: column; gap: 4px; }
-.ctl-label { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); letter-spacing: .5px; text-transform: uppercase; }
+.ctl-label { font-size: var(--text-xs); color: var(--text-muted); }
 .ctl.checkbox { flex-direction: row; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text); }
-.ctl.checkbox input { accent-color: var(--primary); width: 14px; height: 14px; }
 .field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-mono); min-width: 160px; }
 .field:focus { border-color: var(--primary); }
 

@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
+import BatchProgress from '@/components/BatchProgress.vue'
+import { absoluteTime, relativeTime } from '@/utils/format'
 import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { commandsApi } from '@/services/commands'
 import { devicesApi } from '@/services/devices'
 import { firmwareApi } from '@/services/firmware'
 import type {
-  CommandAggregateStatus,
   CommandBatchDTO,
   CommandRecordResponseDTO,
   CommandRequest,
-  CommandStatus,
   DeviceCommands,
   DeviceSummaryDTO,
   DeployableVersionProjection,
@@ -22,7 +22,6 @@ import { errorMessage } from '@/utils/errors'
 import { toast } from '@/composables/useToast'
 import { confirm } from '@/composables/useConfirm'
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -202,39 +201,17 @@ const send = async (command: DeviceCommands, params?: Record<string, unknown>) =
 
 // ── History (batches) ──────────────────────────────────────────────────────
 
-const aggregateVariant = (s: CommandAggregateStatus): BadgeVariant =>
-  (({ IN_PROGRESS: 'warning', SUCCESS: 'success', PARTIAL: 'warning', FAILED: 'danger' } as Record<CommandAggregateStatus, BadgeVariant>)[s] ?? 'muted')
-
-const AGGREGATE_LABEL: Record<CommandAggregateStatus, string> = {
-  IN_PROGRESS: 'EM ANDAMENTO',
-  SUCCESS: 'SUCESSO',
-  PARTIAL: 'PARCIAL',
-  FAILED: 'FALHOU',
-}
-
-const statusVariant = (s: CommandStatus): BadgeVariant =>
-  (({
-    PENDING: 'warning',
-    COMPLETED_SUCCESS: 'success',
-    FAILED: 'danger',
-    TIMEOUT: 'danger',
-    PUBLISH_FAILED: 'danger',
-    SKIPPED: 'muted',
-  } as Record<CommandStatus, BadgeVariant>)[s] ?? 'muted')
-
+// So o que nao deu certo; o "x/y ok" ja aparece na barra
 const countsSummary = (b: CommandBatchDTO) => {
   const parts: string[] = []
-  if (b.success) parts.push(`${b.success} ok`)
   if (b.pending) parts.push(`${b.pending} pendente(s)`)
   if (b.failed) parts.push(`${b.failed} falhou`)
   if (b.skipped) parts.push(`${b.skipped} ignorado(s)`)
   if (b.notFound) parts.push(`${b.notFound} não encontrado(s)`)
-  return parts.join(' · ') || '—'
+  return parts.join(' · ')
 }
 
 const fmtTime = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
-const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
-const fmtFull = (iso: string | null) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 const toggleExpand = async (batchId: string) => {
   const next = new Set(expanded.value)
@@ -282,7 +259,43 @@ const loadBatches = async () => {
 
 const changePage = async (p: number) => { page.value = p; await loadBatches() }
 
-onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
+// Polling enquanto houver lote em andamento (timeout de comando nao chega pelo SSE)
+const POLL_MS = 5000
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+const hasInProgress = computed(() => batches.value.some(b => b.aggregateStatus === 'IN_PROGRESS'))
+
+const refreshBatches = async () => {
+  try {
+    const r = await commandsApi.list(page.value)
+    batches.value = r.data.content ?? []
+    totalPages.value = r.data.page?.totalPages ?? 1
+
+    const open = [...expanded.value]
+    const results = await Promise.all(open.map(id =>
+      commandsApi.records(id).then(x => [id, x.data ?? []] as const).catch(() => null)))
+    const next: typeof recordsByBatch.value = {}
+    for (const res of results) if (res) next[res[0]] = res[1]
+    recordsByBatch.value = next
+  } catch {
+    // tenta de novo no proximo ciclo
+  }
+}
+
+const pollIfNeeded = () => {
+  if (document.visibilityState === 'visible' && hasInProgress.value) refreshBatches()
+}
+
+onMounted(async () => {
+  await Promise.all([loadDevices(), loadBatches()])
+  pollTimer = setInterval(pollIfNeeded, POLL_MS)
+  document.addEventListener('visibilitychange', pollIfNeeded)
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', pollIfNeeded)
+})
 </script>
 
 <template>
@@ -348,7 +361,7 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
 
       <!-- ── Dispatch History ─────────────────────────────────────────── -->
       <AppCard title="Histórico">
-        <p class="panel-hint mono">Últimos comandos · clique pra expandir</p>
+        <p class="panel-hint">Últimos comandos. Clique para ver o resultado por dispositivo.</p>
 
         <div v-if="loadingBatches" class="empty">Carregando histórico...</div>
         <div v-else-if="!batches.length" class="empty">Nenhum comando enviado</div>
@@ -356,22 +369,20 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
           <div v-for="b in batches" :key="b.batchId" class="hist-card">
             <button class="hist-header" @click="toggleExpand(b.batchId)">
               <div class="hist-top">
-                <span class="hist-cmd mono">
-                  {{ b.commandType }}<span v-if="b.targetVersionLabel" class="text-muted"> · v{{ b.targetVersionLabel }}</span>
+                <span class="hist-cmd">
+                  {{ b.commandType }}<span v-if="b.targetVersionLabel" class="text-muted mono"> v{{ b.targetVersionLabel }}</span>
                 </span>
-                <AppBadge :variant="aggregateVariant(b.aggregateStatus)">
-                  {{ AGGREGATE_LABEL[b.aggregateStatus] ?? b.aggregateStatus }}
-                </AppBadge>
+                <StatusLabel kind="batch" :code="b.aggregateStatus" />
               </div>
-              <div class="hist-meta mono">
-                <span>{{ b.total }} device(s)</span>
-                <span class="sep">·</span>
+              <BatchProgress :total="b.total" :success="b.success" :failed="b.failed"
+                             :pending="b.pending" :skipped="b.skipped" :not-found="b.notFound" />
+              <div v-if="countsSummary(b)" class="hist-meta">
                 <span class="counts">{{ countsSummary(b) }}</span>
               </div>
-              <div class="hist-footer mono">
+              <div class="hist-footer">
                 <span>{{ b.createdByUsername ?? '—' }}</span>
                 <span class="sep">·</span>
-                <span :title="fmtFull(b.sentAt)">{{ fmtDate(b.sentAt) }} {{ fmtTime(b.sentAt) }}</span>
+                <span :title="absoluteTime(b.sentAt)">{{ relativeTime(b.sentAt) }}</span>
                 <span class="chevron" :class="{ open: expanded.has(b.batchId) }">›</span>
               </div>
             </button>
@@ -381,11 +392,12 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
               <div v-else-if="!(recordsByBatch[b.batchId] ?? []).length" class="empty">Nenhum device visível</div>
               <div v-else class="record-list">
                 <div v-for="c in recordsByBatch[b.batchId]" :key="c.commandId" class="record-row">
-                  <span class="rec-name">{{ c.deviceName ?? c.deviceId ?? '—' }}</span>
-                  <AppBadge :variant="statusVariant(c.status)" class="rec-status">{{ c.status }}</AppBadge>
+                  <div class="rec-top">
+                    <span class="rec-name">{{ c.deviceName ?? c.deviceId ?? '—' }}</span>
+                    <span class="rec-time mono">{{ fmtTime(c.completedAt) }}</span>
+                  </div>
+                  <StatusLabel kind="command" :code="c.status" class="rec-status" />
                   <span v-if="c.errorMessage" class="rec-reason mono">{{ c.errorMessage }}</span>
-                  <span v-else class="rec-reason mono text-muted">—</span>
-                  <span class="rec-time mono">{{ fmtTime(c.completedAt) }}</span>
                 </div>
               </div>
             </div>
@@ -411,7 +423,7 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
             @click="pickedFirmware = fw">
             <span class="fw-name">{{ fw.firmwareName }}</span>
             <span class="fw-version mono">v{{ fw.version }}</span>
-            <AppBadge :variant="fw.status === 'DEPLOYED' ? 'success' : 'muted'">{{ fw.status }}</AppBadge>
+            <StatusLabel kind="firmware" :code="fw.status" />
           </button>
         </div>
 
@@ -461,7 +473,7 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
   .cmd-grid { grid-template-columns: 1fr; }
 }
 
-.panel-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0 0 var(--space-3) 0; letter-spacing: .3px; }
+.panel-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0 0 var(--space-3) 0; }
 .panel-hint .selected-count { color: var(--primary); }
 
 .target-actions { display: flex; gap: var(--space-1); }
@@ -477,7 +489,6 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
 .device-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; border: 1px solid transparent; transition: background var(--transition), border-color var(--transition); }
 .device-row:hover { background: var(--panel); }
 .device-row.selected { background: var(--panel); border-color: var(--primary); }
-.device-row input[type="checkbox"] { accent-color: var(--primary); width: 14px; height: 14px; margin: 0; }
 .dev-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .dev-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-meta { font-size: var(--text-xs); color: var(--text-muted); }
@@ -489,11 +500,11 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
 .cmd-card { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3); background: none; border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; text-align: left; transition: border-color var(--transition), background var(--transition); }
 .cmd-card:hover:not(:disabled) { border-color: var(--primary); background: var(--panel); }
 .cmd-card:disabled { opacity: 0.35; cursor: not-allowed; }
-.cmd-card.destructive:hover:not(:disabled) { border-color: var(--danger); background: rgba(239, 68, 68, 0.05); }
+.cmd-card.destructive:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-dim); }
 .cmd-card.running { opacity: 0.7; }
 
-.cmd-icon-slot { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: var(--radius-sm); background: rgba(6, 182, 212, 0.1); color: var(--primary); flex-shrink: 0; }
-.cmd-icon-slot.destructive { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+.cmd-icon-slot { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: var(--radius-sm); background: var(--accent-dim); color: var(--accent); flex-shrink: 0; }
+.cmd-icon-slot.destructive { background: var(--danger-dim); color: var(--danger); }
 
 .cmd-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cmd-label { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); }
@@ -508,7 +519,7 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
 .hist-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; flex-shrink: 0; }
 
 .hist-header { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: var(--space-3); background: none; border: none; cursor: pointer; text-align: left; color: inherit; }
-.hist-header:hover { background: rgba(255, 255, 255, 0.02); }
+.hist-header:hover { background: var(--muted); }
 
 .hist-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .hist-cmd { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
@@ -522,26 +533,27 @@ onMounted(async () => { await Promise.all([loadDevices(), loadBatches()]) })
 .hist-footer .chevron.open { transform: rotate(90deg); }
 
 .hist-detail { border-top: 1px solid var(--border); padding: var(--space-2) var(--space-3); background: var(--surface); }
-.record-list { display: flex; flex-direction: column; gap: 4px; }
-.record-row { display: grid; grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 2fr) auto; gap: var(--space-2); align-items: center; padding: 4px 0; font-size: var(--text-xs); border-bottom: 1px solid var(--border); }
+.record-list { display: flex; flex-direction: column; }
+.record-row { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--text-xs); }
 .record-row:last-child { border-bottom: none; }
-.rec-name { font-family: var(--font-sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rec-status { justify-self: start; }
-.rec-reason { color: var(--text-secondary); overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; }
-.rec-time { color: var(--text-muted); text-align: right; }
+.rec-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); min-width: 0; }
+.rec-name { font-family: var(--font-sans); font-size: var(--text-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-time { color: var(--text-muted); flex-shrink: 0; }
+.rec-status { font-size: var(--text-xs); }
+.rec-reason { color: var(--text-secondary); overflow-wrap: anywhere; line-height: 1.4; }
 
 /* ── Modals ───────────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); width: 520px; max-width: 94vw; max-height: 85vh; display: flex; flex-direction: column; gap: var(--space-4); overflow: hidden; }
 .modal-title { font-family: var(--font-sans); font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0; }
 .modal-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
-.modal-hint.warn { color: var(--warning, #f59e0b); }
+.modal-hint.warn { color: var(--warning); }
 .modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); margin-top: auto; }
 
 .fw-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 320px; overflow-y: auto; }
 .fw-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; text-align: left; transition: border-color var(--transition); color: inherit; }
 .fw-row:hover { border-color: var(--primary); }
-.fw-row.selected { border-color: var(--primary); background: rgba(6, 182, 212, 0.06); }
+.fw-row.selected { border-color: var(--accent-border); background: var(--accent-dim); }
 .fw-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fw-version { font-size: var(--text-sm); color: var(--text-muted); }
 

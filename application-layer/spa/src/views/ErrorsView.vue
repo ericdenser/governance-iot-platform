@@ -2,12 +2,11 @@
 import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { errorsApi } from '@/services/errors'
-import type { ErrorRecordResponseDTO, ErrorStatus } from '@/types/models'
+import type { ErrorRecordResponseDTO } from '@/types/models'
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const errors = ref<ErrorRecordResponseDTO[]>([])
 const loading = ref(true)
@@ -15,8 +14,6 @@ const page = ref(0)
 const totalPages = ref(1)
 const expanded = ref<Set<string>>(new Set())
 
-const statusVariant = (s: ErrorStatus): BadgeVariant =>
-  (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
 
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
@@ -55,8 +52,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         <tbody>
           <template v-for="e in errors" :key="e.errorId">
             <tr>
-              <td><AppBadge variant="danger">{{ e.error }}</AppBadge></td>
-              <td><AppBadge :variant="statusVariant(e.status)">{{ e.status }}</AppBadge></td>
+              <td><span class="code-tag">{{ e.error }}</span></td>
+              <td><StatusLabel kind="error" :code="e.status" /></td>
               <td class="text-sm">{{ e.deviceName ?? e.deviceId ?? '—' }}</td>
               <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
               <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
@@ -93,7 +90,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <style scoped>
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
 .tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); vertical-align: middle; }
 .text-sm { font-size: var(--text-sm); }
 .text-muted { color: var(--text-muted); }

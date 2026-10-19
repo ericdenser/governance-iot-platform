@@ -1,28 +1,29 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppButton from '@/components/AppButton.vue'
-import LiveIndicator from '@/components/LiveIndicator.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
-import type { DeviceSummaryDTO } from '@/types/models'
+import StatusLabel from '@/components/StatusLabel.vue'
+import { isOnline } from '@/utils/connection'
+import { absoluteTime, relativeTime } from '@/utils/format'
+import type { DeviceHealth, DeviceSummaryDTO } from '@/types/models'
 
-// ── Derivação de connection state (client-side) ──────────────────────────
-// Backend so tem lastSeen + status de negocio. Derivo online/warning/offline
-// combinando os dois pra alimentar filtros + badge dos cards.
-const ONLINE_MAX_S  = 5  * 60
-const WARNING_MAX_S = 30 * 60
-
-type ConnState = 'online' | 'warning' | 'offline' | 'pending'
+// ── Connection state (client-side, so pelo lastSeen) ─────────────────────
+type ConnState = 'online' | 'offline' | 'pending'
+type DeviceFilter = 'all' | 'online' | 'offline' | 'warning'
+const FILTER_LABEL: Record<DeviceFilter, string> = { all: 'Todos', online: 'Online', offline: 'Offline', warning: 'Com alerta' }
 
 type MergedDevice = DeviceSummaryDTO & {
   lat?: number | null
   lon?: number | null
   rssi?: number | null
   tempC?: number | null
+  health: DeviceHealth
+  healthReason: string | null
 }
 
 // ── State ────────────────────────────────────────────────────────────────
@@ -34,7 +35,7 @@ const devices = ref<DeviceSummaryDTO[]>([])
 const loading = ref(true)
 const search = ref('')
 const debouncedSearch = useDebouncedRef(search, 300)
-const connFilter = ref<'all' | ConnState>('all')
+const connFilter = ref<DeviceFilter>('all')
 
 const page = ref(0)
 const size = ref(60)
@@ -63,40 +64,32 @@ const mergedDevices = computed<MergedDevice[]>(() =>
       lon: lv.lon ?? null,
       rssi: lv.rssi ?? d.rssi,
       tempC: lv.tempC ?? d.tempC,
+      health: (lv.health as DeviceHealth | undefined) ?? d.health,
+      healthReason: lv.healthReason !== undefined ? lv.healthReason || null : d.healthReason,
     }
   }),
 )
 
 // ── Helpers de connection state ──────────────────────────────────────────
 const connStateOf = (d: MergedDevice): ConnState => {
-  if (d.status === 'PENDING' || d.status === 'PROVISIONING' || d.status === 'COMMAND_PENDING') {
-    return 'pending'
-  }
+  if (d.status === 'PENDING' || d.status === 'PROVISIONING') return 'pending'
   if (d.status === 'REVOKED') return 'offline'
-  if (d.status === 'ERROR' || d.status === 'CRITICAL_BATTERY') return 'warning'
 
-  const age = ageSeconds(d.lastSeen)
-  if (age === null) return 'offline'
-  if (age <= ONLINE_MAX_S && d.status === 'ACTIVE') return 'online'
-  if (age <= WARNING_MAX_S) return 'warning'
-  return 'offline'
+  return isOnline(d.lastSeen) ? 'online' : 'offline'
 }
 
-const ageSeconds = (iso: string | null | undefined): number | null => {
-  if (!iso) return null
-  const t = new Date(iso).getTime()
-  if (!Number.isFinite(t)) return null
-  return Math.max(0, Math.floor((Date.now() - t) / 1000))
+const isWarning = (d: MergedDevice): boolean => d.health === 'WARNING'
+
+const hasReason = (d: MergedDevice, reason: string): boolean =>
+  (d.healthReason ?? '').split(',').includes(reason)
+
+const REASON_LABEL: Record<string, string> = {
+  LOW_BATTERY: 'Bateria baixa',
+  HIGH_TEMP: 'Temperatura alta',
 }
 
-const relativeAge = (iso: string | null | undefined): string => {
-  const s = ageSeconds(iso)
-  if (s === null) return '—'
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
+const reasonLabel = (d: MergedDevice): string =>
+  (d.healthReason ?? '').split(',').filter(Boolean).map(r => REASON_LABEL[r] ?? r).join(' · ')
 
 // ── Formatadores de métricas ─────────────────────────────────────────────
 const fmtBattery = (mv: number | null | undefined): string => {
@@ -106,12 +99,10 @@ const fmtBattery = (mv: number | null | undefined): string => {
   return `${pct}%`
 }
 
-const batteryClass = (mv: number | null | undefined): string => {
-  if (mv == null) return 'metric-muted'
-  const pct = ((mv - 3000) / (4200 - 3000)) * 100
-  if (pct < 25) return 'metric-danger'
-  if (pct < 50) return 'metric-warn'
-  return ''
+// Cor de bateria/temperatura segue o health do backend
+const batteryClass = (d: MergedDevice): string => {
+  if (d.batteryMv == null) return 'metric-muted'
+  return hasReason(d, 'LOW_BATTERY') ? 'metric-warn' : ''
 }
 
 const fmtSignal = (rssi: number | null | undefined): string => {
@@ -133,11 +124,9 @@ const fmtTemp = (c: number | null | undefined): string => {
   return `${Math.round(c)}°C`
 }
 
-const tempClass = (c: number | null | undefined): string => {
-  if (c == null) return 'metric-muted'
-  if (c > 55) return 'metric-danger'
-  if (c > 45) return 'metric-warn'
-  return ''
+const tempClass = (d: MergedDevice): string => {
+  if (d.tempC == null) return 'metric-muted'
+  return hasReason(d, 'HIGH_TEMP') ? 'metric-warn' : ''
 }
 
 const fmtLocation = (lat: number | null | undefined, lon: number | null | undefined): string => {
@@ -147,19 +136,24 @@ const fmtLocation = (lat: number | null | undefined, lon: number | null | undefi
 
 // ── Filter + contadores pro header ───────────────────────────────────────
 const visibleDevices = computed<MergedDevice[]>(() => {
-  if (connFilter.value === 'all') return mergedDevices.value
-  return mergedDevices.value.filter(d => connStateOf(d) === connFilter.value)
+  const f = connFilter.value
+  if (f === 'all') return mergedDevices.value
+  if (f === 'warning') return mergedDevices.value.filter(isWarning)
+  return mergedDevices.value.filter(d => connStateOf(d) === f)
 })
 
 const counts = computed(() => {
-  const c = { online: 0, warning: 0, offline: 0, pending: 0 }
-  for (const d of mergedDevices.value) c[connStateOf(d)]++
+  const c = { online: 0, offline: 0, pending: 0, warning: 0 }
+  for (const d of mergedDevices.value) {
+    c[connStateOf(d)]++
+    if (isWarning(d)) c.warning++
+  }
   return c
 })
 
 // ── Loader ────────────────────────────────────────────────────────────────
-const load = async () => {
-  loading.value = true
+const load = async (silent = false) => {
+  if (!silent) loading.value = true
   try {
     const r = await devicesApi.list({
       page: page.value,
@@ -176,6 +170,27 @@ const load = async () => {
 
 watch(debouncedSearch, () => { page.value = 0; load() })
 
+// SSE com status diferente do DB: recarrega a lista depois que o webhook grava
+const RELOAD_DELAY_MS = 2000
+let reloadTimer: ReturnType<typeof setTimeout> | null = null
+
+const liveDivergence = computed(() =>
+  devices.value
+    .filter(d => {
+      const lv = liveStore.devices.get(d.deviceId)
+      return lv?.status != null && lv.status !== d.status
+    })
+    .map(d => `${d.deviceId}:${liveStore.devices.get(d.deviceId)?.status}`)
+    .join(','),
+)
+
+watch(liveDivergence, (sig) => {
+  if (!sig || reloadTimer) return
+  reloadTimer = setTimeout(() => { reloadTimer = null; load(true) }, RELOAD_DELAY_MS)
+})
+
+onUnmounted(() => { if (reloadTimer) clearTimeout(reloadTimer) })
+
 const goToPage = (n: number) => {
   if (n < 0 || n >= totalPages.value) return
   page.value = n
@@ -190,10 +205,9 @@ onMounted(load)
     <div class="page-header">
       <div class="header-left">
         <h2 class="page-title">Dispositivos</h2>
-        <p class="page-sub mono">{{ totalElements }} registrados · {{ counts.online }} online · {{ counts.warning }} alertas</p>
+        <p class="page-sub">{{ totalElements }} registrados · {{ counts.online }} online · {{ counts.warning }} com alerta</p>
       </div>
       <div class="header-right">
-        <LiveIndicator />
         <AppButton v-if="authStore.isAdmin" variant="primary" size="md"
                    @click="router.push('/firmware')">
           Provisionar
@@ -211,14 +225,14 @@ onMounted(load)
           class="filter-btn"
           :class="{ active: connFilter === f }"
           @click="connFilter = f">
-          {{ f }}
+          {{ FILTER_LABEL[f] }}
         </button>
       </div>
     </div>
 
     <div v-if="loading" class="empty">Carregando...</div>
     <div v-else-if="!visibleDevices.length" class="empty">
-      {{ connFilter === 'all' ? 'Nenhum dispositivo encontrado' : `Nenhum dispositivo ${connFilter}` }}
+      {{ connFilter === 'all' ? 'Nenhum dispositivo encontrado' : `Nenhum dispositivo em "${FILTER_LABEL[connFilter].toLowerCase()}"` }}
     </div>
     <div v-else class="dev-grid">
       <div v-for="d in visibleDevices" :key="d.deviceId"
@@ -233,39 +247,40 @@ onMounted(load)
               {{ d.deviceId.slice(0, 8) }}<span v-if="d.firmwareName"> · {{ d.firmwareName }}</span>
             </p>
           </div>
-          <span class="state-badge mono" :class="`badge-${connStateOf(d)}`">
-            {{ connStateOf(d).toUpperCase() }}
-          </span>
+          <StatusLabel kind="conn" :code="connStateOf(d)" class="conn" />
         </div>
 
         <div class="metrics">
           <div class="metric">
-            <span class="metric-label mono">Signal</span>
+            <span class="metric-label">Sinal</span>
             <span class="metric-value" :class="signalClass(d.rssi)">{{ fmtSignal(d.rssi) }}</span>
           </div>
           <div class="metric">
-            <span class="metric-label mono">Temp</span>
-            <span class="metric-value" :class="tempClass(d.tempC)">{{ fmtTemp(d.tempC) }}</span>
+            <span class="metric-label">Temperatura</span>
+            <span class="metric-value" :class="tempClass(d)">{{ fmtTemp(d.tempC) }}</span>
           </div>
           <div class="metric">
-            <span class="metric-label mono">Battery</span>
-            <span class="metric-value" :class="batteryClass(d.batteryMv)">{{ fmtBattery(d.batteryMv) }}</span>
+            <span class="metric-label">Bateria</span>
+            <span class="metric-value" :class="batteryClass(d)">{{ fmtBattery(d.batteryMv) }}</span>
           </div>
         </div>
+
+        <StatusLabel v-if="d.status === 'COMMAND_PENDING' || d.status === 'OTA_PENDING'" kind="device" :code="d.status" />
+        <StatusLabel v-if="isWarning(d)" kind="health" code="WARNING" :label="reasonLabel(d) || undefined" />
 
         <div class="card-footer">
           <span class="footer-loc">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
             <span class="mono">{{ fmtLocation(d.lat, d.lon) }}</span>
           </span>
-          <span class="footer-time mono">{{ relativeAge(d.lastSeen) }}</span>
+          <span class="footer-time" :title="absoluteTime(d.lastSeen)">{{ relativeTime(d.lastSeen) }}</span>
         </div>
       </div>
     </div>
 
     <div v-if="!loading && totalPages > 1" class="pager">
       <AppButton size="sm" :disabled="page === 0" @click="goToPage(page - 1)">Anterior</AppButton>
-      <span class="pager-info mono text-muted">Página {{ page + 1 }} de {{ totalPages }}</span>
+      <span class="pager-info text-muted">Página {{ page + 1 }} de {{ totalPages }}</span>
       <AppButton size="sm" :disabled="page + 1 >= totalPages" @click="goToPage(page + 1)">Próxima</AppButton>
     </div>
   </AppLayout>
@@ -283,19 +298,19 @@ onMounted(load)
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .search-wrap { position: relative; flex: 1; max-width: 320px; min-width: 200px; }
 .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
-.search { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px 7px 32px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-mono); box-sizing: border-box; }
+.search { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px 7px 32px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-sans); box-sizing: border-box; }
 .search:focus { border-color: var(--primary); }
 
 .filter-group { display: flex; gap: var(--space-1); }
-.filter-btn { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); cursor: pointer; text-transform: lowercase; transition: border-color var(--transition), color var(--transition); }
+.filter-btn { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; transition: border-color var(--transition), color var(--transition); }
 .filter-btn:hover { color: var(--text); }
-.filter-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(6, 182, 212, 0.06); }
+.filter-btn.active { border-color: var(--accent-border); color: var(--accent); background: var(--accent-dim); }
 
 /* ── Grid de cards ───────────────────────────────────────────────────── */
 .dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-3); }
 
 .dev-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); cursor: pointer; display: flex; flex-direction: column; gap: var(--space-3); transition: border-color var(--transition), transform var(--transition); }
-.dev-card:hover { border-color: var(--primary); transform: translateY(-1px); }
+.dev-card:hover { border-color: var(--border-strong); }
 .dev-card.state-offline { opacity: 0.72; }
 
 /* ── Card top: title + badge ─────────────────────────────────────────── */
@@ -304,19 +319,15 @@ onMounted(load)
 .card-title { font-family: var(--font-sans); font-size: var(--text-md); font-weight: 600; color: var(--text); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-sub { font-size: var(--text-xs); color: var(--text-muted); margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.state-badge { font-size: 10px; letter-spacing: .5px; padding: 2px 8px; border-radius: 999px; border: 1px solid; flex-shrink: 0; }
-.badge-online  { background: rgba(52, 211, 153, .08); color: var(--success);  border-color: rgba(52, 211, 153, .25); }
-.badge-warning { background: rgba(251, 191, 36, .08); color: #fbbf24;         border-color: rgba(251, 191, 36, .25); }
-.badge-offline { background: rgba(248, 113, 113, .08); color: var(--danger);  border-color: rgba(248, 113, 113, .25); }
-.badge-pending { background: rgba(129, 140, 248, .08); color: #818cf8;        border-color: rgba(129, 140, 248, .25); }
+.conn { flex-shrink: 0; font-size: var(--text-xs); }
 
 /* ── Métricas ────────────────────────────────────────────────────────── */
 .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); }
 .metric { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.metric-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.2px; }
-.metric-value { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 500; color: var(--text); }
+.metric-label { font-size: var(--text-xs); color: var(--text-muted); }
+.metric-value { font-size: var(--text-md); font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
 .metric-value.metric-muted { color: var(--text-muted); }
-.metric-value.metric-warn { color: #fbbf24; }
+.metric-value.metric-warn { color: var(--warning); }
 .metric-value.metric-danger { color: var(--danger); }
 
 /* ── Card footer ─────────────────────────────────────────────────────── */

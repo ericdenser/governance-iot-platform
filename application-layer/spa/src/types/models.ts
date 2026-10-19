@@ -7,9 +7,12 @@ export type DeviceStatus =
   | 'PROVISIONING'
   | 'ACTIVE'
   | 'COMMAND_PENDING'
+  | 'OTA_PENDING'
   | 'REVOKED'
   | 'ERROR'
   | 'CRITICAL_BATTERY'
+// Saude derivada da telemetria pelo backend (bateria baixa / temperatura alta)
+export type DeviceHealth = 'OK' | 'WARNING'
 export type CommandStatus =
   | 'PENDING'
   | 'COMPLETED_SUCCESS'
@@ -135,6 +138,8 @@ export interface DeviceSummaryDTO {
   deviceId: string
   name: string
   status: DeviceStatus
+  health: DeviceHealth
+  healthReason: string | null
   macAddress: string | null
   firmwareId: string | null
   firmwareName: string | null
@@ -156,6 +161,8 @@ export interface DeviceDetailDTO {
   deviceId: string
   name: string
   status: DeviceStatus
+  health: DeviceHealth
+  healthReason: string | null
   macAddress: string | null
   createdAt: string
   lastSeen: string | null

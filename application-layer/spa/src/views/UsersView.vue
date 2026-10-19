@@ -333,7 +333,7 @@ onMounted(load)
 .search-field { min-width: 260px; }
 
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
 .tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); vertical-align: middle; }
 .cell-main { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 .mono { font-family: var(--font-mono); }

@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useLiveStateStore } from '@/stores/liveState'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -28,11 +29,13 @@ const handleResize = () => {
 onMounted(() => window.addEventListener('resize', handleResize))
 onUnmounted(() => window.removeEventListener('resize', handleResize))
 
+const liveStore = useLiveStateStore()
+
 const navItems = computed(() => {
   const items = [
     { to: '/home',     icon: 'grid',          label: 'Dashboard' },
     { to: '/devices',  icon: 'cpu',           label: 'Dispositivos' },
-    { to: '/analytics', icon: 'bar-chart',    label: 'Analytics' },
+    { to: '/analytics', icon: 'bar-chart',    label: 'Métricas' },
     { to: '/map',      icon: 'map',           label: 'Mapa' },
     { to: '/firmware', icon: 'upload',         label: 'Firmware' },
     { to: '/sensors',  icon: 'activity',       label: 'Sensores' },
@@ -148,11 +151,11 @@ const fazerLogout = async () => {
           </button>
           <h2>{{ $route.meta.title || 'Dashboard' }}</h2>
         </div>
-        <div class="topbar-status">
-          <span class="status-dot" />
-          <span class="text-sm text-muted">Sistema Online</span>
-        </div>
       </header>
+
+      <div v-if="liveStore.outage" class="live-banner" role="status">
+        Atualização em tempo real indisponível, tentando reconectar. Os dados na tela podem estar desatualizados.
+      </div>
 
       <main class="content">
         <slot />
@@ -210,7 +213,7 @@ const fazerLogout = async () => {
   width: 36px;
   height: 36px;
   background: var(--primary-dim);
-  border: 1px solid rgba(6, 182, 212, 0.3);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
@@ -283,9 +286,11 @@ const fazerLogout = async () => {
 }
 
 .nav-item.active {
-  color: var(--primary);
-  background: var(--primary-dim);
+  color: var(--text);
+  background: var(--panel);
 }
+
+.nav-item.active svg { color: var(--accent); }
 
 .nav-label {
   overflow: hidden;
@@ -392,7 +397,7 @@ const fazerLogout = async () => {
   height: 30px;
   border-radius: var(--radius-pill);
   background: var(--primary-dim);
-  border: 1px solid rgba(6, 182, 212, 0.3);
+  border: 1px solid var(--accent-border);
   color: var(--primary);
   font-family: var(--font-sans);
   font-weight: 700;
@@ -532,25 +537,13 @@ const fazerLogout = async () => {
   color: var(--text);
 }
 
-.topbar-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--success);
-  box-shadow: 0 0 6px var(--success);
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.live-banner {
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--warning-dim);
+  color: var(--warning);
+  font-size: var(--text-sm);
 }
 
 .content {

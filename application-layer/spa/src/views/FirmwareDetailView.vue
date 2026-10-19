@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import AppButton from '@/components/AppButton.vue'
 import { firmwareApi } from '@/services/firmware'
 import { devicesApi } from '@/services/devices'
@@ -34,9 +35,6 @@ const versions = ref<FirmwareVersionSummaryDTO[]>([])
 const groups = ref<DeviceGroupResponseDTO[]>([])
 const loading = ref(true)
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
-const statusVariant = (s: string): BadgeVariant =>
-  ({ STAGED: 'muted', DEPLOYED: 'success', DEPRECATED: 'danger', CORRUPTED: 'danger' }[s] as BadgeVariant) ?? 'muted'
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 const bytes = (n: number) => n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`
 
@@ -299,7 +297,7 @@ onMounted(async () => {
           <div class="firmware-meta">
             <span v-if="!firmware.ownerGroupId" class="owner-platform">Plataforma</span>
             <span v-else class="owner-group">{{ groupName(firmware.ownerGroupId) }}</span>
-            <AppBadge v-if="firmware.provisioningFirmware" variant="primary" dot>Provisioning</AppBadge>
+            <AppBadge v-if="firmware.provisioningFirmware" variant="primary">Provisioning</AppBadge>
             <span class="text-muted text-sm">criado por {{ firmware.createdByUsername ?? '—' }} em {{ fmt(firmware.createdAt) }}</span>
           </div>
           <p v-if="firmware.description" class="firmware-desc">{{ firmware.description }}</p>
@@ -328,7 +326,7 @@ onMounted(async () => {
           <tbody>
             <tr v-for="v in versions" :key="v.versionId" class="tbl-row" @click="openVersionDetail(v)">
               <td class="mono font-medium">v{{ v.version }}</td>
-              <td><AppBadge :variant="statusVariant(v.status)">{{ v.status }}</AppBadge></td>
+              <td><StatusLabel kind="firmware" :code="v.status" /></td>
               <td class="text-sm text-muted release-notes-cell" :title="v.releaseNotes ?? ''">
                 <span v-if="v.releaseNotes">{{ v.releaseNotes }}</span>
                 <span v-else>—</span>
@@ -372,8 +370,8 @@ onMounted(async () => {
               <h3 class="modal-title">{{ detailVersion.originalFilename ?? detailVersion.filename }}</h3>
               <div class="detail-sub">
                 <span class="mono">v{{ detailVersion.version }}</span>
-                <AppBadge :variant="statusVariant(detailVersion.status)">{{ detailVersion.status }}</AppBadge>
-                <AppBadge v-if="detailVersion.provisioningFirmware" variant="primary" dot>Provisioning</AppBadge>
+                <StatusLabel kind="firmware" :code="detailVersion.status" />
+                <AppBadge v-if="detailVersion.provisioningFirmware" variant="primary">Provisioning</AppBadge>
                 <span class="text-muted text-xs">{{ groupName(detailVersion.ownerGroupId) }}</span>
               </div>
             </div>
@@ -519,7 +517,7 @@ onMounted(async () => {
             @click="toggleDeployDevice(d.deviceId)">
             <span class="chip-name">{{ d.name }}</span>
             <span class="chip-ver">{{ d.firmwareVersion ? `v${d.firmwareVersion}` : '—' }}</span>
-            <AppBadge :variant="(({ ACTIVE: 'success', COMMAND_PENDING: 'warning', ERROR: 'danger' } as any)[d.status] ?? 'muted')" dot />
+            <StatusLabel kind="device" :code="d.status" label="" />
           </button>
         </div>
 
@@ -547,11 +545,11 @@ onMounted(async () => {
 .firmware-meta { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .firmware-desc { color: var(--text-muted); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
 
-.owner-platform { font-size: var(--text-xs); background: var(--primary-dim, rgba(99,102,241,.1)); color: var(--primary); border-radius: var(--radius-sm); padding: 2px 8px; font-weight: 500; }
+.owner-platform { font-size: var(--text-xs); background: var(--accent-dim); color: var(--primary); border-radius: var(--radius-sm); padding: 2px 8px; font-weight: 500; }
 .owner-group { font-size: var(--text-xs); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 8px; }
 
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
 .tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
@@ -580,11 +578,11 @@ onMounted(async () => {
 .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
 .detail-full { grid-column: 1 / -1; }
 .detail-item { display: flex; flex-direction: column; gap: 2px; }
-.detail-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
+.detail-label { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); }
 .detail-value { font-size: var(--text-sm); color: var(--text); }
 .pre { white-space: pre-wrap; line-height: 1.5; }
 .detail-section { display: flex; flex-direction: column; gap: var(--space-2); }
-.section-title { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin: 0; }
+.section-title { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); margin: 0; }
 .sensor-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sensor-chip { display: flex; align-items: center; gap: var(--space-1); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2); font-size: var(--text-xs); }
 .chip-pin { color: var(--text-muted); }

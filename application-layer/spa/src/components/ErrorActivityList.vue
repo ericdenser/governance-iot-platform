@@ -1,31 +1,25 @@
 <script setup lang="ts">
-import AppBadge from '@/components/AppBadge.vue'
-import type { ErrorRecordResponseDTO, ErrorStatus } from '@/types/models'
-
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
+import StatusLabel from '@/components/StatusLabel.vue'
+import type { ErrorRecordResponseDTO } from '@/types/models'
+import { absoluteTime, relativeTime } from '@/utils/format'
 
 defineProps<{ errors: ErrorRecordResponseDTO[] }>()
-
-const statusVariant = (s: ErrorStatus): BadgeVariant =>
-  (({ FIXED: 'success', RETRY_FAILED: 'danger', NOT_FIXABLE: 'danger' } as Record<ErrorStatus, BadgeVariant>)[s] ?? 'warning')
-
-const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
 </script>
 
 <template>
   <ul class="error-list">
     <li v-for="e in errors" :key="e.errorId" class="error-item">
       <div class="item-badges">
-        <AppBadge variant="danger">{{ e.error }}</AppBadge>
-        <AppBadge :variant="statusVariant(e.status)">{{ e.status }}</AppBadge>
+        <span class="code-tag">{{ e.error }}</span>
+        <StatusLabel kind="error" :code="e.status" />
       </div>
       <div class="item-meta">
         <span class="device-name">{{ e.deviceName ?? e.deviceId ?? '—' }}</span>
         <span class="sep">·</span>
-        <span class="date">{{ fmt(e.reportedAt) }}</span>
+        <span class="date" :title="absoluteTime(e.reportedAt)">{{ relativeTime(e.reportedAt) }}</span>
         <template v-if="e.fixedAt">
           <span class="sep">·</span>
-          <span class="fixed-at">fixado {{ fmt(e.fixedAt) }}</span>
+          <span class="fixed-at" :title="absoluteTime(e.fixedAt)">resolvido {{ relativeTime(e.fixedAt) }}</span>
         </template>
       </div>
     </li>
@@ -37,7 +31,7 @@ const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDate
 .error-list { list-style: none; display: flex; flex-direction: column; margin: 0; padding: 0; }
 .error-item { display: flex; flex-direction: column; gap: 4px; padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
 .error-item:last-child { border-bottom: none; }
-.item-badges { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.item-badges { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .item-meta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: var(--text-xs); color: var(--text-muted); min-width: 0; }
 .device-name { font-weight: 500; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sep { flex-shrink: 0; }

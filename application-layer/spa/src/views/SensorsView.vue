@@ -77,7 +77,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <style scoped>
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 0 var(--space-3); text-align: left; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 0 var(--space-3); text-align: left; }
 .tbl td { padding: var(--space-3) 0; border-top: 1px solid var(--border); }
 .mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; }

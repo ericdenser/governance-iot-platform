@@ -4,23 +4,25 @@ import AppLayout from '@/components/AppLayout.vue'
 import DeviceMap from '@/components/DeviceMap.vue'
 import StatCard from '@/components/StatCard.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import BatteryBar from '@/components/BatteryBar.vue'
 import EventActivityList from '@/components/EventActivityList.vue'
 import ErrorActivityList from '@/components/ErrorActivityList.vue'
-import LiveIndicator from '@/components/LiveIndicator.vue'
 import { devicesApi } from '@/services/devices'
 import { eventsApi } from '@/services/events'
 import { errorsApi } from '@/services/errors'
 import { useLiveStateStore } from '@/stores/liveState'
+import { isOnline } from '@/utils/connection'
+import { absoluteTime, relativeTime } from '@/utils/format'
+import { statusText } from '@/utils/statusLabels'
 import type {
+  DeviceHealth,
   DeviceSummaryDTO,
   DeviceStatus,
   EventRegistryResponseDTO,
   ErrorRecordResponseDTO,
 } from '@/types/models'
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
 
 const liveStore = useLiveStateStore()
 const devices = ref<DeviceSummaryDTO[]>([])
@@ -34,9 +36,10 @@ const mergedDevices = computed(() =>
   devices.value.map((d) => {
     const lv = liveStore.devices.get(d.deviceId)
     if (!lv) return d
+    // status vem do DB; live so atualiza metricas e health
     return {
       ...d,
-      status: (lv.status as DeviceStatus) ?? d.status,
+      health: (lv.health as DeviceHealth | undefined) ?? d.health,
       lastSeen: lv.lastSeen ?? d.lastSeen,
       batteryMv: lv.batteryMv ?? d.batteryMv,
       batteryTs: lv.batteryTs ?? d.batteryTs,
@@ -45,19 +48,11 @@ const mergedDevices = computed(() =>
 )
 
 const totalDevices = computed(() => mergedDevices.value.length)
-const activeDevices = computed(() => mergedDevices.value.filter(d => d.status === 'ACTIVE').length)
+const onlineDevices = computed(() => mergedDevices.value.filter(d => d.status !== 'REVOKED' && isOnline(d.lastSeen)).length)
+const warningDevices = computed(() => mergedDevices.value.filter(d => d.health === 'WARNING').length)
 const pendingDevices = computed(() => mergedDevices.value.filter(d => (['PENDING', 'PROVISIONING'] as DeviceStatus[]).includes(d.status)).length)
 
-const statusVariant = (s: DeviceStatus): BadgeVariant => {
-  const map: Record<string, BadgeVariant> = {
-    ACTIVE: 'success', PENDING: 'warning', PROVISIONING: 'info',
-    COMMAND_PENDING: 'info', REVOKED: 'danger', ERROR: 'danger',
-    CRITICAL_BATTERY: 'muted',
-  }
-  return map[s] ?? 'muted'
-}
 
-const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 
 const MINIMAP_STORAGE_KEY = 'dashboard_minimap_config'
@@ -117,16 +112,16 @@ onMounted(async () => {
     <div v-else class="dashboard">
 
       <div class="stat-grid">
-        <StatCard label="Total de Dispositivos" :value="totalDevices" />
-        <StatCard label="Ativos" :value="activeDevices" variant="success" />
-        <StatCard label="Pendentes / Provisionando" :value="pendingDevices" variant="warning" />
-        <StatCard label="Erros Registrados" :value="totalErrors" variant="danger" />
+        <StatCard label="Dispositivos" :value="totalDevices" />
+        <StatCard label="Online agora" :value="onlineDevices" sub="último sinal há até 5 min" />
+        <StatCard label="Com alerta" :value="warningDevices" variant="warning" :highlight="warningDevices > 0" />
+        <StatCard label="Aguardando ativação" :value="pendingDevices" />
+        <StatCard label="Erros registrados" :value="totalErrors" variant="danger" :highlight="totalErrors > 0" />
       </div>
 
-      <AppCard title="Mapa dos Dispositivos" class="panel">
+      <AppCard title="Mapa dos dispositivos" class="panel">
         <template #actions>
           <div class="minimap-actions">
-            <LiveIndicator />
             <button class="icon-btn" title="Configurar minimapa" @click="showMinimapConfig = !showMinimapConfig">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3"/>
@@ -153,7 +148,7 @@ onMounted(async () => {
               @click="toggleMinimapStatus(s)"
             >
               <span class="chip-dot" />
-              {{ s }}
+              {{ statusText('device', s) }}
             </button>
           </div>
           <label class="autofit-toggle">
@@ -172,20 +167,17 @@ onMounted(async () => {
       </AppCard>
 
       <div class="panels">
-        <AppCard title="Dispositivos Recentes" class="panel">
-          <template #actions>
-            <LiveIndicator />
-          </template>
+        <AppCard title="Dispositivos recentes" class="panel">
           <table class="tbl">
-            <thead><tr><th>Nome</th><th>Status</th><th>Firmware</th><th>Bateria</th><th>Última vez visto</th></tr></thead>
+            <thead><tr><th>Nome</th><th>Status</th><th>Firmware</th><th>Bateria</th><th>Último sinal</th></tr></thead>
             <tbody>
               <tr v-for="d in mergedDevices.slice(0, 8)" :key="d.deviceId" class="tbl-row"
                   @click="$router.push(`/devices/${d.deviceId}`)">
-                <td class="mono">{{ d.name }}</td>
-                <td><AppBadge :variant="statusVariant(d.status)" dot>{{ d.status }}</AppBadge></td>
+                <td>{{ d.name }}</td>
+                <td><StatusLabel kind="device" :code="d.status" /></td>
                 <td class="mono muted">{{ d.firmwareVersion ? `v${d.firmwareVersion}` : '—' }}</td>
                 <td><BatteryBar :mv="d.batteryMv" :ts="d.batteryTs" :device-status="d.status" /></td>
-                <td class="muted">{{ fmt(d.lastSeen) }}</td>
+                <td class="muted" :title="absoluteTime(d.lastSeen)">{{ relativeTime(d.lastSeen) }}</td>
               </tr>
               <tr v-if="!devices.length"><td colspan="5" class="empty">Nenhum dispositivo</td></tr>
             </tbody>
@@ -193,11 +185,11 @@ onMounted(async () => {
         </AppCard>
 
         <div class="side-panels">
-          <AppCard title="Eventos Recentes" class="panel">
+          <AppCard title="Eventos recentes" class="panel">
             <EventActivityList :events="recentEvents" />
           </AppCard>
 
-          <AppCard title="Erros Recentes" class="panel">
+          <AppCard title="Erros recentes" class="panel">
             <ErrorActivityList :errors="recentErrors" />
           </AppCard>
         </div>
@@ -209,13 +201,13 @@ onMounted(async () => {
 <style scoped>
 .loading { color: var(--text-muted); padding: var(--space-8); text-align: center; }
 .dashboard { display: flex; flex-direction: column; gap: var(--space-6); }
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--space-3); }
 .panels { display: grid; grid-template-columns: 1fr 360px; gap: var(--space-4); }
 .side-panels { display: flex; flex-direction: column; gap: var(--space-4); }
 .panel { height: fit-content; }
 
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 0 var(--space-3); text-align: left; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 0 var(--space-3); text-align: left; }
 .tbl td { padding: var(--space-2) 0; font-size: var(--text-sm); border-top: 1px solid var(--border); }
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
@@ -270,7 +262,7 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);

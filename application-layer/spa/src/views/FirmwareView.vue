@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
 import AppButton from '@/components/AppButton.vue'
 import { firmwareApi } from '@/services/firmware'
 import { sensorsApi } from '@/services/sensors'
@@ -17,6 +16,7 @@ import type {
 } from '@/types/models'
 import { errorMessage, errorMessageFromBlob } from '@/utils/errors'
 import { toast } from '@/composables/useToast'
+import { absoluteTime, relativeTime } from '@/utils/format'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -25,10 +25,6 @@ const firmwares = ref<FirmwareResponseDTO[]>([])
 const groups = ref<DeviceGroupResponseDTO[]>([])
 const loading = ref(true)
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'primary'
-const statusVariant = (s: string): BadgeVariant =>
-  ({ STAGED: 'muted', DEPLOYED: 'success', DEPRECATED: 'danger', CORRUPTED: 'danger' }[s] as BadgeVariant) ?? 'muted'
-const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
 // Groups where user can upload firmware (MEMBER/OWNER)
 const managedGroupIds = computed(() =>
@@ -45,6 +41,24 @@ const groupName = (ownerGroupId: string | null) => {
 }
 
 const canCreate = computed(() => authStore.isAdmin || managedGroupIds.value.size > 0)
+
+// Provisioning em grupo proprio no topo; o resto e firmware de aplicacao
+const sections = computed(() => [
+  {
+    key: 'provisioning',
+    title: 'Provisioning',
+    hint: 'gravado de fábrica, ativa o device',
+    items: firmwares.value.filter(fw => fw.provisioningFirmware),
+    empty: 'Nenhum firmware de provisioning cadastrado',
+  },
+  {
+    key: 'app',
+    title: 'Aplicação',
+    hint: 'enviado por OTA',
+    items: firmwares.value.filter(fw => !fw.provisioningFirmware),
+    empty: 'Nenhum firmware de aplicação cadastrado',
+  },
+])
 
 const provisioningFirmware = computed(() =>
   firmwares.value.find(fw => fw.provisioningFirmware) ?? null
@@ -230,35 +244,33 @@ onMounted(async () => {
             <th>Descrição</th>
             <th>Última versão</th>
             <th>Grupo</th>
-            <th>Provisioning</th>
             <th>Enviado por</th>
-            <th>Criado em</th>
+            <th>Criado</th>
           </tr>
         </thead>
-        <tbody>
-          <tr v-for="fw in firmwares" :key="fw.firmwareId" class="tbl-row" @click="goToDetail(fw.firmwareId)">
+        <tbody v-for="section in sections" :key="section.key">
+          <tr class="group-row">
+            <td colspan="6">
+              {{ section.title }}
+              <span class="group-hint">{{ section.hint }}</span>
+            </td>
+          </tr>
+          <tr v-for="fw in section.items" :key="fw.firmwareId" class="tbl-row" @click="goToDetail(fw.firmwareId)">
             <td class="font-medium">{{ fw.firmwareName }}</td>
             <td class="text-sm text-muted desc-cell">{{ fw.description ?? '—' }}</td>
             <td>
-              <template v-if="fw.latestVersion">
-                <span class="mono">v{{ fw.latestVersion.version }}</span>
-                <AppBadge :variant="statusVariant(fw.latestVersion.status)" class="ml-1">{{ fw.latestVersion.status }}</AppBadge>
-              </template>
+              <span v-if="fw.latestVersion" class="mono">v{{ fw.latestVersion.version }}</span>
               <span v-else class="text-muted">—</span>
             </td>
             <td class="text-sm">
               <span v-if="!fw.ownerGroupId" class="owner-platform">Plataforma</span>
               <span v-else class="owner-group">{{ groupName(fw.ownerGroupId) }}</span>
             </td>
-            <td>
-              <AppBadge v-if="fw.provisioningFirmware" variant="primary" dot>Sim</AppBadge>
-              <span v-else class="text-muted">—</span>
-            </td>
             <td class="text-sm">{{ fw.createdByUsername ?? '—' }}</td>
-            <td class="text-muted text-sm">{{ fmt(fw.createdAt) }}</td>
+            <td class="text-muted text-sm" :title="absoluteTime(fw.createdAt)">{{ relativeTime(fw.createdAt) }}</td>
           </tr>
-          <tr v-if="!firmwares.length">
-            <td colspan="7" class="empty">Nenhum firmware cadastrado</td>
+          <tr v-if="!section.items.length">
+            <td colspan="6" class="empty-row">{{ section.empty }}</td>
           </tr>
         </tbody>
       </table>
@@ -449,11 +461,16 @@ onMounted(async () => {
 .ml-1 { margin-left: var(--space-1); }
 
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
 .tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
 .desc-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.group-row td { padding: var(--space-5) 0 var(--space-2); border-top: none; font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
+tbody:first-of-type .group-row td { padding-top: var(--space-1); }
+.group-hint { margin-left: var(--space-2); font-weight: 400; color: var(--text-muted); }
+.empty-row { padding: var(--space-3) 0; color: var(--text-muted); font-size: var(--text-sm); }
 
 .mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; color: var(--text); }
@@ -462,7 +479,7 @@ onMounted(async () => {
 .text-danger { color: var(--danger); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 
-.owner-platform { font-size: var(--text-xs); background: var(--primary-dim, rgba(99,102,241,.1)); color: var(--primary); border-radius: var(--radius-sm); padding: 1px 6px; font-weight: 500; }
+.owner-platform { font-size: var(--text-xs); background: var(--accent-dim); color: var(--primary); border-radius: var(--radius-sm); padding: 1px 6px; font-weight: 500; }
 .owner-group { font-size: var(--text-xs); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1px 6px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
@@ -487,11 +504,11 @@ onMounted(async () => {
 .pin-label { font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
 .pin-field { width: 60px; padding: 4px 8px; resize: none; }
 
-.prov-warning { display: flex; gap: var(--space-3); padding: var(--space-4); background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: var(--radius-md); }
+.prov-warning { display: flex; gap: var(--space-3); padding: var(--space-4); background: var(--danger-dim); border: 1px solid var(--danger); border-radius: var(--radius-md); }
 .warn-icon { width: 20px; height: 20px; color: var(--danger); flex-shrink: 0; margin-top: 2px; }
 .warn-title { font-size: var(--text-sm); font-weight: 600; color: var(--danger); margin: 0 0 4px; }
 .warn-desc { font-size: var(--text-xs); color: var(--text-muted); margin: 0; line-height: 1.5; }
-.prov-ok { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.25); border-radius: var(--radius-md); align-items: center; }
+.prov-ok { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--success-dim); border: 1px solid var(--border); border-radius: var(--radius-md); align-items: center; }
 .ok-icon { width: 18px; height: 18px; color: var(--success); flex-shrink: 0; }
 .ok-title { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
 .ok-desc { display: flex; align-items: center; gap: var(--space-2); margin: 4px 0 0; font-size: var(--text-sm); font-weight: 500; color: var(--text); }
