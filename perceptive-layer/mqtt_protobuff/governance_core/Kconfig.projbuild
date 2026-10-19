@@ -136,6 +136,10 @@ menu "Governance IoT"
             demais no boot inicial (ou considera ligar o GPS antes de
             governance_core_init pra warm start).
 
+    config GOV_NTP_SERVER
+        string "Servidor NTP (fallback quando nao ha RTC/GPS)"
+        default "pool.ntp.org"
+
     config GOV_OTA_JITTER_MAX_MS
         int "OTA download jitter maximo (ms)"
         default 10000

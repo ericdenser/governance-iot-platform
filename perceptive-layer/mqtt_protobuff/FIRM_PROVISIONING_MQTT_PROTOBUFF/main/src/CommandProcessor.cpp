@@ -73,7 +73,7 @@ static void ota_task_routine(void* pvParameters) {
             {TAG, "ota_task_routine"},
             {
                 {"attempted_version", params->newVersion},
-                {"firmware_url",      params->url_bin}
+                {"attempted_sha",     params->newVersionSHA}
             }
         );
     }

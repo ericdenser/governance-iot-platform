@@ -8,6 +8,13 @@
 #include "AppState.h"
 
 static const char *TAG = "OtaManager";
+
+// Falha ja reportada pelo ota_task_routine: tira o alvo pra o boot audit nao reportar de novo
+static void clear_ota_target(nvs_handle_t h) {
+    nvs_erase_key(h, "target_ver");
+    nvs_erase_key(h, "target_sha");
+    nvs_commit(h);
+}
 static std::string current_version;
 static std::string current_version_sha;
 
@@ -63,9 +70,7 @@ bool OtaManager::verify_and_update(const std::string& newVersion, std::string &u
     if (!newVersion.empty() && !newVersionSHA.empty()) {
         msgOut = "Atualizacao encontrada! Baixando v" + newVersion;
 
-        nvs_set_str(nvsHandle, "prev_ver",   current_version.c_str());
         nvs_set_str(nvsHandle, "target_ver", newVersion.c_str());
-        nvs_set_str(nvsHandle, "prev_sha", current_version_sha.c_str());
         nvs_set_str(nvsHandle, "target_sha", newVersionSHA.c_str());
         nvs_commit(nvsHandle);
 
@@ -112,6 +117,13 @@ void OtaManager::set_valid_version() {
 }
 
 void OtaManager::set_invalid_version(std::string& reason) {
+    // Sem app valida no outro slot, invalidar so baniria o firmware que esta rodando
+    if (!esp_ota_check_rollback_is_possible()) {
+        ESP_LOGE(TAG, "Rollback impossivel (reason: %s): sem app valida no outro slot. Mantendo firmware atual.",
+                 reason.c_str());
+        return;
+    }
+
     nvs_handle_t nvsHandle;
     if (nvs_open("ota_store", NVS_READWRITE, &nvsHandle) == ESP_OK) {
 
@@ -242,6 +254,19 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const
     if (err != ESP_OK) {
         msgOut = "Falha OTA Begin: " + std::string(esp_err_to_name(err));
         ESP_LOGI(TAG, "%s", msgOut.c_str());
+        clear_ota_target(nvsHandle);
+        return false;
+    }
+
+    // Recusa antes de apagar o slot inativo, que guarda a imagem de rollback
+    const esp_partition_t* target = esp_ota_get_next_update_partition(NULL);
+    int image_size = esp_https_ota_get_image_size(https_ota_handle);
+    if (target != NULL && image_size > 0 && (size_t)image_size > target->size) {
+        msgOut = "Imagem de " + std::to_string(image_size) + " bytes maior que a particao '"
+               + std::string(target->label) + "' (" + std::to_string(target->size) + " bytes)";
+        ESP_LOGE(TAG, "%s", msgOut.c_str());
+        esp_https_ota_abort(https_ota_handle);
+        clear_ota_target(nvsHandle);
         return false;
     }
 
@@ -261,6 +286,7 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const
         msgOut = "Error: Download incomplete";
         ESP_LOGE(TAG, "%s", msgOut.c_str());
         esp_https_ota_abort(https_ota_handle);
+        clear_ota_target(nvsHandle);
         return false;
     }
 
@@ -268,6 +294,9 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const
 
     if (ota_finish_err == ESP_OK) {
 
+        // So agora a imagem atual vira a anterior (alvo do rollback)
+        nvs_set_str(nvsHandle, "prev_ver", current_version.c_str());
+        nvs_set_str(nvsHandle, "prev_sha", current_version_sha.c_str());
         nvs_set_i32(nvsHandle, "crash_count", 0);
         nvs_commit(nvsHandle);
 
@@ -293,11 +322,13 @@ bool OtaManager::download_OTA(std::string &urlBin, nvs_handle_t nvsHandle, const
         if (ota_finish_err == ESP_ERR_OTA_VALIDATE_FAILED) {
             msgOut = "Image validation failed, image is corrupted";
             ESP_LOGE(TAG, "%s", msgOut.c_str());
+            clear_ota_target(nvsHandle);
             return false;
         }
 
         msgOut = "OTA upgrade failed: " + std::string(esp_err_to_name(ota_finish_err));
         ESP_LOGE(TAG, "%s", msgOut.c_str());
+        clear_ota_target(nvsHandle);
         return false;
     }
     return false;

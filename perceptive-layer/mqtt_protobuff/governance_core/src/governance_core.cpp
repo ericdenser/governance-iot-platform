@@ -15,6 +15,8 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_sleep.h"
+#include "esp_sntp.h"
+#include "esp_ota_ops.h"
 
 #include "AppState.h"
 #include "AuthManager.h"
@@ -63,6 +65,7 @@ static std::string        g_deviceId;
 static esp_reset_reason_t g_reset_reason;
 static std::string        firmware_version;
 static int                crashCount = 0;
+static bool               boot_part_changed = false;
 static bool               valid_firmware = false;
 static bool               mqtt_started   = false;
 static std::string        g_activeSensors;   // populado via hook sensor_discovery()
@@ -90,6 +93,26 @@ static void nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
     size_t sz = len;
     nvs_get_str(h, key, buf, &sz);
     nvs_close(h);
+}
+
+// Grava a particao deste boot e diz se o boot anterior foi em outra.
+// Panic seguido de boot em outra particao = rollback do bootloader:
+// o crash foi da imagem anterior, nao desta.
+static bool boot_partition_changed() {
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    if (running == nullptr) return false;
+
+    char last[17] = {0};
+    nvs_read_str(NVS_NAMESPACE, "boot_part", last, sizeof(last));
+    bool changed = last[0] != '\0' && strcmp(last, running->label) != 0;
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, "boot_part", running->label);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    return changed;
 }
 
 // =============================================================================
@@ -129,7 +152,15 @@ static void publish_proto_error(const char* topic,
     }
 
     pb_ostream_t os = pb_ostream_from_buffer(proto_buf, sizeof(proto_buf));
-    if (!pb_encode(&os, DeviceError_fields, &msg)) {
+    bool encoded = pb_encode(&os, DeviceError_fields, &msg);
+    if (!encoded && extra) {
+        // details nao couberam no buffer: publica sem eles pra nao perder o erro
+        ESP_LOGW(TAG, "DeviceError excedeu %u bytes, publicando sem details", (unsigned)sizeof(proto_buf));
+        msg.extra.funcs.encode = nullptr;
+        os = pb_ostream_from_buffer(proto_buf, sizeof(proto_buf));
+        encoded = pb_encode(&os, DeviceError_fields, &msg);
+    }
+    if (!encoded) {
         ESP_LOGE(TAG, "pb_encode DeviceError falhou: %s", PB_GET_ERROR(&os));
         return;
     }
@@ -159,7 +190,8 @@ static void publish_proto_status(const char* topic,
         ESP_LOGE(TAG, "pb_encode falhou: %s", PB_GET_ERROR(&os));
         return;
     }
-    MqttManager::publish(proto_buf, os.bytes_written, topic);
+    // QoS 1: so eventos pontuais passam aqui (o status periodico vai pelo mqtt_publisher_task)
+    MqttManager::publish(proto_buf, os.bytes_written, topic, 1);
 }
 
 
@@ -488,6 +520,7 @@ static void handle_nvs_init() {
 
     AppState::loadPersistedErrors();
     SLOG_I("NVS inicializada com sucesso.");
+    boot_part_changed = boot_partition_changed();
 
     char saved_ssid[64]      = {0};
     char saved_token[64]     = {0};
@@ -584,8 +617,9 @@ static void handle_wifi_connecting() {
 
 // Time sync agnóstico de hardware. Usa hooks opcionais do user code:
 //   get_persisted_time → primário (RTC persistente tipo DS3231)
-//   get_external_time  → fonte externa (GPS/NTP) — refresca RTC periodicamente
-//   persist_time       → grava hora no RTC após external sync
+//   get_external_time  → fonte externa (ex: GPS) — refresca RTC periodicamente
+//   persist_time       → grava hora no RTC após sync
+// Sem hora dos hooks, cai no NTP (CONFIG_GOV_NTP_SERVER).
 static void handle_time_sync() {
     SLOG_I("Sincronizando horário via hooks do user code...");
 
@@ -646,6 +680,28 @@ static void handle_time_sync() {
             }
         } else {
             SLOG_W("Fonte externa sem hora (timeout ou falha).");
+        }
+    }
+
+    // ---- 4. NTP: ultimo recurso. Se nao responder a tempo, o SNTP segue em background ----
+    if (!synced) {
+        if (!esp_sntp_enabled()) {
+            esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+            esp_sntp_setservername(0, CONFIG_GOV_NTP_SERVER);
+            esp_sntp_init();
+        }
+        for (int i = 0; i < 3 && sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET; i++) {
+            SLOG_I("Aguardando NTP [%s]... (%d/3)", CONFIG_GOV_NTP_SERVER, i + 1);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            WatchdogManager::reset();
+        }
+        if (sntp_get_sync_status() != SNTP_SYNC_STATUS_RESET) {
+            time_t epoch = time(nullptr);
+            SLOG_I("Horário obtido via NTP (epoch %lld).", (long long)epoch);
+            synced = true;
+            if (s_hooks.persist_time != nullptr) {
+                s_hooks.persist_time(epoch);
+            }
         }
     }
 
@@ -748,9 +804,14 @@ static void handle_boot_audit() {
     nvs_handle_t mainHandler;
     if (nvs_open("main_store", NVS_READWRITE, &mainHandler) == ESP_OK) {
         g_reset_reason = esp_reset_reason();
-        if (g_reset_reason == ESP_RST_WDT ||
-            g_reset_reason == ESP_RST_TASK_WDT ||
-            g_reset_reason == ESP_RST_PANIC) {
+        bool crashed = g_reset_reason == ESP_RST_WDT ||
+                       g_reset_reason == ESP_RST_TASK_WDT ||
+                       g_reset_reason == ESP_RST_PANIC;
+        if (crashed && boot_part_changed) {
+            SLOG_W("Crash veio da outra particao (rollback do bootloader), nao conta pra esta imagem.");
+            crashed = false;
+        }
+        if (crashed) {
             int8_t saved = 0;
             nvs_get_i8(mainHandler, "crash_count", &saved);
             crashCount = saved + 1;
@@ -789,8 +850,12 @@ static void handle_boot_audit() {
         firmware_version = fw_buf;
         nvs_read_str("ota_store", "rollbackReason", reason, sizeof(reason));
 
+        char invalidSha[65] = {0};
+        nvs_read_str("ota_store", "invalid_sha", invalidSha, sizeof(invalidSha));
+
         char detail[192];
-        snprintf(detail, sizeof(detail), "{\"invalid_ver\":\"%s\",\"reason\":\"%s\"}", invalidVer.c_str(), reason);
+        snprintf(detail, sizeof(detail), "{\"invalid_ver\":\"%s\",\"invalid_sha\":\"%s\",\"reason\":\"%s\"}",
+                 invalidVer.c_str(), invalidSha, reason);
 
         AppState::transition(DeviceState::FIRMWARE_ROLLBACK, {TAG, "verify_rollback"});
         publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(),
