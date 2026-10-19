@@ -40,6 +40,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Service
 public class MqttAgent {
 
+    // Device sem RTC/GPS/NTP manda epoch desde o boot (1970); usa a hora de recebimento
+    private static final Instant MIN_DEVICE_TIME = Instant.parse("2024-01-01T00:00:00Z");
+
     private final StatusForwardingService statusForwardingService;
     private final ErrorForwardingService errorForwardingService;
     private final TelemetryForwardingService telemetryForwardingService;
@@ -85,6 +88,14 @@ public class MqttAgent {
             });
     private volatile ScheduledFuture<?> refreshTask;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private Instant deviceTime(long epochSeconds) {
+        Instant now = Instant.now();
+        if (epochSeconds <= 0) return now;
+        Instant ts = Instant.ofEpochSecond(epochSeconds);
+        if (ts.isBefore(MIN_DEVICE_TIME) || ts.isAfter(now.plus(Duration.ofDays(1)))) return now;
+        return ts;
+    }
 
     private static Map<String, Object> parseDetail(String detail) {
         if (detail == null || detail.isBlank()) return null;
@@ -132,9 +143,7 @@ public class MqttAgent {
                         if (topic.startsWith("status/")) {
                             String deviceId = topic.substring(topic.indexOf("/") + 1);
                             DeviceStatus proto = DeviceStatus.parseFrom(payload);
-                            Instant ts = proto.getTimestamp() > 0
-                                ? Instant.ofEpochSecond(proto.getTimestamp())
-                                : Instant.now();
+                            Instant ts = deviceTime(proto.getTimestamp());
                             StatusDTO dto = new StatusDTO(
                                 deviceId,
                                 proto.getMac(),
@@ -151,9 +160,7 @@ public class MqttAgent {
 
                         } else if (topic.startsWith("error/")) {
                             DeviceError err = DeviceError.parseFrom(payload);
-                            Instant ts = err.getTimestamp() > 0
-                                ? Instant.ofEpochSecond(err.getTimestamp())
-                                : Instant.now();
+                            Instant ts = deviceTime(err.getTimestamp());
                             ErrorDTO dto = new ErrorDTO(
                                 err.getDeviceId(),
                                 err.getMac(),
@@ -171,9 +178,7 @@ public class MqttAgent {
 
                         } else if (topic.startsWith("telemetry/")) {
                             DeviceTelemetry proto = DeviceTelemetry.parseFrom(payload);
-                            Instant ts = proto.getTimestamp() > 0
-                                ? Instant.ofEpochSecond(proto.getTimestamp())
-                                : Instant.now();
+                            Instant ts = deviceTime(proto.getTimestamp());
                             Map<String, Float> readings = new LinkedHashMap<>();
                             for (SensorReading r : proto.getReadingsList()) {
                                 readings.put(r.getKey(), r.getValue());
@@ -213,7 +218,8 @@ public class MqttAgent {
                 log.info("Obtendo JWT do Keycloak e conectando em {}...", brokerUrl);
                 OAuth2AccessToken token = fetchJwt();
                 MqttConnectOptions options = new MqttConnectOptions();
-                options.setCleanSession(true);
+                // Sessao persistente: o broker guarda as mensagens QoS 1 enquanto o agent reconecta (refresh do JWT)
+                options.setCleanSession(false);
                 options.setConnectionTimeout(10);
                 options.setAutomaticReconnect(false);
                 options.setUserName(token.getTokenValue());
