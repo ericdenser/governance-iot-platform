@@ -4,9 +4,9 @@
 //  Este main é o "molde" pra outros firmwares baseados no governance_core.
 //  Implementa os hooks de:
 //    - sensor discovery / read telemetry (obrigatórios pra publicar dados)
-//    - get_persisted_time / persist_time (opcional — DS3231)
-//    - get_external_time (opcional — GPS)
-//    - get_battery_mv (opcional — bateria)
+//    - get_persisted_time / persist_time (opcional, DS3231)
+//    - get_external_time (opcional, GPS)
+//    - get_battery_mv (opcional, bateria)
 //  Toda a state machine, NVS, WiFi, MQTT, OTA, boot audit, error handling
 //  moram no componente governance_core.
 // =============================================================================
@@ -30,6 +30,15 @@
 #include "src/BatteryManager.h"
 #include "src/BmpManager.h"
 #include "src/AdcManager.h"
+#include "src/SensorCache.h"
+#include "src/ChipTempManager.h"
+#include "src/Mq135Manager.h"
+
+#if CONFIG_GOV_LCD_ENABLED
+#include "src/lcd.h"
+#include "src/LogCapture.h"
+#include "src/Button.h"
+#endif
 
 // =============================================================================
 //  Estado do hardware — mapa de sensores + managers específicos
@@ -44,8 +53,8 @@ static std::string g_activeSensorsCSV;
 // =============================================================================
 // Config do bus I2C onde o DS3231 vive
 #define RTC_I2C_PORT     I2C_NUM_0
-#define RTC_I2C_SDA_PIN  GPIO_NUM_8
-#define RTC_I2C_SCL_PIN  GPIO_NUM_9
+#define RTC_I2C_SDA_PIN  ((gpio_num_t)CONFIG_GOV_I2C_SDA_PIN)
+#define RTC_I2C_SCL_PIN  ((gpio_num_t)CONFIG_GOV_I2C_SCL_PIN)
 #define RTC_I2C_FREQ     400000
 
 static bool probeDS3231(void) {
@@ -85,9 +94,17 @@ static const char* my_sensor_discovery(void) {
     if (g_sensors.gps)         appendSensor("gps");
     if (g_sensors.battery_adc) appendSensor("battery_adc");
 
+    float mq_ppm;
+    if (Mq135Manager::read(mq_ppm)) appendSensor("mq135");
+
     if (g_sensors.bmp280) {
-        g_bmpManager.init();
+        g_bmpManager.init(g_sensors.bmp280_addr);
     }
+
+    SensorCache::start(g_sensors.bmp280 ? &g_bmpManager : nullptr);
+#if CONFIG_GOV_LCD_ENABLED
+    display_set_sensors(g_activeSensorsCSV.c_str());
+#endif
 
     // Se GPS detectado, cria task dedicada de leitura contínua
     if (g_sensors.gps) {
@@ -114,61 +131,42 @@ static int my_read_telemetry(sensor_reading_t* out, int max) {
     if (g_sensors.battery_adc && n < max) {
 
         float bat = BatteryManager::readBattery();
+        SensorCache::setBattery(bat);
         if (bat > 0.0f) {
             strncpy(out[n].key, "battery_mv", sizeof(out[n].key) - 1);
             out[n].value = bat; n++;
         }
     }
 
-    if (g_sensors.bmp280 && n + 2 <= max) {
-        float temp = 0.0f;
-        float hum = 0.0f;
- 
-        if (g_bmpManager.readTemp(temp)) {
-            strncpy(out[n].key, "temperature", sizeof(out[n].key) - 1);
-            out[n].value = temp;
-            n++;
-        }
+    SensorSnapshot snap;
+    bool fresh = SensorCache::getFresh(snap, 3 * SensorCache::SAMPLE_PERIOD_MS);
 
-        if (g_bmpManager.readHumidity(hum)) {
-            strncpy(out[n].key, "humidity", sizeof(out[n].key) - 1);
-            out[n].value = hum;
-            n++;
-        }
+    if (fresh && snap.env_valid && n < max) {
+        strncpy(out[n].key, "temperature", sizeof(out[n].key) - 1);
+        out[n].value = snap.temp_c;
+        n++;
+    }
+
+    if (fresh && snap.hum_valid && n < max) {
+        strncpy(out[n].key, "humidity", sizeof(out[n].key) - 1);
+        out[n].value = snap.hum_pct;
+        n++;
     }
 
     // get RSSI
     wifi_ap_record_t ap_info;
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK && n < max) {
         strncpy(out[n].key, "rssi", sizeof(out[n].key) -1 );
-        // while(true){
-        //     printf("loop infinito");
-        //     vTaskDelay(pdMS_TO_TICKS(1000));
-        // };
         out[n].value = (float)ap_info.rssi;
         n++;
     }
 
     // Internal temp of SoC
-    #if SOC_TEMP_SENSOR_SUPPORTED
-    {
-        static temperature_sensor_handle_t s_temp_handle = NULL;
-        if (s_temp_handle == NULL) {
-            temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 80);
-            if (temperature_sensor_install(&cfg, &s_temp_handle) == ESP_OK) {
-                temperature_sensor_enable(s_temp_handle);
-            }
-        }
-        float tsens_c = 0.0f;
-        if (s_temp_handle != NULL &&
-            temperature_sensor_get_celsius(s_temp_handle, &tsens_c) == ESP_OK &&
-            n < max) {
-            strncpy(out[n].key, "temp_c", sizeof(out[n].key) - 1);
-            out[n].value = tsens_c;
-            n++;
-        }
+    if (fresh && snap.chip_valid && n < max) {
+        strncpy(out[n].key, "temp_c", sizeof(out[n].key) - 1);
+        out[n].value = snap.chip_c;
+        n++;
     }
-    #endif
 
     return n;
 }
@@ -232,20 +230,35 @@ static time_t my_get_external_time(uint32_t timeout_ms) {
 }
 
 // Hook consumido pelo governance_core (streak no telemetry_task + wake check
-// pos deep_sleep). Contrato: retorna 0 quando leitura invalida — nesse caso o
+// pos deep_sleep). Contrato: retorna 0 quando leitura invalida, nesse caso o
 // core NAO conta pro streak e nao considera pra decisao de hibernar.
 static uint32_t my_get_battery_mv(void) {
     float mv = BatteryManager::readBattery();
+    SensorCache::setBattery(mv);
     return (mv > 0.0f) ? (uint32_t)mv : 0u;
 }
+
+#if CONFIG_GOV_LCD_ENABLED
+static void my_display_lcd(int width, int height) {
+    display_init(width, height);
+    button_start();
+}
+#endif
 
 // =============================================================================
 //  app_main
 // =============================================================================
 extern "C" void app_main(void) {
+#if CONFIG_GOV_LCD_ENABLED
+    LogCapture::install();
+#endif
+
     // Init do bus I2C (DS3231 usa)
 
     i2cdev_init();
+    AdcManager::init();
+    SensorCache::init();
+    ChipTempManager::init();
 
 
     // GPIO de controle do transistor PNP que liga/desliga VCC do GPS
@@ -261,6 +274,10 @@ extern "C" void app_main(void) {
     hooks.persist_time        = my_persist_time;
     hooks.get_external_time   = my_get_external_time;
     hooks.get_battery_mv   = my_get_battery_mv;  
+#if CONFIG_GOV_LCD_ENABLED
+    hooks.display_lcd         = my_display_lcd;
+    hooks.on_state_change     = display_show_state;
+#endif
 
     governance_core_init(&hooks);
 }

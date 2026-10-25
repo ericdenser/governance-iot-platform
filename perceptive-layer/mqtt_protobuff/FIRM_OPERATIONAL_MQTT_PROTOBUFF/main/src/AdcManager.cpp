@@ -9,9 +9,12 @@ static const char* TAG = "AdcManager";
 adc_oneshot_unit_handle_t AdcManager::_adc_handle      = NULL;
 adc_cali_handle_t         AdcManager::_adc_cali_handle = NULL;
 bool                      AdcManager::_is_initialized   = false;
+SemaphoreHandle_t         AdcManager::_mutex            = NULL;
 
 void AdcManager::init() {
     if (_is_initialized) return;
+
+    _mutex = xSemaphoreCreateMutex();
 
     adc_oneshot_unit_init_cfg_t init_config = {
         .unit_id  = ADC_UNIT_1,
@@ -42,15 +45,18 @@ void AdcManager::configChannel(adc_channel_t channel) {
         .atten    = ADC_ATTEN_DB_12,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
+    xSemaphoreTake(_mutex, portMAX_DELAY);
     esp_err_t err = adc_oneshot_config_channel(_adc_handle, channel, &config);
+    xSemaphoreGive(_mutex);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "adc_oneshot_config_channel canal %d falhou: %s", channel, esp_err_to_name(err));
     }
 }
 
-int AdcManager::readMilliVolts(adc_channel_t channel) {
+int AdcManager::readMilliVolts(adc_channel_t channel, bool verbose) {
     if (!_is_initialized) init();
 
+    xSemaphoreTake(_mutex, portMAX_DELAY);
     int sum = 0;
     int valid = 0;
     for (int i = 0; i < 16; i++) {
@@ -63,6 +69,7 @@ int AdcManager::readMilliVolts(adc_channel_t channel) {
         sum += val;
         valid++;
     }
+    xSemaphoreGive(_mutex);
     if (valid == 0) {
         ESP_LOGE(TAG, "Nenhuma amostra valida no canal %d", channel);
         return -1;
@@ -75,6 +82,6 @@ int AdcManager::readMilliVolts(adc_channel_t channel) {
     } else {
         voltage = raw * 3100 / 4095;
     }
-    ESP_LOGI(TAG, "canal %d: raw=%d amostras_validas=%d/16 mv=%d", channel, raw, valid, voltage);
+    if (verbose) ESP_LOGI(TAG, "canal %d: raw=%d amostras_validas=%d/16 mv=%d", channel, raw, valid, voltage);
     return voltage;
 }

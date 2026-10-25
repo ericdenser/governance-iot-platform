@@ -1,16 +1,14 @@
 #include "BatteryManager.h"
 #include "AdcManager.h"
+#include "sdkconfig.h"
 
-// GPIO4 = ADC_CHANNEL_3 (ADC1)
-#define BAT_ADC_CHANNEL ADC_CHANNEL_3
-
-// Fator de correção do divisor de tensão (5V são ~2.5V no pino *2.02 = tensão real)
-#define BAT_DIVIDER_FACTOR 2.02f
+#define BAT_ADC_CHANNEL    ((adc_channel_t)CONFIG_GOV_BAT_ADC_CHANNEL)
+#define BAT_DIVIDER_FACTOR (CONFIG_GOV_BAT_DIVIDER_X100 / 100.0f)
 
 // LiPo abaixo desse valor está fisicamente destruída (proteção corta em ~3.0V).
 // Leituras < MIN sao ADC instavel pos-wake, pin flutuando ou hardware com falha —
 // nunca refletem carga real. Retornar -1 sinaliza "indisponivel" pros consumers.
-#define BAT_MIN_VALID_MV 2600.0f
+#define BAT_MIN_VALID_MV ((float)CONFIG_GOV_BAT_MIN_VALID_MV)
 
 float BatteryManager::readBattery() {
     static bool configured = false;
