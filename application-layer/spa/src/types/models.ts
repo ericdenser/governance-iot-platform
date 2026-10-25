@@ -22,6 +22,8 @@ export type CommandStatus =
   | 'PUBLISH_FAILED'
 export type CommandAggregateStatus = 'IN_PROGRESS' | 'SUCCESS' | 'PARTIAL' | 'FAILED'
 export type DeviceCommands = 'UPDATE' | 'REBOOT' | 'DEEP_SLEEP' | 'FIRMWARE_ROLLBACK'
+// Chip alvo de firmware/device (capacidades em utils/chips.ts)
+export type TargetChip = 'ESP32_S3' | 'ESP8266'
 export type ErrorStatus = 'PENDING' | 'FIXED' | 'RETRY_FAILED' | 'NOT_FIXABLE'
 export type GroupRole = 'VIEWER' | 'MEMBER' | 'OWNER'
 export type DeviceError =
@@ -58,6 +60,7 @@ export interface FirmwareResponseDTO {
   description: string | null
   ownerGroupId: string | null
   provisioningFirmware: boolean
+  targetChip: TargetChip
   createdAt: string
   createdByActorId: string | null
   createdByUsername: string | null
@@ -76,6 +79,7 @@ export interface FirmwareVersionResponseDTO {
   firmwareName: string
   ownerGroupId: string | null
   provisioningFirmware: boolean
+  targetChip: TargetChip
   version: string
   filename: string
   originalFilename: string
@@ -106,6 +110,7 @@ export interface DeployableVersionProjection {
   ownerGroupId: string | null
   status: FirmwareStatus
   uploadedAt: string
+  targetChip: TargetChip
 }
 
 // ── Firmware — requests ─────────────────────────────────────────────────────
@@ -123,6 +128,7 @@ export interface CreateFirmwareRequest {
   deepSleepEnabled: boolean
   deepSleepIntervalS?: number | null
   sensors: SensorConfigDTO[]
+  targetChip?: TargetChip
 }
 
 export interface UploadVersionRequest {
@@ -140,6 +146,7 @@ export interface DeviceSummaryDTO {
   status: DeviceStatus
   health: DeviceHealth
   healthReason: string | null
+  chip: TargetChip
   macAddress: string | null
   firmwareId: string | null
   firmwareName: string | null
@@ -163,6 +170,7 @@ export interface DeviceDetailDTO {
   status: DeviceStatus
   health: DeviceHealth
   healthReason: string | null
+  chip: TargetChip
   macAddress: string | null
   createdAt: string
   lastSeen: string | null

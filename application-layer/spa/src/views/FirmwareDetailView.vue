@@ -23,6 +23,7 @@ import type {
 import { errorMessage } from '@/utils/errors'
 import { confirm } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
+import { chipLabel, chipOf } from '@/utils/chips'
 
 const authStore = useAuthStore()
 const route = useRoute()
@@ -179,7 +180,11 @@ const toggleDeployDevice = (id: string) => {
   selectedDeployIds.value = next
 }
 
-const deployableDevices = computed(() => allDevices.value.filter(d => d.status !== 'REVOKED'))
+// So devices do mesmo chip do firmware (o backend tambem recusa chip diferente)
+const deployableDevices = computed(() => {
+  const chip = chipOf(firmware.value?.targetChip)
+  return allDevices.value.filter(d => d.status !== 'REVOKED' && chipOf(d.chip) === chip)
+})
 
 const doDeploy = async () => {
   if (!selectedDeployIds.value.size) { deployError.value = 'Selecione ao menos um device.'; return }
@@ -510,7 +515,7 @@ onMounted(async () => {
         <p class="modal-desc">Selecione os dispositivos que receberão o update via OTA.</p>
 
         <div v-if="loadingDevices" class="empty">Carregando dispositivos...</div>
-        <div v-else-if="!deployableDevices.length" class="empty">Nenhum dispositivo disponível.</div>
+        <div v-else-if="!deployableDevices.length" class="empty">Nenhum dispositivo {{ chipLabel(firmware?.targetChip) }} disponível.</div>
         <div v-else class="device-grid">
           <button v-for="d in deployableDevices" :key="d.deviceId"
             class="device-chip" :class="{ selected: selectedDeployIds.has(d.deviceId) }"

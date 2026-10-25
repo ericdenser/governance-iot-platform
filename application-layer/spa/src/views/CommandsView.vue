@@ -17,10 +17,12 @@ import type {
   DeviceCommands,
   DeviceSummaryDTO,
   DeployableVersionProjection,
+  TargetChip,
 } from '@/types/models'
 import { errorMessage } from '@/utils/errors'
 import { toast } from '@/composables/useToast'
 import { confirm } from '@/composables/useConfirm'
+import { CHIP_LIST, chipLabel, chipOf, supportsCommand } from '@/utils/chips'
 
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -68,15 +70,36 @@ const selectedCount = computed(() => {
   return n
 })
 
-const toggleDevice = (id: string) => {
+// Um comando vai para um chip por vez: o primeiro device selecionado define o chip
+// e bloqueia os grupos dos outros chips
+const selectedChip = computed<TargetChip | null>(() => {
+  const first = targetDevices.value.find(d => selectedDeviceIds.value.has(d.deviceId))
+  return first ? chipOf(first.chip) : null
+})
+
+const deviceGroups = computed(() =>
+  CHIP_LIST
+    .map(chip => ({ chip, devices: targetDevices.value.filter(d => chipOf(d.chip) === chip) }))
+    .filter(g => g.devices.length),
+)
+
+const isChipLocked = (chip: TargetChip) => selectedChip.value !== null && selectedChip.value !== chip
+
+const toggleDevice = (d: DeviceSummaryDTO) => {
+  if (isChipLocked(chipOf(d.chip))) return
   const next = new Set(selectedDeviceIds.value)
-  if (next.has(id)) next.delete(id); else next.add(id)
+  if (next.has(d.deviceId)) next.delete(d.deviceId); else next.add(d.deviceId)
   selectedDeviceIds.value = next
 }
 
-const selectAll = () => {
-  selectedDeviceIds.value = new Set(targetDevices.value.map(d => d.deviceId))
+const selectGroup = (chip: TargetChip) => {
+  if (isChipLocked(chip)) return
+  const ids = targetDevices.value.filter(d => chipOf(d.chip) === chip).map(d => d.deviceId)
+  selectedDeviceIds.value = new Set(ids)
 }
+
+const isCommandSupported = (cmd: CommandDef) =>
+  selectedChip.value === null || supportsCommand(selectedChip.value, cmd.value)
 
 const clearSelection = () => {
   selectedDeviceIds.value = new Set()
@@ -95,7 +118,8 @@ const openFirmwareModal = async () => {
   loadingFirmwares.value = true
   try {
     const r = await firmwareApi.listDeployable()
-    firmwareList.value = Array.isArray(r.data) ? r.data : []
+    const all = Array.isArray(r.data) ? r.data : []
+    firmwareList.value = all.filter(fw => chipOf(fw.targetChip) === selectedChip.value)
   } finally { loadingFirmwares.value = false }
 }
 
@@ -142,7 +166,7 @@ const onCommandClick = async (cmd: CommandDef) => {
     toast.error('Selecione ao menos um device.')
     return
   }
-  if (runningCommand.value) return
+  if (runningCommand.value || !isCommandSupported(cmd)) return
 
   if (cmd.needsFirmware) return openFirmwareModal()
   if (cmd.needsDuration) return openDeepSleepModal()
@@ -305,32 +329,41 @@ onUnmounted(() => {
       <AppCard title="Devices Alvo">
         <template #actions>
           <div class="target-actions">
-            <button v-if="targetDevices.length && selectedCount < targetDevices.length"
-              class="mini-btn" @click="selectAll">Todos</button>
             <button v-if="selectedCount" class="mini-btn" @click="clearSelection">Limpar</button>
           </div>
         </template>
 
         <p class="panel-hint mono">
           {{ targetDevices.length }} ACTIVE
-          <span v-if="selectedCount" class="selected-count"> · {{ selectedCount }} selecionado(s)</span>
+          <span v-if="selectedCount" class="selected-count"> · {{ selectedCount }} selecionado(s) · {{ chipLabel(selectedChip) }}</span>
         </p>
 
         <div v-if="loadingDevices" class="empty">Carregando devices...</div>
         <div v-else-if="!targetDevices.length" class="empty">Nenhum device ACTIVE disponível</div>
-        <div v-else class="device-list">
-          <label v-for="d in targetDevices" :key="d.deviceId"
-            class="device-row"
-            :class="{ selected: selectedDeviceIds.has(d.deviceId) }">
-            <input type="checkbox"
-              :checked="selectedDeviceIds.has(d.deviceId)"
-              @change="toggleDevice(d.deviceId)" />
-            <div class="dev-body">
-              <span class="dev-name">{{ d.name }}</span>
-              <span class="dev-meta mono">{{ d.firmwareVersion ? 'v' + d.firmwareVersion : '—' }}</span>
+        <div v-else class="device-groups">
+          <section v-for="g in deviceGroups" :key="g.chip"
+            class="device-group" :class="{ locked: isChipLocked(g.chip) }">
+            <header class="group-head">
+              <span class="group-name mono">{{ chipLabel(g.chip) }}</span>
+              <span class="group-count">{{ g.devices.length }}</span>
+              <button class="mini-btn" :disabled="isChipLocked(g.chip)" @click="selectGroup(g.chip)">Todos</button>
+            </header>
+            <div class="device-list">
+              <label v-for="d in g.devices" :key="d.deviceId"
+                class="device-row"
+                :class="{ selected: selectedDeviceIds.has(d.deviceId) }">
+                <input type="checkbox"
+                  :checked="selectedDeviceIds.has(d.deviceId)"
+                  :disabled="isChipLocked(g.chip)"
+                  @change="toggleDevice(d)" />
+                <div class="dev-body">
+                  <span class="dev-name">{{ d.name }}</span>
+                  <span class="dev-meta mono">{{ d.firmwareVersion ? 'v' + d.firmwareVersion : '—' }}</span>
+                </div>
+                <span class="status-dot ok"></span>
+              </label>
             </div>
-            <span class="status-dot ok"></span>
-          </label>
+          </section>
         </div>
       </AppCard>
 
@@ -342,7 +375,7 @@ onUnmounted(() => {
           <button v-for="cmd in COMMANDS" :key="cmd.value"
             class="cmd-card"
             :class="{ destructive: cmd.destructive, running: runningCommand === cmd.value }"
-            :disabled="selectedCount === 0 || runningCommand !== null"
+            :disabled="selectedCount === 0 || runningCommand !== null || !isCommandSupported(cmd)"
             @click="onCommandClick(cmd)">
             <span class="cmd-icon-slot" :class="{ destructive: cmd.destructive }">
               <!-- Icon per command -->
@@ -354,6 +387,7 @@ onUnmounted(() => {
             <div class="cmd-body">
               <span class="cmd-label">{{ cmd.label }}</span>
               <span class="cmd-desc mono">{{ cmd.desc }}</span>
+              <span v-if="!isCommandSupported(cmd)" class="cmd-unsupported">Não suportado no {{ chipLabel(selectedChip) }}</span>
             </div>
           </button>
         </div>
@@ -411,11 +445,11 @@ onUnmounted(() => {
     <!-- ── UPDATE: firmware picker modal ────────────────────────────────── -->
     <div v-if="showFirmwareModal" class="modal-overlay" @click.self="showFirmwareModal = false">
       <div class="modal">
-        <h3 class="modal-title">Escolher Firmware — UPDATE</h3>
+        <h3 class="modal-title">Escolher Firmware — UPDATE <span class="text-muted mono">{{ chipLabel(selectedChip) }}</span></h3>
         <p class="modal-hint mono">{{ selectedCount }} device(s) alvo</p>
 
         <div v-if="loadingFirmwares" class="empty">Carregando firmwares...</div>
-        <div v-else-if="!firmwareList.length" class="empty">Nenhum firmware disponível</div>
+        <div v-else-if="!firmwareList.length" class="empty">Nenhum firmware disponível para {{ chipLabel(selectedChip) }}</div>
         <div v-else class="fw-list">
           <button v-for="fw in firmwareList" :key="fw.versionId"
             class="fw-row"
@@ -485,7 +519,14 @@ onUnmounted(() => {
 .text-muted { color: var(--text-muted); }
 
 /* ── Target devices ───────────────────────────────────────────────────── */
-.device-list { display: flex; flex-direction: column; gap: 4px; max-height: 480px; overflow-y: auto; }
+.device-groups { display: flex; flex-direction: column; gap: var(--space-3); max-height: 480px; overflow-y: auto; }
+.device-group.locked { opacity: 0.4; }
+.device-group.locked .device-row { cursor: not-allowed; }
+.group-head { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3) 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.group-name { font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
+.group-count { font-size: var(--text-xs); color: var(--text-muted); flex: 1; }
+.mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.device-list { display: flex; flex-direction: column; gap: 4px; }
 .device-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; border: 1px solid transparent; transition: background var(--transition), border-color var(--transition); }
 .device-row:hover { background: var(--panel); }
 .device-row.selected { background: var(--panel); border-color: var(--primary); }
@@ -509,6 +550,7 @@ onUnmounted(() => {
 .cmd-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cmd-label { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 .cmd-desc { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.35; }
+.cmd-unsupported { font-size: var(--text-xs); color: var(--warning); }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }

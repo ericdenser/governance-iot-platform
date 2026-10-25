@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
+import ChipSelector from '@/components/ChipSelector.vue'
 import { firmwareApi } from '@/services/firmware'
 import { sensorsApi } from '@/services/sensors'
 import { groupsApi } from '@/services/groups'
@@ -12,11 +13,13 @@ import type {
   FirmwareResponseDTO,
   DeviceGroupResponseDTO,
   SensorResponseDTO,
-  CreateFirmwareRequest
+  CreateFirmwareRequest,
+  TargetChip,
 } from '@/types/models'
 import { errorMessage, errorMessageFromBlob } from '@/utils/errors'
 import { toast } from '@/composables/useToast'
 import { absoluteTime, relativeTime } from '@/utils/format'
+import { chipLabel, chipOf } from '@/utils/chips'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -42,26 +45,30 @@ const groupName = (ownerGroupId: string | null) => {
 
 const canCreate = computed(() => authStore.isAdmin || managedGroupIds.value.size > 0)
 
+// Lista, novo firmware e pacote de flash valem para o chip selecionado
+const selectedChip = ref<TargetChip>('ESP32_S3')
+const chipFirmwares = computed(() =>
+  firmwares.value.filter(fw => chipOf(fw.targetChip) === selectedChip.value)
+)
+
 // Provisioning em grupo proprio no topo; o resto e firmware de aplicacao
 const sections = computed(() => [
   {
     key: 'provisioning',
     title: 'Provisioning',
-    hint: 'gravado de fábrica, ativa o device',
-    items: firmwares.value.filter(fw => fw.provisioningFirmware),
-    empty: 'Nenhum firmware de provisioning cadastrado',
+    items: chipFirmwares.value.filter(fw => fw.provisioningFirmware),
+    empty: `Nenhum firmware de provisioning para ${chipLabel(selectedChip.value)}`,
   },
   {
     key: 'app',
     title: 'Aplicação',
-    hint: 'enviado por OTA',
-    items: firmwares.value.filter(fw => !fw.provisioningFirmware),
-    empty: 'Nenhum firmware de aplicação cadastrado',
+    items: chipFirmwares.value.filter(fw => !fw.provisioningFirmware),
+    empty: `Nenhum firmware de aplicação para ${chipLabel(selectedChip.value)}`,
   },
 ])
 
 const provisioningFirmware = computed(() =>
-  firmwares.value.find(fw => fw.provisioningFirmware) ?? null
+  chipFirmwares.value.find(fw => fw.provisioningFirmware) ?? null
 )
 
 const provisioningLatestDeprecated = computed(() =>
@@ -154,6 +161,7 @@ const doCreate = async () => {
       deepSleepEnabled: meta.deepSleepEnabled,
       deepSleepIntervalS: meta.deepSleepEnabled ? meta.deepSleepIntervalS : null,
       sensors,
+      targetChip: selectedChip.value,
     }
     if (!meta.isProvisioning && meta.ownerGroupId) {
       payload.ownerGroupId = meta.ownerGroupId
@@ -189,10 +197,11 @@ const doGenerate = async () => {
   }
   generating.value = true; generateError.value = ''
   try {
-    const payload: { deviceName: string; wifiSsid: string; wifiPass: string; groupId?: string } = {
+    const payload: { deviceName: string; wifiSsid: string; wifiPass: string; groupId?: string; chip: TargetChip } = {
       deviceName: deviceName.trim(),
       wifiSsid: wifiSsid.trim(),
       wifiPass: wifiPass.trim(),
+      chip: selectedChip.value,
     }
     if (groupId) payload.groupId = groupId
     const r = await firmwareApi.generatePackage(payload)
@@ -230,9 +239,12 @@ onMounted(async () => {
   <AppLayout>
     <AppCard title="Firmware">
       <template #actions>
-        <div class="actions-row" v-if="canCreate">
-          <AppButton size="lg" variant="secondary" @click="openPackage">Gerar Pacote Flash</AppButton>
-          <AppButton size="lg" variant="primary" @click="openCreate(false)">Novo Firmware</AppButton>
+        <div class="actions-row">
+          <ChipSelector v-model="selectedChip" />
+          <template v-if="canCreate">
+            <AppButton size="lg" variant="secondary" @click="openPackage">Gerar Pacote Flash</AppButton>
+            <AppButton size="lg" variant="primary" @click="openCreate(false)">Novo Firmware</AppButton>
+          </template>
         </div>
       </template>
 
@@ -252,7 +264,6 @@ onMounted(async () => {
           <tr class="group-row">
             <td colspan="6">
               {{ section.title }}
-              <span class="group-hint">{{ section.hint }}</span>
             </td>
           </tr>
           <tr v-for="fw in section.items" :key="fw.firmwareId" class="tbl-row" @click="goToDetail(fw.firmwareId)">
@@ -279,7 +290,7 @@ onMounted(async () => {
     <!-- ── Create Firmware modal ────────────────────────────────────────────── -->
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
       <div class="modal">
-        <h3 class="modal-title">Novo Firmware</h3>
+        <h3 class="modal-title">Novo Firmware <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></h3>
 
         <div class="form-group">
           <label>Arquivo .bin</label>
@@ -365,7 +376,7 @@ onMounted(async () => {
     <!-- ── Gerar Pacote Flash modal ─────────────────────────────────────────── -->
     <div v-if="showPackage" class="modal-overlay" @click.self="showPackage = false">
       <div class="modal">
-        <h3 class="modal-title">Gerar Pacote Flash</h3>
+        <h3 class="modal-title">Gerar Pacote Flash <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></h3>
 
         <!-- Estado 1: nenhum firmware de provisioning cadastrado -->
         <div v-if="!provisioningFirmware" class="prov-warning">
@@ -374,7 +385,7 @@ onMounted(async () => {
             <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
           <div>
-            <p class="warn-title">Sem firmware de provisionamento registrado</p>
+            <p class="warn-title">Sem firmware de provisionamento registrado para {{ chipLabel(selectedChip) }}</p>
             <p class="warn-desc" v-if="authStore.isAdmin">É necessário ter um firmware marcado como provisioning para gerar o pacote flash.</p>
             <p class="warn-desc" v-else>É necessário ter um firmware marcado como provisioning. Contate um administrador para registrar um.</p>
           </div>
@@ -469,7 +480,6 @@ onMounted(async () => {
 
 .group-row td { padding: var(--space-5) 0 var(--space-2); border-top: none; font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
 tbody:first-of-type .group-row td { padding-top: var(--space-1); }
-.group-hint { margin-left: var(--space-2); font-weight: 400; color: var(--text-muted); }
 .empty-row { padding: var(--space-3) 0; color: var(--text-muted); font-size: var(--text-sm); }
 
 .mono { font-family: var(--font-mono); }
@@ -485,6 +495,7 @@ tbody:first-of-type .group-row td { padding-top: var(--space-1); }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); width: 520px; max-width: 94vw; max-height: 85vh; display: flex; flex-direction: column; gap: var(--space-4); overflow-y: auto; }
 .modal-title { font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0; }
+.title-chip { margin-left: var(--space-2); font-size: var(--text-sm); font-weight: 500; color: var(--text-muted); }
 .modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); margin-top: auto; }
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
