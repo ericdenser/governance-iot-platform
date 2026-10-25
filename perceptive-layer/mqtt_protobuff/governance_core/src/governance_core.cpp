@@ -1053,6 +1053,8 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
     // Boot timeout — cria ANTES de qualquer inicialização pesada.
     // Se timeout, reseta.
     xTaskCreate(boot_timeout_task, "boot_wd", 4096, NULL, 1, NULL);
+
+    if (s_hooks.display_lcd) s_hooks.display_lcd(240, 320);
     
 
     #if CONFIG_GOV_BATTERY_HIBERNATION
@@ -1067,6 +1069,10 @@ esp_err_t governance_core_init(const governance_hooks_t* hooks) {
     #endif
 
     AppState::init();
+    if (s_hooks.on_state_change) {
+        AppState::setListener(s_hooks.on_state_change);
+        s_hooks.on_state_change(AppState::toString(AppState::get()), nullptr, false);
+    }
 
     WatchdogManager::init(60000, true);
     WatchdogManager::addToCurrentTask();

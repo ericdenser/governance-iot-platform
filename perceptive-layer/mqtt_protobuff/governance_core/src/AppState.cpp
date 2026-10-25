@@ -11,6 +11,7 @@ static const char* NVS_MASK_KEY   = "active_mask";
 DeviceState           AppState::_current          = DeviceState::NVS_INIT;
 DeviceState           AppState::_previous         = DeviceState::NVS_INIT;
 SemaphoreHandle_t     AppState::_mutex            = NULL;
+AppState::StateListener AppState::_listener       = nullptr;
 std::deque<AppError>  AppState::_errorQueue;
 uint32_t              AppState::_activeErrorMask  = 0;
 
@@ -51,6 +52,10 @@ void AppState::loadPersistedErrors() {
     }
 }
 
+void AppState::setListener(StateListener listener) {
+    _listener = listener;
+}
+
 // ---- Transição de estado ----
 
 void AppState::transition(DeviceState next, const Source& source) {
@@ -66,6 +71,8 @@ void AppState::transition(DeviceState next, const Source& source) {
              source.method.c_str(),
              toString(_previous),
              toString(_current));
+
+    if (_listener) _listener(toString(next), nullptr, false);
 }
 
 // ---- Registro de erro ----
@@ -116,12 +123,13 @@ void AppState::setError(ErrorCode code, const std::string& msg, const Source& so
 
     if (duplicate) {
         ESP_LOGD(TAG, "[%s::%s] ERRO (%s) repetido, ja na fila", source.className.c_str(), source.method.c_str(), toString(code));
-        return;
+    } else {
+        ESP_LOGE(TAG, "[%s::%s] ERRO (%s): %s",
+                 source.className.c_str(), source.method.c_str(),
+                 toString(code), msg.c_str());
     }
 
-    ESP_LOGE(TAG, "[%s::%s] ERRO (%s): %s",
-             source.className.c_str(), source.method.c_str(),
-             toString(code), msg.c_str());
+    if (_listener) _listener(toString(code), msg.c_str(), true);
 }
 
 // ---- Resolução de erro ----

@@ -93,6 +93,9 @@ struct AppError {
 // =============================================================================
 class AppState {
 public:
+    // Chamado fora do mutex a cada transicao/erro
+    using StateListener = void (*)(const char* state, const char* detail, bool is_error);
+    static void setListener(StateListener listener);
 
     // Inicializa o mutex — chamar UMA VEZ em app_main antes de tudo
     static void init();
@@ -134,6 +137,7 @@ private:
     static DeviceState        _current;
     static DeviceState        _previous;
     static SemaphoreHandle_t  _mutex;
+    static StateListener      _listener;
 
     static std::deque<AppError> _errorQueue;
     // Bitmask de códigos de erro ativos (persistido no NVS para sobreviver reboots).
