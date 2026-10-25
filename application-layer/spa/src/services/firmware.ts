@@ -5,6 +5,7 @@ import type {
   FirmwareVersionSummaryDTO,
   DeployableVersionProjection,
   CommandResultResponseDTO,
+  TargetChip,
 } from '@/types/models'
 
 const upload = <T>(url: string, file: File, metadata: Record<string, unknown>) => {
@@ -46,6 +47,6 @@ export const firmwareApi = {
     }),
 
   // ── Flash package ──────────────────────────────────────────────────────────
-  generatePackage: (payload: { deviceName: string; wifiSsid: string; wifiPass: string; groupId?: string }) =>
+  generatePackage: (payload: { deviceName: string; wifiSsid: string; wifiPass: string; groupId?: string; chip?: TargetChip }) =>
     api.post<Blob>('/devices/generate-package', payload, { responseType: 'blob' }),
 }
