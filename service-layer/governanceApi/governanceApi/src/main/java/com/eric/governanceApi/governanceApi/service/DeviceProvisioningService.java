@@ -21,6 +21,7 @@ import com.eric.governanceApi.governanceApi.model.entity.DeviceGroupMembership;
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
 import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequest;
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.repository.DeviceCertificateRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepository;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupRepository;
@@ -97,6 +98,7 @@ public class DeviceProvisioningService {
         Device newDevice = new Device();
         newDevice.setName(deviceName);
         newDevice.setStatus(DeviceStatus.PENDING);
+        newDevice.setChip(TargetChip.orDefault(request.chip()));
 
         deviceRepository.save(newDevice);
 
@@ -186,7 +188,7 @@ public class DeviceProvisioningService {
         device.setMacAddress(request.getMacAddress());
         device.setStatus(DeviceStatus.PROVISIONING);
         device.setLastSeen(Instant.now());
-        device.setFirmwareVersion(firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
+        device.setFirmwareVersion(firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueAndFirmware_TargetChipOrderByUploadedAtDesc(device.getChip())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
                     "Nenhum firmware de provisioning registrado.")));
 

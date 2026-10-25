@@ -3,6 +3,7 @@ package com.eric.governanceApi.governanceApi.model.response;
 import java.time.Instant;
 import java.util.List;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 
@@ -12,6 +13,7 @@ public record FirmwareVersionResponseDTO (
     String firmwareName,
     String ownerGroupId,           // herdado do product — pra SPA mostrar badge de grupo
     boolean provisioningFirmware,  // herdado do product — pra SPA mostrar badge "Provisioning"
+    TargetChip targetChip,         // herdado do product
     String version,
     String filename,
     String originalFilename,
@@ -44,6 +46,7 @@ public record FirmwareVersionResponseDTO (
             v.getFirmware().getFirmwareName(),
             v.getFirmware().getOwnerGroupId(),
             v.getFirmware().isProvisioningFirmware(),
+            v.getFirmware().getTargetChip(),
             v.getVersion(),
             v.getFilename(),
             v.getOriginalFilename(),

@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.model.response;
 
 import java.time.Instant;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceHealth;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 
@@ -11,6 +12,7 @@ public record DeviceSummaryDTO(
     DeviceStatus status,
     DeviceHealth health,
     String healthReason,
+    TargetChip chip,
     String macAddress,
 
     // contexto do firmware

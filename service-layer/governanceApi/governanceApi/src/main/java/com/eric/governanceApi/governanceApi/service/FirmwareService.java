@@ -22,6 +22,7 @@ import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.config.AgentClient;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.DeviceCommands;
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
 import com.eric.governanceApi.governanceApi.enums.GroupRole;
 import com.eric.governanceApi.governanceApi.enums.status.CommandStatus;
@@ -126,6 +127,7 @@ public class FirmwareService {
         fw.setDescription(requestDTO.description());
         fw.setOwnerGroupId(ownerGroupId);
         fw.setProvisioningFirmware(requestDTO.isProvisioning());
+        fw.setTargetChip(TargetChip.orDefault(requestDTO.targetChip()));
 
        
         FirmwareVersion v = buildVersion(fw, requestDTO.initialVersion(),
@@ -248,9 +250,18 @@ public class FirmwareService {
         batch.setPayload(payloadJson);
         commandBatchRepository.save(batch);
 
+        TargetChip fwChip = v.getFirmware().getTargetChip();
+
         for (String devId : targetDevices) {
             deviceRepository.findByDeviceId(devId).ifPresentOrElse(
                 device -> {
+                    if (device.getChip() != fwChip) {
+                        skipped.add(devId);
+                        addSkippedRecord(device, batch, payloadJson, v.getFirmwareVersionId(),
+                            "Firmware para " + fwChip + ", device é " + device.getChip() + ".");
+                        log.warn("Device {} ignorado. Chip {} incompatível com firmware {}", devId, device.getChip(), fwChip);
+                        return;
+                    }
                     if (device.getStatus() == DeviceStatus.COMMAND_PENDING) {
                         skipped.add(devId);
                         addSkippedRecord(device, batch, payloadJson, v.getFirmwareVersionId(),
@@ -507,7 +518,7 @@ public class FirmwareService {
                 "Versão mais recente (v" + latest.getVersion() + ") está CORRUPTED — reenvie o binário antes.");
         }
 
-        firmwareRepository.findByProvisioningFirmwareTrue().ifPresent(current -> {
+        firmwareRepository.findByProvisioningFirmwareTrueAndTargetChip(fw.getTargetChip()).ifPresent(current -> {
             if (!current.getFirmwareId().equals(fw.getFirmwareId())) {
                 current.setProvisioningFirmware(false);
                 firmwareRepository.save(current);
@@ -553,8 +564,8 @@ public class FirmwareService {
 
     // Usado pelo FlashPackageService: versão mais recente do product de provisioning. 
     @Transactional(readOnly = true)
-    public FirmwareVersion getProvisioningVersion() {
-        return firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
+    public FirmwareVersion getProvisioningVersion(TargetChip chip) {
+        return firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueAndFirmware_TargetChipOrderByUploadedAtDesc(chip)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
                     "Nenhum firmware de provisioning disponível."));
     }
@@ -572,6 +583,7 @@ public class FirmwareService {
                 row.description(),
                 row.ownerGroupId(),
                 row.provisioningFirmware(),
+                row.targetChip(),
                 row.createdAt(),
                 row.createdByActorId(),
                 row.createdByUsername(),
@@ -684,9 +696,10 @@ public class FirmwareService {
             if (!isAdmin()) {
                 throw new SecurityException("Apenas administradores podem criar firmware de provisionamento.");
             }
-            if (firmwareRepository.findByProvisioningFirmwareTrue().isPresent()) {
+            TargetChip chip = TargetChip.orDefault(requestDTO.targetChip());
+            if (firmwareRepository.findByProvisioningFirmwareTrueAndTargetChip(chip).isPresent()) {
                 throw new ConflictException(ErrorCode.CONFLICT,
-                    "Já existe firmware de provisionamento registrado.");
+                    "Já existe firmware de provisionamento registrado para " + chip + ".");
             }
             return null;
         }

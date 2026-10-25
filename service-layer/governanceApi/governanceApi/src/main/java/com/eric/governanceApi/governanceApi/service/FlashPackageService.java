@@ -3,6 +3,7 @@ package com.eric.governanceApi.governanceApi.service;
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
@@ -31,6 +32,10 @@ public class FlashPackageService {
     private static final String PLATFORM_BOOTLOADER_KEY = "platform/bootloader.bin";
     private static final String PLATFORM_PARTITION_TABLE_KEY = "platform/partition-table.bin";
 
+    // ESP8266 (core Arduino 3.1.2, Flash Size 4MB FS:2MB): inicio do LittleFS
+    private static final String ESP8266_FS_OFFSET = "0x200000";
+    private static final String LITTLEFS_SCRIPT_RESOURCE = "/scripts/gen_prov_littlefs.py";
+
     @Value("${provisioning.nvs-python-path:python3}")
     private String nvsPythonPath;
 
@@ -58,30 +63,29 @@ public class FlashPackageService {
         Path tempDir = Files.createTempDirectory("flash_pkg_");
         try {
 
-            FirmwareVersion firmware = resolveProvisioningFirmware();
+            TargetChip chip = TargetChip.orDefault(request.chip());
+            if (chip == TargetChip.ESP8266 && (request.wifiSsid() == null || request.wifiSsid().isBlank())) {
+                throw new IllegalArgumentException("ESP8266 não tem captive portal: informe o WiFi.");
+            }
+
+            FirmwareVersion firmware = resolveProvisioningFirmware(chip);
             Path firmwarePath   = fetchFirmware(firmware, tempDir);
-            Path bootloaderPath = fetchFromStorage(PLATFORM_BOOTLOADER_KEY, tempDir, "bootloader.bin");
-            Path partTablePath  = fetchFromStorage(PLATFORM_PARTITION_TABLE_KEY, tempDir, "partition-table.bin");
             String firmwareLabel = firmwarePath.getFileName().toString();
 
             ProvisioningToken token = provisioningService.registerDevice(
-                    new RegisterDeviceRequest(request.deviceName(), request.groupId())
+                    new RegisterDeviceRequest(request.deviceName(), request.groupId(), chip)
             );
             String deviceId = token.getDevice().getDeviceId();
 
-            log.info("Generating flash package for device '{}', token={}", request.deviceName(), token.getToken());
+            log.info("Generating {} flash package for device '{}', token={}", chip, request.deviceName(), token.getToken());
 
             try {
-                Path csvPath    = tempDir.resolve("nvs_data.csv");
-                Path nvsBinPath = tempDir.resolve("nvs_device.bin");
-
-                writeCsv(csvPath, request, token.getToken(), deviceId, firmware.getVersion());
-                generateNvsBin(csvPath, nvsBinPath);
+                byte[] zip = chip == TargetChip.ESP8266
+                    ? buildEsp8266Package(request, token.getToken(), deviceId, firmware, firmwarePath, firmwareLabel, tempDir)
+                    : buildEsp32Package(request, token.getToken(), deviceId, firmware, firmwarePath, firmwareLabel, tempDir);
 
                 log.info("Package generated for '{}' — firmware='{}'", request.deviceName(), firmwareLabel);
-
-                return buildZip(bootloaderPath, partTablePath, firmwarePath, firmwareLabel,
-                        nvsBinPath, buildReadme(request.deviceName(), token.getToken(), firmwareLabel));
+                return zip;
             } catch (IOException | RuntimeException e) {
                 provisioningService.discardPendingDevice(deviceId);
                 throw e;
@@ -94,10 +98,56 @@ public class FlashPackageService {
 
     // -------------------------------------------------------------------------
 
-    private FirmwareVersion resolveProvisioningFirmware() {
-        return firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
+    private byte[] buildEsp32Package(GenerateFlashPackageRequest request, String token, String deviceId,
+                                     FirmwareVersion firmware, Path firmwarePath, String firmwareLabel,
+                                     Path tempDir) throws IOException {
+        Path bootloaderPath = fetchFromStorage(PLATFORM_BOOTLOADER_KEY, tempDir, "bootloader.bin");
+        Path partTablePath  = fetchFromStorage(PLATFORM_PARTITION_TABLE_KEY, tempDir, "partition-table.bin");
+        Path csvPath    = tempDir.resolve("nvs_data.csv");
+        Path nvsBinPath = tempDir.resolve("nvs_device.bin");
+
+        writeCsv(csvPath, request, token, deviceId, firmware.getVersion());
+        generateNvsBin(csvPath, nvsBinPath);
+
+        return buildZip(List.of(
+                new ZipItem(bootloaderPath, "bootloader.bin"),
+                new ZipItem(partTablePath,  "partition-table.bin"),
+                new ZipItem(firmwarePath,   firmwareLabel),
+                new ZipItem(nvsBinPath,     "nvs_device.bin")),
+            buildReadme(request.deviceName(), token, firmwareLabel));
+    }
+
+    // ESP8266 nao tem NVS: os dados de provisioning vao num /prov.txt dentro de uma imagem LittleFS
+    private byte[] buildEsp8266Package(GenerateFlashPackageRequest request, String token, String deviceId,
+                                       FirmwareVersion firmware, Path firmwarePath, String firmwareLabel,
+                                       Path tempDir) throws IOException {
+        Path scriptPath = tempDir.resolve("gen_prov_littlefs.py");
+        try (InputStream in = getClass().getResourceAsStream(LITTLEFS_SCRIPT_RESOURCE)) {
+            if (in == null) throw new IOException("Recurso " + LITTLEFS_SCRIPT_RESOURCE + " não encontrado");
+            Files.copy(in, scriptPath);
+        }
+
+        Path fsPath = tempDir.resolve("littlefs.bin");
+        runPython(List.of(
+                nvsPythonPath, scriptPath.toString(),
+                "--ssid", request.wifiSsid(),
+                "--password", request.wifiPass() != null ? request.wifiPass() : "",
+                "--token", token,
+                "--device-id", deviceId,
+                "--fw-version", firmware.getVersion(),
+                "-o", fsPath.toString()),
+            "gen_prov_littlefs");
+
+        return buildZip(List.of(
+                new ZipItem(firmwarePath, firmwareLabel),
+                new ZipItem(fsPath,       "littlefs.bin")),
+            buildEsp8266Readme(request.deviceName(), token, firmwareLabel));
+    }
+
+    private FirmwareVersion resolveProvisioningFirmware(TargetChip chip) {
+        return firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueAndFirmware_TargetChipOrderByUploadedAtDesc(chip)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
-                    "No provisioning firmware registered. Upload a firmware with isProvisioning=true."));
+                    "No provisioning firmware registered for " + chip + ". Upload a firmware with isProvisioning=true."));
     }
 
     private Path fetchFirmware(FirmwareVersion fw, Path tempDir) throws IOException {
@@ -139,7 +189,10 @@ public class FlashPackageService {
     private void generateNvsBin(Path csvPath, Path outPath) throws IOException {
         List<String> cmd = buildNvsCommand(csvPath, outPath);
         log.info("Executing: {}", cmd);
+        runPython(cmd, "nvs_partition_gen");
+    }
 
+    private void runPython(List<String> cmd, String tool) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process process = pb.start();
@@ -150,11 +203,11 @@ public class FlashPackageService {
             exitCode = process.waitFor();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("NVS generation interrupted");
+            throw new IOException(tool + " interrupted");
         }
 
         if (exitCode != 0) {
-            throw new IOException("nvs_partition_gen failed (exit " + exitCode + "): " + output);
+            throw new IOException(tool + " failed (exit " + exitCode + "): " + output);
         }
     }
 
@@ -177,15 +230,14 @@ public class FlashPackageService {
         return cmd;
     }
 
-    private byte[] buildZip(Path bootloaderPath, Path partTablePath,
-                             Path firmwarePath, String firmwareLabel,
-                             Path nvsBinPath, String readme) throws IOException {
+    private record ZipItem(Path path, String entryName) {}
+
+    private byte[] buildZip(List<ZipItem> files, String readme) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(baos)) {
-            addFileToZip(zip, bootloaderPath,  "bootloader.bin");
-            addFileToZip(zip, partTablePath,   "partition-table.bin");
-            addFileToZip(zip, firmwarePath,    firmwareLabel);
-            addFileToZip(zip, nvsBinPath,      "nvs_device.bin");
+            for (ZipItem f : files) {
+                addFileToZip(zip, f.path(), f.entryName());
+            }
             zip.putNextEntry(new ZipEntry("README.txt"));
             zip.write(readme.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
@@ -231,6 +283,34 @@ public class FlashPackageService {
                   3. Registrar-se no govApi usando o token acima
                   4. Aguardar comando OTA para receber firmware definitivo
                 """.formatted(deviceName, token, firmwareLabel, firmwareLabel);
+    }
+
+    private String buildEsp8266Readme(String deviceName, String token, String firmwareLabel) {
+        return """
+                Flash Package (ESP8266) — %s
+                ==========================================
+                Token: %s
+                Firmware: %s
+
+                Dependencia: pip install esptool
+
+                Comando de flash completo (substituir <PORT> pela porta serial):
+
+                  python3 -m esptool --chip esp8266 --port <PORT> --baud 460800 write_flash \\
+                    0x0      %s \\
+                    %s littlefs.bin
+
+                Enderecos de flash:
+                  Firmware (inclui bootloader) -> 0x0
+                  LittleFS (/prov.txt)         -> %s
+
+                O firmware precisa ter sido compilado com Flash Size 4MB (FS:2MB OTA:~1019KB).
+
+                Apos o flash, o device ira:
+                  1. Ler WiFi, token e device_id do /prov.txt
+                  2. Registrar-se no govApi usando o token acima
+                  3. Apagar o /prov.txt e seguir operando no mesmo firmware
+                """.formatted(deviceName, token, firmwareLabel, firmwareLabel, ESP8266_FS_OFFSET, ESP8266_FS_OFFSET);
     }
 
     private void deleteDirectory(Path dir) {

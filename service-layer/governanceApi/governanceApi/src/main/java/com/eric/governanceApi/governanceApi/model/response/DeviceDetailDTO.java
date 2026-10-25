@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceHealth;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
@@ -16,6 +17,7 @@ public record DeviceDetailDTO(
     DeviceStatus status,
     DeviceHealth health,
     String healthReason,
+    TargetChip chip,
     String macAddress,
     Instant createdAt,
     Instant lastSeen,
@@ -44,6 +46,7 @@ public record DeviceDetailDTO(
             device.getStatus(),
             device.getHealth(),
             device.getHealthReason(),
+            device.getChip(),
             device.getMacAddress(),
             device.getCreatedAt(),
             preferLive(liveState.lastSeen(), device.getLastSeen()),

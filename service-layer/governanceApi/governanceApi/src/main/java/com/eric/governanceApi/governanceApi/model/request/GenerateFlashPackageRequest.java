@@ -1,5 +1,7 @@
 package com.eric.governanceApi.governanceApi.model.request;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
+
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -14,5 +16,9 @@ public record GenerateFlashPackageRequest(
 
     @Nullable
     @Pattern(regexp = ValidationPatterns.UUID_REGEX, message = "groupId " + ValidationPatterns.UUID_MESSAGE)
-    String groupId
+    String groupId,
+
+    // null = ESP32_S3
+    @Nullable
+    TargetChip chip
 ) {}

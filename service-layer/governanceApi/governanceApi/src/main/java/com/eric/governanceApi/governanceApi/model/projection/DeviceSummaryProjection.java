@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.model.projection;
 
 import java.time.Instant;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceHealth;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 
@@ -21,5 +22,6 @@ public record DeviceSummaryProjection(
     String issuedByActorId, 
     String issuedByUsername,
     DeviceHealth health,
-    String healthReason
+    String healthReason,
+    TargetChip chip
 ) {}
