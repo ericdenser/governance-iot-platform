@@ -1,6 +1,8 @@
 package com.eric.governanceApi.governanceApi.model.response;
 
 import java.time.Instant;
+
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 
@@ -10,6 +12,7 @@ public record FirmwareResponseDTO(
     String description,
     String ownerGroupId,
     boolean provisioningFirmware,
+    TargetChip targetChip,
     Instant createdAt,
     String createdByActorId,
     String createdByUsername,
@@ -25,6 +28,7 @@ public record FirmwareResponseDTO(
             fw.getDescription(),
             fw.getOwnerGroupId(),
             fw.isProvisioningFirmware(),
+            fw.getTargetChip(),
             fw.getCreatedAt(),
             fw.getCreatedByActorId(),
             fw.getCreatedByUsername(),

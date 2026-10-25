@@ -32,10 +32,10 @@ ARG HTTP_PROXY=
 ARG HTTPS_PROXY=
 ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY} NO_PROXY=localhost,127.0.0.1
 
-# Python venv isolado pro gerador NVS — não conflita com system Python
+# Python venv isolado pros geradores do pacote de flash: NVS (ESP32) e LittleFS (ESP8266)
 RUN apk add --no-cache python3 py3-pip py3-cryptography && \
     python3 -m venv --system-site-packages /opt/nvs-venv && \
-    /opt/nvs-venv/bin/pip install --no-cache-dir esp-idf-nvs-partition-gen
+    /opt/nvs-venv/bin/pip install --no-cache-dir esp-idf-nvs-partition-gen littlefs-python
 
 # Default do binário Python usado pelo FlashPackageService (sobrescrevível
 # via env NVS_PYTHON_PATH). Aponta pro venv, não pro python3 do sistema.

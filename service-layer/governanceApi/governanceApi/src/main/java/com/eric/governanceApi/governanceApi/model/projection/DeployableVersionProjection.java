@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.model.projection;
 
 import java.time.Instant;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 
 public record DeployableVersionProjection(
@@ -11,5 +12,6 @@ public record DeployableVersionProjection(
     String firmwareName,
     String ownerGroupId,      // pra SPA mostrar de qual grupo é
     FirmwareStatus status,
-    Instant uploadedAt
+    Instant uploadedAt,
+    TargetChip targetChip
 ) {}

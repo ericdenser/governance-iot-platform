@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceHealth;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import org.hibernate.annotations.ColumnDefault;
@@ -82,6 +83,12 @@ public class Device {
     // Motivos separados por virgula (LOW_BATTERY,HIGH_TEMP); null quando OK
     @Column(name = "health_reason", length = 100)
     private String healthReason;
+
+    // Definido no registro (pacote de flash); o OTA so aceita firmware do mesmo chip
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'ESP32_S3'")
+    @Column(nullable = false, length = 20)
+    private TargetChip chip = TargetChip.ESP32_S3;
 
     // Sub UUID of the operator who generated the flash package that provisioned this device. 
     @Column(name = "issued_by_actor_id", length = 36)

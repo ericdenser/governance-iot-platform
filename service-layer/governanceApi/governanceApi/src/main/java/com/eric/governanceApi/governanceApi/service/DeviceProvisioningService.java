@@ -21,6 +21,7 @@ import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.entity.ProvisioningToken;
 import com.eric.governanceApi.governanceApi.model.request.DeviceRegistrationRequest;
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.model.response.CreatedKeycloakClient;
 import com.eric.governanceApi.governanceApi.model.response.DeviceCredentialsDTO;
 import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepository;
@@ -94,6 +95,7 @@ public class DeviceProvisioningService {
         Device newDevice = new Device();
         newDevice.setName(deviceName);
         newDevice.setStatus(DeviceStatus.PENDING);
+        newDevice.setChip(TargetChip.orDefault(request.chip()));
 
         deviceRepository.save(newDevice);
 
@@ -151,9 +153,10 @@ public class DeviceProvisioningService {
         // Queima o token
         token.setUsed(true);
 
-        FirmwareVersion provisioningFirmware = firmwareVersionRepository.findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc()
-                                                                        .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND, 
-                                                                            "No provisioning firmware registered"));
+        FirmwareVersion provisioningFirmware = firmwareVersionRepository
+                .findFirstByFirmware_ProvisioningFirmwareTrueAndFirmware_TargetChipOrderByUploadedAtDesc(device.getChip())
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_NOT_FOUND,
+                    "No provisioning firmware registered for " + device.getChip()));
 
         // MAC ja usado por outro device -> 409 em vez de 500 do unique constraint.
         deviceRepository.findByMacAddress(request.getMacAddress())

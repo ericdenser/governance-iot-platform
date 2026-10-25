@@ -94,6 +94,7 @@ public class DeviceService {
                 row.status(),
                 row.health(),
                 row.healthReason(),
+                row.chip(),
                 row.macAddress(),
                 row.firmwareId(),
                 row.firmwareName(),

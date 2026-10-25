@@ -2,6 +2,8 @@ package com.eric.governanceApi.governanceApi.model.request;
 
 import java.util.List;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
+
 import jakarta.annotation.Nullable;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -32,5 +34,9 @@ public record CreateFirmwareRequestDTO (
     Integer deepSleepIntervalS,
 
     @Valid
-    List<SensorConfigDTO> sensors){
+    List<SensorConfigDTO> sensors,
+
+    // null = ESP32_S3
+    @Nullable
+    TargetChip targetChip){
 }

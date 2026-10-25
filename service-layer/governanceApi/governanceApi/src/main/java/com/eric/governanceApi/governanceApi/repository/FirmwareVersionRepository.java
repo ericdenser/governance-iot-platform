@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.model.projection.DeployableVersionProjection;
 
 @Repository
@@ -27,7 +28,7 @@ public interface FirmwareVersionRepository extends JpaRepository<FirmwareVersion
     Optional<FirmwareVersion> findFirstByFirmware_FirmwareIdOrderByUploadedAtDesc(String firmwareId);
 
     // versão mais recente do provisioning
-    Optional<FirmwareVersion> findFirstByFirmware_ProvisioningFirmwareTrueOrderByUploadedAtDesc();
+    Optional<FirmwareVersion> findFirstByFirmware_ProvisioningFirmwareTrueAndFirmware_TargetChipOrderByUploadedAtDesc(TargetChip targetChip);
 
     // versão específica de um firmware, usada pelos EventHandlers e service
     Optional<FirmwareVersion> findByFirmware_FirmwareIdAndVersion(String firmwareId, String version);
@@ -37,7 +38,7 @@ public interface FirmwareVersionRepository extends JpaRepository<FirmwareVersion
         SELECT new com.eric.governanceApi.governanceApi.model.projection.DeployableVersionProjection(
             v.firmwareVersionId, v.version,
             v.firmware.firmwareId, v.firmware.firmwareName,
-            v.firmware.ownerGroupId, v.status, v.uploadedAt
+            v.firmware.ownerGroupId, v.status, v.uploadedAt, v.firmware.targetChip
         )
         FROM FirmwareVersion v
         WHERE v.status NOT IN (com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.DEPRECATED,
@@ -51,7 +52,7 @@ public interface FirmwareVersionRepository extends JpaRepository<FirmwareVersion
         SELECT new com.eric.governanceApi.governanceApi.model.projection.DeployableVersionProjection(
             v.firmwareVersionId, v.version,
             v.firmware.firmwareId, v.firmware.firmwareName,
-            v.firmware.ownerGroupId, v.status, v.uploadedAt
+            v.firmware.ownerGroupId, v.status, v.uploadedAt, v.firmware.targetChip
         )
         FROM FirmwareVersion v
         WHERE v.status NOT IN (com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus.DEPRECATED,

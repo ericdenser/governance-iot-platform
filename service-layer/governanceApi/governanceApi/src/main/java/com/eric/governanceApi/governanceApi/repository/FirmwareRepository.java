@@ -1,5 +1,6 @@
 package com.eric.governanceApi.governanceApi.repository;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.projection.FirmwareListProjection;
 
@@ -12,14 +13,14 @@ import java.util.Optional;
 
 public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
 
-    Optional<Firmware> findByProvisioningFirmwareTrue();
+    Optional<Firmware> findByProvisioningFirmwareTrueAndTargetChip(TargetChip targetChip);
 
     Optional<Firmware> findByFirmwareId(String firmwareId);
 
     /** Non-admin: só firmwares dos grupos que o usuário pertence + plataforma. */
     @Query("""
     SELECT new com.eric.governanceApi.governanceApi.model.projection.FirmwareListProjection(
-        f.firmwareId, f.firmwareName, f.description, f.ownerGroupId, f.provisioningFirmware,
+        f.firmwareId, f.firmwareName, f.description, f.ownerGroupId, f.provisioningFirmware, f.targetChip,
         f.createdAt, f.createdByActorId, f.createdByUsername,
         (SELECT COUNT(v) FROM FirmwareVersion v WHERE v.firmware = f),
         latest.firmwareVersionId, latest.version, latest.status, latest.uploadedAt,
@@ -37,7 +38,7 @@ public interface FirmwareRepository extends JpaRepository<Firmware, Long> {
     /** Admin: TODOS os firmwares. */
     @Query("""
     SELECT new com.eric.governanceApi.governanceApi.model.projection.FirmwareListProjection(
-        f.firmwareId, f.firmwareName, f.description, f.ownerGroupId, f.provisioningFirmware,
+        f.firmwareId, f.firmwareName, f.description, f.ownerGroupId, f.provisioningFirmware, f.targetChip,
         f.createdAt, f.createdByActorId, f.createdByUsername,
         (SELECT COUNT(v) FROM FirmwareVersion v WHERE v.firmware = f),
         latest.firmwareVersionId, latest.version, latest.status, latest.uploadedAt,

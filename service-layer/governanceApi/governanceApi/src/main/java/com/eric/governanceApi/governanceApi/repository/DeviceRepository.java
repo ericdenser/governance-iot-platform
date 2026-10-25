@@ -68,7 +68,7 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
                 v.firmwareVersionId,
                 v.version,
                 d.createdAt, d.lastSeen, d.issuedByActorId, d.issuedByUsername,
-                d.health, d.healthReason)
+                d.health, d.healthReason, d.chip)
             FROM Device d
             LEFT JOIN d.firmwareVersion v
             LEFT JOIN v.firmware fw
@@ -99,7 +99,7 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
                 v.firmwareVersionId,
                 v.version,
                 d.createdAt, d.lastSeen, d.issuedByActorId, d.issuedByUsername,
-                d.health, d.healthReason)
+                d.health, d.healthReason, d.chip)
             FROM Device d
             LEFT JOIN d.firmwareVersion v
             LEFT JOIN v.firmware fw

@@ -1,6 +1,9 @@
 package com.eric.governanceApi.governanceApi.model.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
+
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -35,6 +38,12 @@ public class Firmware extends AuthoredEntity {
     private String ownerGroupId;
 
     private boolean provisioningFirmware = false;
+
+    // O firmware de provisionamento e unico por chip
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'ESP32_S3'")
+    @Column(name = "target_chip", nullable = false, length = 20)
+    private TargetChip targetChip = TargetChip.ESP32_S3;
 
     private Instant createdAt = Instant.now();
 

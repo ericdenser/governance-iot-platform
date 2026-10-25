@@ -2,6 +2,7 @@ package com.eric.governanceApi.governanceApi.model.projection;
 
 import java.time.Instant;
 
+import com.eric.governanceApi.governanceApi.enums.TargetChip;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 
 public record FirmwareListProjection(
@@ -11,6 +12,7 @@ public record FirmwareListProjection(
     String description,
     String ownerGroupId,
     boolean provisioningFirmware,
+    TargetChip targetChip,
     Instant createdAt,
     String createdByActorId,
     String createdByUsername,
