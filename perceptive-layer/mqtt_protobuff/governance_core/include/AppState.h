@@ -2,7 +2,7 @@
 #define APPSTATE_H
 
 #include <string>
-#include <queue>
+#include <deque>
 #include <map>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -135,7 +135,7 @@ private:
     static DeviceState        _previous;
     static SemaphoreHandle_t  _mutex;
 
-    static std::queue<AppError> _errorQueue;
+    static std::deque<AppError> _errorQueue;
     // Bitmask de códigos de erro ativos (persistido no NVS para sobreviver reboots).
     // Bit i corresponde a (ErrorCode)i. NONE=0 não usa bit.
     static uint32_t             _activeErrorMask;
