@@ -60,6 +60,13 @@ typedef struct {
     // Retorna nível atual em mV. 0 se hardware ausente. Chamado ~1x/min.
     uint32_t (*get_battery_mv)(void);
 
+    // ---- Display (opcional) ------------------------
+    void (*display_lcd)(int width, int height);
+
+    // Transicao: state = DeviceState, detail = NULL.  Erro: state = ErrorCode, detail = msg.
+    // Roda na task que transicionou: precisa ser rapido e thread-safe.
+    void (*on_state_change)(const char* state, const char* detail, bool is_error);
+
 } governance_hooks_t;
 
 // Firmware entry point

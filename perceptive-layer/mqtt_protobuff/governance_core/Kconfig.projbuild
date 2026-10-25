@@ -88,25 +88,6 @@ menu "Governance IoT"
             menos que isso pra expirar. Default 300 (5min) evita usar
             token que expira durante o handshake MQTT.
 
-    config GOV_GPS_POWER_PIN
-        int "GPS power control GPIO"
-        default 5
-        help
-            GPIO que controla o transistor PNP de alimentação do módulo GPS.
-            Level 1 = GPS ligado, level 0 = desligado.
-
-    config GOV_GPS_UART_TX_PIN
-        int "GPS UART TX GPIO (ESP TX → GPS RX)"
-        default 17
-
-    config GOV_GPS_UART_RX_PIN
-        int "GPS UART RX GPIO (ESP RX ← GPS TX)"
-        default 18
-
-    config GOV_GPS_UART_PORT
-        int "GPS UART port number"
-        default 1
-
     config GOV_TELEMETRY_INTERVAL_MS
         int "Telemetry publish interval (ms)"
         default 5000
@@ -199,7 +180,7 @@ menu "Governance IoT"
 
     config GOV_BOOT_TIMEOUT_S
         int "Boot watchdog timeout (s)"
-        range 60 600
+        range 60 1800
         default 120
         help
             Se o firmware nao chegar em OPERATIONAL em N segundos apos boot,
