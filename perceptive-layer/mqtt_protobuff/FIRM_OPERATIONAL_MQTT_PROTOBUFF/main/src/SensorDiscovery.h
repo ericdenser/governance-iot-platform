@@ -1,11 +1,14 @@
 #pragma once
 
+#include <stdint.h>
+#include "sdkconfig.h"
+#include "driver/gpio.h"
 #include "GpsManager.h"
 
 // ---- Pinos de hardware -------------------------------------------------------
 #define I2C_PORT         I2C_NUM_0
-#define I2C_SDA_PIN      GPIO_NUM_8
-#define I2C_SCL_PIN      GPIO_NUM_9
+#define I2C_SDA_PIN      ((gpio_num_t)CONFIG_GOV_I2C_SDA_PIN)
+#define I2C_SCL_PIN      ((gpio_num_t)CONFIG_GOV_I2C_SCL_PIN)
 #define I2C_FREQ_HZ      100000
 
 // GPS: vem do Kconfig do governance_core (menu Governance IoT)
@@ -21,6 +24,7 @@
 
 struct SensorMap {
     bool bmp280;
+    uint8_t bmp280_addr;
     bool ds3231;
     bool gps;
     bool battery_adc;

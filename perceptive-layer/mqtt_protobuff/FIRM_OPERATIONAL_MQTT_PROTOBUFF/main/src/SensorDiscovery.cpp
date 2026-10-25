@@ -76,7 +76,8 @@ void SensorDiscovery::run(SensorMap& map, GpsManager* gps) {
         ESP_LOGI(TAG, "  Dispositivo encontrado em 0x%02X", addr);
 
         if (addr == I2C_ADDR_BMP280_A || addr == I2C_ADDR_BMP280_B) {
-            map.bmp280 = true;
+            map.bmp280      = true;
+            map.bmp280_addr = addr;
             ESP_LOGI(TAG, "  → BMP280 detectado (0x%02X)", addr);
         }
         if (addr == I2C_ADDR_DS3231) {
@@ -103,15 +104,16 @@ void SensorDiscovery::run(SensorMap& map, GpsManager* gps) {
 
     // --- ADC bateria ----------------------------------------------------------
     AdcManager::init();
-    AdcManager::configChannel(ADC_CHANNEL_3);
+    const adc_channel_t bat_ch = (adc_channel_t)CONFIG_GOV_BAT_ADC_CHANNEL;
+    AdcManager::configChannel(bat_ch);
 
     // Descarta primeira leitura 
-    (void)AdcManager::readMilliVolts(ADC_CHANNEL_3);
+    (void)AdcManager::readMilliVolts(bat_ch);
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    int mv1 = AdcManager::readMilliVolts(ADC_CHANNEL_3);
+    int mv1 = AdcManager::readMilliVolts(bat_ch);
     vTaskDelay(pdMS_TO_TICKS(50));
-    int mv2 = AdcManager::readMilliVolts(ADC_CHANNEL_3);
+    int mv2 = AdcManager::readMilliVolts(bat_ch);
 
     int diff = abs(mv1 - mv2);
     int mv_avg = (mv1 + mv2) / 2;

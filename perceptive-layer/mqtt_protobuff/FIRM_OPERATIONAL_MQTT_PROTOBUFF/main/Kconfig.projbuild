@@ -1,0 +1,141 @@
+menu "Display LCD (ST7789 SPI)"
+
+    config GOV_LCD_ENABLED
+        bool "Display conectado"
+        default y
+        help
+            Desmarcado, o firmware nao inclui LVGL, telas, botao nem captura de log.
+
+    if GOV_LCD_ENABLED
+
+    config GOV_LCD_PIN_SCLK
+        int "SCLK GPIO"
+        default 12
+
+    config GOV_LCD_PIN_MOSI
+        int "MOSI (SDA) GPIO"
+        default 11
+
+    config GOV_LCD_PIN_CS
+        int "CS GPIO"
+        default 14
+
+    config GOV_LCD_PIN_DC
+        int "DC GPIO"
+        default 13
+
+    config GOV_LCD_PIN_RST
+        int "RST GPIO (-1 se nao usado)"
+        default 10
+
+    config GOV_LCD_PIN_BL
+        int "Backlight GPIO (-1 se ligado no VCC)"
+        default -1
+
+    config GOV_LCD_INVERT_COLOR
+        bool "Inverter cores"
+        default y
+
+    endif
+
+endmenu
+
+menu "Barramento I2C (BME280/BMP280, DS3231)"
+
+    config GOV_I2C_SDA_PIN
+        int "SDA GPIO"
+        default 8
+
+    config GOV_I2C_SCL_PIN
+        int "SCL GPIO"
+        default 9
+
+endmenu
+
+menu "GPS"
+
+    config GOV_GPS_POWER_PIN
+        int "GPIO de alimentacao do GPS (transistor)"
+        default 5
+        help
+            Nivel 1 = GPS ligado, 0 = desligado.
+
+    config GOV_GPS_UART_TX_PIN
+        int "UART TX GPIO (ESP TX -> GPS RX)"
+        default 17
+
+    config GOV_GPS_UART_RX_PIN
+        int "UART RX GPIO (ESP RX <- GPS TX)"
+        default 18
+
+    config GOV_GPS_UART_PORT
+        int "Porta UART"
+        default 1
+
+endmenu
+
+menu "Bateria"
+
+    config GOV_BAT_ADC_CHANNEL
+        int "Canal do ADC1 (GPIO4 = canal 3)"
+        default 3
+
+    config GOV_BAT_DIVIDER_X100
+        int "Fator do divisor x100"
+        default 202
+        help
+            Tensao real = tensao no pino * fator/100 (ex: 5V viram ~2.5V no pino -> 202).
+
+    config GOV_BAT_MIN_VALID_MV
+        int "Abaixo disso (mV) a leitura e tratada como invalida"
+        default 2600
+
+endmenu
+
+menu "Interface (botao e telas)"
+    depends on GOV_LCD_ENABLED
+
+    config GOV_UI_BUTTON_GPIO
+        int "GPIO do botao (entre o pino e GND)"
+        default 15
+
+    config GOV_UI_AUTO_DASHBOARD_MS
+        int "Espera (ms) apos OPERATIONAL antes de ir pro dashboard"
+        default 4000
+
+    config GOV_UI_UTC_OFFSET_MIN
+        int "Fuso horario exibido, em minutos (Brasilia = -180)"
+        range -720 840
+        default -180
+
+endmenu
+
+menu "Sensor MQ135 (qualidade do ar)"
+
+    config GOV_MQ135_ENABLED
+        bool "MQ135 instalado"
+        default y
+
+    config GOV_MQ135_ADC_CHANNEL
+        int "Canal do ADC1 (GPIO6 = canal 5)"
+        default 5
+        help
+            ESP32-S3: GPIO1..GPIO10 = ADC1 canal 0..9. ADC2 conflita com WiFi.
+
+    config GOV_MQ135_DIVIDER_X100
+        int "Fator do divisor x100 (10k/10k = 200, 10k/20k = 150)"
+        default 150
+
+    config GOV_MQ135_RL_OHM
+        int "RL do modulo (ohm)"
+        default 10000
+
+    config GOV_MQ135_R0_OHM
+        int "R0 calibrado em ar limpo (ohm)"
+        default 76630
+
+    config GOV_MQ135_WARMUP_S
+        int "Aquecimento apos ligar (s)"
+        default 120
+
+endmenu
