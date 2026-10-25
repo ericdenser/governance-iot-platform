@@ -11,7 +11,7 @@ static const char* NVS_MASK_KEY   = "active_mask";
 DeviceState           AppState::_current          = DeviceState::NVS_INIT;
 DeviceState           AppState::_previous         = DeviceState::NVS_INIT;
 SemaphoreHandle_t     AppState::_mutex            = NULL;
-std::queue<AppError>  AppState::_errorQueue;
+std::deque<AppError>  AppState::_errorQueue;
 uint32_t              AppState::_activeErrorMask  = 0;
 
 // ---- Helpers de arquivo ----
@@ -83,13 +83,23 @@ void AppState::setError(ErrorCode code, const std::string& msg, const Source& so
 
     uint32_t maskToSave;
     size_t   droppedCount = 0;
+    bool     duplicate    = false;
     xSemaphoreTake(_mutex, portMAX_DELAY);
-    constexpr size_t MAX_ERROR_QUEUE = 32;
-    while (_errorQueue.size() >= MAX_ERROR_QUEUE) {
-        _errorQueue.pop();  // descarta o mais antigo
-        droppedCount++;
+    // Erro igual ainda na fila nao entra de novo
+    for (auto it = _errorQueue.rbegin(); it != _errorQueue.rend(); ++it) {
+        if (it->code == code) {
+            duplicate = !it->resolved && it->msg == msg;
+            break;
+        }
     }
-    _errorQueue.push(evt);
+    if (!duplicate) {
+        constexpr size_t MAX_ERROR_QUEUE = 32;
+        while (_errorQueue.size() >= MAX_ERROR_QUEUE) {
+            _errorQueue.pop_front();  // descarta o mais antigo
+            droppedCount++;
+        }
+        _errorQueue.push_back(evt);
+    }
     uint32_t bit = error_bit(code);
     if (bit) _activeErrorMask |= bit;
     _previous = _current;
@@ -103,6 +113,11 @@ void AppState::setError(ErrorCode code, const std::string& msg, const Source& so
     }
 
     nvs_save_mask(maskToSave); // fora do mutex para não bloquear a task
+
+    if (duplicate) {
+        ESP_LOGD(TAG, "[%s::%s] ERRO (%s) repetido, ja na fila", source.className.c_str(), source.method.c_str(), toString(code));
+        return;
+    }
 
     ESP_LOGE(TAG, "[%s::%s] ERRO (%s): %s",
              source.className.c_str(), source.method.c_str(),
@@ -124,7 +139,7 @@ void AppState::resolveError(ErrorCode code) {
         AppError evt;
         evt.code     = code;
         evt.resolved = true;
-        _errorQueue.push(evt);
+        _errorQueue.push_back(evt);
         _activeErrorMask &= ~bit;
     }
     maskToSave = _activeErrorMask;
@@ -164,7 +179,7 @@ bool AppState::hasQueuedErrors() {
 AppError AppState::popError() {
     xSemaphoreTake(_mutex, portMAX_DELAY);
     AppError e = _errorQueue.empty() ? AppError{} : _errorQueue.front();
-    if (!_errorQueue.empty()) _errorQueue.pop();
+    if (!_errorQueue.empty()) _errorQueue.pop_front();
     xSemaphoreGive(_mutex);
     return e;
 }
