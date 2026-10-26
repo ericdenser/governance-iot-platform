@@ -60,6 +60,12 @@
   --chart-warn:      var(--warning);
   --chart-bad:       var(--danger);
   --chart-empty:     var(--border-strong);
+  /* Series de linha (um device por cor) */
+  --chart-series-1:  var(--accent);
+  --chart-series-2:  #c9a24a;
+  --chart-series-3:  #4fb3a9;
+  --chart-series-4:  #b07fd6;
+  --chart-series-5:  #d9826b;
 
   /* Tipografia: uma sans pra tudo, mono so pra ID/MAC/versao/horario */
   --font-sans:  'IBM Plex Sans', system-ui, sans-serif;

@@ -374,3 +374,9 @@ export interface Page<T> {
     totalPages: number
   }
 }
+
+// ── Telemetria (datalogger / Influx) ────────────────────────────────────────
+export interface TelemetryPointDTO {
+  timestamp: string
+  readings: Record<string, number>
+}

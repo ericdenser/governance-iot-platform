@@ -8,6 +8,7 @@ import StatusLabel from '@/components/StatusLabel.vue'
 import BatteryBar from '@/components/BatteryBar.vue'
 import EventActivityList from '@/components/EventActivityList.vue'
 import ErrorActivityList from '@/components/ErrorActivityList.vue'
+import TelemetryChart from '@/components/TelemetryChart.vue'
 import { devicesApi } from '@/services/devices'
 import { eventsApi } from '@/services/events'
 import { errorsApi } from '@/services/errors'
@@ -29,7 +30,6 @@ const devices = ref<DeviceSummaryDTO[]>([])
 const recentEvents = ref<EventRegistryResponseDTO[]>([])
 const recentErrors = ref<ErrorRecordResponseDTO[]>([])
 const totalEvents = ref(0)
-const totalErrors = ref(0)
 const loading = ref(true)
 
 const mergedDevices = computed(() =>
@@ -50,10 +50,6 @@ const mergedDevices = computed(() =>
 const totalDevices = computed(() => mergedDevices.value.length)
 const onlineDevices = computed(() => mergedDevices.value.filter(d => d.status !== 'REVOKED' && isOnline(d.lastSeen)).length)
 const warningDevices = computed(() => mergedDevices.value.filter(d => d.health === 'WARNING').length)
-const pendingDevices = computed(() => mergedDevices.value.filter(d => (['PENDING', 'PROVISIONING'] as DeviceStatus[]).includes(d.status)).length)
-
-
-
 
 const MINIMAP_STORAGE_KEY = 'dashboard_minimap_config'
 const ALL_STATUSES: DeviceStatus[] = ['ACTIVE', 'PENDING', 'PROVISIONING', 'COMMAND_PENDING', 'REVOKED', 'ERROR']
@@ -99,7 +95,6 @@ onMounted(async () => {
     recentEvents.value = evRes.data.content?.slice(0, 5) ?? []
     totalEvents.value = evRes.data.page?.totalElements ?? 0
     recentErrors.value = errRes.data.content?.slice(0, 5) ?? []
-    totalErrors.value = errRes.data.page?.totalElements ?? 0
   } finally {
     loading.value = false
   }
@@ -115,9 +110,9 @@ onMounted(async () => {
         <StatCard label="Dispositivos" :value="totalDevices" />
         <StatCard label="Online agora" :value="onlineDevices" sub="último sinal há até 5 min" />
         <StatCard label="Com alerta" :value="warningDevices" variant="warning" :highlight="warningDevices > 0" />
-        <StatCard label="Aguardando ativação" :value="pendingDevices" />
-        <StatCard label="Erros registrados" :value="totalErrors" variant="danger" :highlight="totalErrors > 0" />
       </div>
+
+      <TelemetryChart :devices="mergedDevices" />
 
       <AppCard title="Mapa dos dispositivos" class="panel">
         <template #actions>
@@ -201,7 +196,7 @@ onMounted(async () => {
 <style scoped>
 .loading { color: var(--text-muted); padding: var(--space-8); text-align: center; }
 .dashboard { display: flex; flex-direction: column; gap: var(--space-6); }
-.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--space-3); }
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
 .panels { display: grid; grid-template-columns: 1fr 360px; gap: var(--space-4); }
 .side-panels { display: flex; flex-direction: column; gap: var(--space-4); }
 .panel { height: fit-content; }
@@ -304,7 +299,6 @@ onMounted(async () => {
 .text-xs { font-size: var(--text-xs); }
 
 @media (max-width: 1100px) {
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .panels { grid-template-columns: 1fr; }
 }
 
