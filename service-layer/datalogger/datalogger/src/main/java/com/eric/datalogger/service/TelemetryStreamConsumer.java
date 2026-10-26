@@ -47,6 +47,8 @@ public class TelemetryStreamConsumer {
     private static final Duration SWEEP_MIN_IDLE = Duration.ofSeconds(60);
 
     private static final int FLUSH_MAX_POINTS = 500;
+    // Teto de lotes por sweep ao escoar o backlog depois de uma queda do Influx
+    private static final int SWEEP_MAX_ROUNDS = 50;
 
     private final RedisConnectionFactory connectionFactory;
     private final StringRedisTemplate redisTemplate;
@@ -59,6 +61,8 @@ public class TelemetryStreamConsumer {
     private final Object bufferLock = new Object();
     private final List<TelemetryDTO> bufferDtos = new ArrayList<>();
     private final List<RecordId> bufferIds = new ArrayList<>();
+
+    private volatile boolean influxDown = false;
 
     private StreamMessageListenerContainer<String, MapRecord<String, String, String>> container;
     private Subscription subscription;
@@ -101,7 +105,7 @@ public class TelemetryStreamConsumer {
         try {
             dto = objectMapper.readValue(record.getValue().get("payload"), TelemetryDTO.class);
         } catch (JsonProcessingException e) {
-            log.warn("Payload telemetry inválido, descartando id={}: {}", record.getId(), e.getMessage());
+            log.warn("Payload telemetry invalid, discarding id={}: {}", record.getId(), e.getMessage());
             redisTemplate.opsForStream().acknowledge(GROUP, record);
             return;
         }
@@ -110,6 +114,9 @@ public class TelemetryStreamConsumer {
             redisTemplate.opsForStream().acknowledge(GROUP, record);
             return;
         }
+
+        // Influx fora: sem ACK, a msg fica no PEL e o sweep reentrega quando voltar
+        if (influxDown) return;
 
         // Micro-batch: acumula e grava em lote (1 request HTTP por flush).
         // O ACK só acontece após o flush bem-sucedido — se o Influx cair,
@@ -134,16 +141,62 @@ public class TelemetryStreamConsumer {
     private void flushLocked() {
         try {
             influxService.writeTelemetryBatch(bufferDtos);
-            redisTemplate.opsForStream()
-                    .acknowledge(STREAM, GROUP, bufferIds.toArray(RecordId[]::new));
+            acknowledge(bufferIds);
+            markUp();
+        } catch (InfluxUnavailableException e) {
+            // Sem ACK: o lote continua no PEL. Reescrita no Influx e idempotente
+            // (mesmo timestamp+tag = overwrite).
+            markDown(e.getMessage());
         } catch (Exception e) {
-            // Sem ACK: o lote inteiro continua no PEL e o sweep reentrega.
-            // Reescrita no Influx é idempotente (mesmo timestamp+tag = overwrite).
-            log.error("Falha gravando batch de {} pontos no Influx: {}", bufferDtos.size(), e.getMessage());
+            // Um ponto invalido derruba o lote inteiro: grava um a um
+            log.warn("Lote de {} pontos recusado pelo Influx, gravando um a um: {}", bufferDtos.size(), e.getMessage());
+            writeOneByOne();
         } finally {
             bufferDtos.clear();
             bufferIds.clear();
         }
+    }
+
+    private void writeOneByOne() {
+        List<RecordId> done = new ArrayList<>();
+        try {
+            for (int i = 0; i < bufferDtos.size(); i++) {
+                TelemetryDTO dto = bufferDtos.get(i);
+                try {
+                    influxService.writeTelemetryBatch(List.of(dto));
+                } catch (InfluxUnavailableException e) {
+                    // caiu no meio: o que falta fica no PEL
+                    markDown(e.getMessage());
+                    return;
+                } catch (Exception e) {
+                    log.error("Ponto invalido descartado id={} device={}: {}", bufferIds.get(i), dto.deviceId(), e.getMessage());
+                }
+                done.add(bufferIds.get(i));
+            }
+        } finally {
+            acknowledge(done);
+        }
+    }
+
+    private void acknowledge(List<RecordId> ids) {
+        if (ids.isEmpty()) return;
+        redisTemplate.opsForStream().acknowledge(STREAM, GROUP, ids.toArray(RecordId[]::new));
+    }
+
+    // Loga so na transicao, nao a cada mensagem
+    private void markDown(String reason) {
+        if (!influxDown) log.error("Influx indisponivel, telemetria fica no stream ate voltar: {}", reason);
+        influxDown = true;
+    }
+
+    private void markUp() {
+        if (influxDown) log.info("Influx voltou, escoando telemetria pendente");
+        influxDown = false;
+    }
+
+    @Scheduled(fixedDelay = 10000)
+    public void probeInflux() {
+        if (influxDown && influxService.isUp()) markUp();
     }
 
     private void createGroupIfMissing() {
@@ -178,42 +231,58 @@ public class TelemetryStreamConsumer {
 
     @Scheduled(fixedDelayString = "${app.streams.sweep-interval-ms:60000}", initialDelay = 15000)
     public void sweepPendingMessages() {
+        // Com o Influx fora, reentregar so somaria entregas ate virar poison
+        if (influxDown) return;
         try {
-            StreamOperations<String, String, String> ops = redisTemplate.opsForStream();
-            PendingMessages pending = ops.pending(STREAM, GROUP, Range.unbounded(), SWEEP_BATCH);
-            if (pending == null || pending.isEmpty()) return;
-
-            List<RecordId> toClaim = new ArrayList<>();
-            for (PendingMessage pm : pending) {
-                if (pm.getElapsedTimeSinceLastDelivery().compareTo(SWEEP_MIN_IDLE) < 0) continue;
-                if (pm.getTotalDeliveryCount() > MAX_DELIVERIES) {
-                    log.error("Msg {} descartada após {} entregas (poison)", pm.getId(), pm.getTotalDeliveryCount());
-                    ops.acknowledge(STREAM, GROUP, pm.getId());
-                    continue;
-                }
-                toClaim.add(pm.getId());
+            int total = 0;
+            for (int round = 0; round < SWEEP_MAX_ROUNDS && !influxDown; round++) {
+                int claimed = sweepRound();
+                if (claimed == 0) break;
+                total += claimed;
+                flushBuffered();
             }
-            if (toClaim.isEmpty()) return;
-
-            List<MapRecord<String, String, String>> claimed = ops.claim(STREAM, GROUP, consumerName,
-                    XClaimOptions.minIdle(SWEEP_MIN_IDLE).ids(toClaim));
-
-            // id pedido mas não retornado = entrada já trimada do stream (MAXLEN) — ACK limpa o PEL
-            Set<RecordId> returned = new HashSet<>();
-            for (MapRecord<String, String, String> record : claimed) {
-                returned.add(record.getId());
-            }
-            for (RecordId id : toClaim) {
-                if (!returned.contains(id)) ops.acknowledge(STREAM, GROUP, id);
-            }
-
-            claimed.forEach(this::handleRecord);
-            if (!claimed.isEmpty()) {
-                log.info("PEL sweep: {} mensagens reivindicadas e reprocessadas em {}", claimed.size(), STREAM);
+            if (total > 0) {
+                log.info("PEL sweep: {} mensagens reivindicadas e reprocessadas em {}", total, STREAM);
             }
         } catch (Exception e) {
             log.warn("PEL sweep falhou em {}: {}", STREAM, e.getMessage());
         }
+    }
+
+    // Um lote do PEL. Retorna quantas entradas saíram do PEL ou foram reprocessadas.
+    private int sweepRound() {
+        StreamOperations<String, String, String> ops = redisTemplate.opsForStream();
+        PendingMessages pending = ops.pending(STREAM, GROUP, Range.unbounded(), SWEEP_BATCH);
+        if (pending == null || pending.isEmpty()) return 0;
+
+        int poisoned = 0;
+        List<RecordId> toClaim = new ArrayList<>();
+        for (PendingMessage pm : pending) {
+            if (pm.getElapsedTimeSinceLastDelivery().compareTo(SWEEP_MIN_IDLE) < 0) continue;
+            if (pm.getTotalDeliveryCount() > MAX_DELIVERIES) {
+                log.error("Msg {} descartada após {} entregas (poison)", pm.getId(), pm.getTotalDeliveryCount());
+                ops.acknowledge(STREAM, GROUP, pm.getId());
+                poisoned++;
+                continue;
+            }
+            toClaim.add(pm.getId());
+        }
+        if (toClaim.isEmpty()) return poisoned;
+
+        List<MapRecord<String, String, String>> claimed = ops.claim(STREAM, GROUP, consumerName,
+                XClaimOptions.minIdle(SWEEP_MIN_IDLE).ids(toClaim));
+
+        // id pedido mas não retornado = entrada já trimada do stream (MAXLEN) — ACK limpa o PEL
+        Set<RecordId> returned = new HashSet<>();
+        for (MapRecord<String, String, String> record : claimed) {
+            returned.add(record.getId());
+        }
+        for (RecordId id : toClaim) {
+            if (!returned.contains(id)) ops.acknowledge(STREAM, GROUP, id);
+        }
+
+        claimed.forEach(this::handleRecord);
+        return poisoned + toClaim.size();
     }
 
     @PreDestroy

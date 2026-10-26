@@ -14,8 +14,10 @@ import com.influxdb.exceptions.InfluxException;
 import com.influxdb.query.FluxRecord;
 import com.influxdb.query.FluxTable;
 
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -28,6 +30,8 @@ import java.util.Set;
 
 @Service
 public class InfluxService {
+
+    private static final Logger log = LoggerFactory.getLogger(InfluxService.class);
 
     // Colunas de metadata que o pivot injeta — não são leituras de sensor
     private static final Set<String> IGNORED_COLUMNS = Set.of(
@@ -87,13 +91,16 @@ public class InfluxService {
         try {
             writeApi.writePoints(points);
         } catch (InfluxException e) {
-            throw new RuntimeException(e);
+            // 400/422 = ponto invalido (ex: conflito de tipo de field). O resto
+            // (0 = sem conexao, 5xx, 401/403) e o Influx indisponivel.
+            if (e.status() == 400 || e.status() == 422) throw e;
+            throw new InfluxUnavailableException("Influx indisponivel (status " + e.status() + "): " + e.getMessage(), e);
         }
     }
 
     // ESP sem SNTP manda deviceTimestamp = uptime desde epoch 0 (pontos vão pra
     // 1970, quebram Data Explorer e "last seen"). Aceita só ts dentro de janela
-    // sã; fora dela, usa o tempo do datalogger — não perde a leitura.
+    // sã; fora dela, usa o tempo do datalogger.
     private static final Instant MIN_VALID_TS = Instant.parse("2020-01-01T00:00:00Z");
 
     private static Instant sanitizeTimestamp(Instant deviceTs, Instant now) {
@@ -233,6 +240,17 @@ public class InfluxService {
     private void validateDeviceId(String deviceId) {
         if (deviceId == null || !deviceId.matches("[0-9a-fA-F\\-]{8,36}")) {
             throw new IllegalArgumentException("Invalid device ID: " + deviceId);
+        }
+    }
+
+
+    // ping nao usa token: a busca do bucket confirma tambem token e bucket
+    public boolean isUp() {
+        try {
+            return Boolean.TRUE.equals(influxDBClient.ping())
+                && influxDBClient.getBucketsApi().findBucketByName(bucket) != null;
+        } catch (Exception e) {
+            return false;
         }
     }
 }
