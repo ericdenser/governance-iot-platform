@@ -37,6 +37,7 @@ const groups = ref<DeviceGroupResponseDTO[]>([])
 const loading = ref(true)
 
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+const fmtDate = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
 const bytes = (n: number) => n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`
 
 const managedGroupIds = computed(() =>
@@ -320,7 +321,6 @@ onMounted(async () => {
             <tr>
               <th>Versão</th>
               <th>Status</th>
-              <th>Release Notes</th>
               <th>Enviado por</th>
               <th>Data upload</th>
               <th>Deploys</th>
@@ -331,13 +331,9 @@ onMounted(async () => {
           <tbody>
             <tr v-for="v in versions" :key="v.versionId" class="tbl-row" @click="openVersionDetail(v)">
               <td class="mono font-medium">v{{ v.version }}</td>
-              <td><StatusLabel kind="firmware" :code="v.status" /></td>
-              <td class="text-sm text-muted release-notes-cell" :title="v.releaseNotes ?? ''">
-                <span v-if="v.releaseNotes">{{ v.releaseNotes }}</span>
-                <span v-else>—</span>
-              </td>
+              <td><StatusLabel kind="firmware" :code="v.status" no-icon /></td>
               <td class="text-sm">{{ v.createdByUsername ?? '—' }}</td>
-              <td class="text-muted text-sm">{{ fmt(v.uploadedAt) }}</td>
+              <td class="text-muted text-sm" :title="fmt(v.uploadedAt)">{{ fmtDate(v.uploadedAt) }}</td>
               <td class="text-sm">{{ v.deployCount }}</td>
               <td class="text-muted text-sm">{{ bytes(v.sizeBytes) }}</td>
               <td v-if="canManage" @click.stop>
@@ -356,7 +352,7 @@ onMounted(async () => {
               </td>
             </tr>
             <tr v-if="!versions.length">
-              <td :colspan="canManage ? 8 : 7" class="empty">Nenhuma versão registrada</td>
+              <td :colspan="canManage ? 7 : 6" class="empty">Nenhuma versão registrada</td>
             </tr>
           </tbody>
         </table>
@@ -375,7 +371,7 @@ onMounted(async () => {
               <h3 class="modal-title">{{ detailVersion.originalFilename ?? detailVersion.filename }}</h3>
               <div class="detail-sub">
                 <span class="mono">v{{ detailVersion.version }}</span>
-                <StatusLabel kind="firmware" :code="detailVersion.status" />
+                <StatusLabel kind="firmware" :code="detailVersion.status" no-icon />
                 <AppBadge v-if="detailVersion.provisioningFirmware" variant="primary">Provisioning</AppBadge>
                 <span class="text-muted text-xs">{{ groupName(detailVersion.ownerGroupId) }}</span>
               </div>
@@ -559,7 +555,6 @@ onMounted(async () => {
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
 .row-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.release-notes-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; color: var(--text); }

@@ -7,6 +7,7 @@ const props = defineProps<{
   kind: StatusKind
   code: string | null | undefined
   label?: string
+  noIcon?: boolean
 }>()
 
 const info = computed(() => statusInfo(props.kind, props.code))
@@ -14,7 +15,7 @@ const info = computed(() => statusInfo(props.kind, props.code))
 
 <template>
   <span class="status" :class="`tone-${info.tone}`" :title="code ?? undefined">
-    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+    <svg v-if="!noIcon" class="icon" viewBox="0 0 16 16" aria-hidden="true">
       <polyline v-if="info.icon === 'check'" points="3.5,8.5 6.5,11.5 12.5,4.5" />
       <g v-else-if="info.icon === 'cross'">
         <line x1="4.5" y1="4.5" x2="11.5" y2="11.5" />

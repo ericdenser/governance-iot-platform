@@ -51,7 +51,7 @@ const chipFirmwares = computed(() =>
   firmwares.value.filter(fw => chipOf(fw.targetChip) === selectedChip.value)
 )
 
-// Provisioning em grupo proprio no topo; o resto e firmware de aplicacao
+// Provisioning em grupo proprio no topo; o resto e firmware operacional
 const sections = computed(() => [
   {
     key: 'provisioning',
@@ -60,10 +60,10 @@ const sections = computed(() => [
     empty: `Nenhum firmware de provisioning para ${chipLabel(selectedChip.value)}`,
   },
   {
-    key: 'app',
-    title: 'Aplicação',
+    key: 'operational',
+    title: 'Operational',
     items: chipFirmwares.value.filter(fw => !fw.provisioningFirmware),
-    empty: `Nenhum firmware de aplicação para ${chipLabel(selectedChip.value)}`,
+    empty: `Nenhum firmware operational para ${chipLabel(selectedChip.value)}`,
   },
 ])
 
@@ -242,7 +242,7 @@ onMounted(async () => {
         <div class="actions-row">
           <ChipSelector v-model="selectedChip" />
           <template v-if="canCreate">
-            <AppButton size="lg" variant="secondary" @click="openPackage">Gerar Pacote Flash</AppButton>
+            <AppButton size="lg" variant="secondary" @click="openPackage">Provisionar</AppButton>
             <AppButton size="lg" variant="primary" @click="openCreate(false)">Novo Firmware</AppButton>
           </template>
         </div>
@@ -253,7 +253,6 @@ onMounted(async () => {
         <thead>
           <tr>
             <th>Nome</th>
-            <th>Descrição</th>
             <th>Última versão</th>
             <th>Grupo</th>
             <th>Enviado por</th>
@@ -262,13 +261,12 @@ onMounted(async () => {
         </thead>
         <tbody v-for="section in sections" :key="section.key">
           <tr class="group-row">
-            <td colspan="6">
+            <td colspan="5">
               {{ section.title }}
             </td>
           </tr>
           <tr v-for="fw in section.items" :key="fw.firmwareId" class="tbl-row" @click="goToDetail(fw.firmwareId)">
             <td class="font-medium">{{ fw.firmwareName }}</td>
-            <td class="text-sm text-muted desc-cell">{{ fw.description ?? '—' }}</td>
             <td>
               <span v-if="fw.latestVersion" class="mono">v{{ fw.latestVersion.version }}</span>
               <span v-else class="text-muted">—</span>
@@ -281,7 +279,7 @@ onMounted(async () => {
             <td class="text-muted text-sm" :title="absoluteTime(fw.createdAt)">{{ relativeTime(fw.createdAt) }}</td>
           </tr>
           <tr v-if="!section.items.length">
-            <td colspan="6" class="empty-row">{{ section.empty }}</td>
+            <td colspan="5" class="empty-row">{{ section.empty }}</td>
           </tr>
         </tbody>
       </table>
@@ -373,10 +371,10 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ── Gerar Pacote Flash modal ─────────────────────────────────────────── -->
+    <!-- ── Provisionar modal ─────────────────────────────────────────── -->
     <div v-if="showPackage" class="modal-overlay" @click.self="showPackage = false">
       <div class="modal">
-        <h3 class="modal-title">Gerar Pacote Flash <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></h3>
+        <h3 class="modal-title">Provisionar dispositivo <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></h3>
 
         <!-- Estado 1: nenhum firmware de provisioning cadastrado -->
         <div v-if="!provisioningFirmware" class="prov-warning">
@@ -476,7 +474,6 @@ onMounted(async () => {
 .tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
-.desc-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .group-row td { padding: var(--space-5) 0 var(--space-2); border-top: none; font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
 tbody:first-of-type .group-row td { padding-top: var(--space-1); }
