@@ -62,8 +62,8 @@ void OtaManager::bootAudit() {
         return;
     }
 
-    // Primeiro boot: versao do /prov.txt
-    s_sha     = "";
+    // Primeiro boot: versao e SHA do /prov.txt
+    s_sha     = AuthManager::getProvValue("fw_sha");
     s_version = AuthManager::getProvValue("fw_version");
     if (s_version.length() > 0) {
         writeLines(FW_FILE, s_version, s_sha, s_md5);

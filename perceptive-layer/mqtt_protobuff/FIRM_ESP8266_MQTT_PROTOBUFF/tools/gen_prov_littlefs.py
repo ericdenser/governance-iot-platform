@@ -4,7 +4,7 @@
 Uso:
   pip install littlefs-python
   python3 gen_prov_littlefs.py --ssid REDE --password SENHA --token TOKEN \
-      --device-id UUID --fw-version 1.0.0 -o littlefs.bin
+      --device-id UUID --fw-version 1.0.0 --fw-sha SHA256 -o littlefs.bin
 
 Gravar (sketch exportado + imagem):
   python3 -m esptool --chip esp8266 --port /dev/ttyUSB0 --baud 460800 write_flash \
@@ -46,16 +46,21 @@ def main():
     p.add_argument("--token", required=True)
     p.add_argument("--device-id", required=True)
     p.add_argument("--fw-version", required=True)
+    # sem o SHA o device so detecta OTA do mesmo binario depois do reboot
+    p.add_argument("--fw-sha", default="")
     p.add_argument("-o", "--output", default="littlefs.bin")
     a = p.parse_args()
 
-    image = build_image({
+    values = {
         "wifi_ssid": a.ssid,
         "wifi_pass": a.password,
         "prov_token": a.token,
         "device_id": a.device_id,
         "fw_version": a.fw_version,
-    })
+    }
+    if a.fw_sha:
+        values["fw_sha"] = a.fw_sha
+    image = build_image(values)
     with open(a.output, "wb") as f:
         f.write(image)
     print(f"{a.output}: {len(image)} bytes -> gravar em 0x{FS_OFFSET:X}")

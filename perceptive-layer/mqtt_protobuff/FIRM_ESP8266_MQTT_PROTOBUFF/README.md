@@ -24,20 +24,86 @@ Não implementados: `REBOOT`, `DEEP_SLEEP`, `FIRMWARE_ROLLBACK` e deep sleep.
 
 ## Build
 
-1. No Boards Manager, instale **esp8266 by ESP8266 Community 3.1.2**. Selecione a placa *NodeMCU 1.0 (ESP-12E Module)* e configure **Flash Size: 4MB (FS:2MB OTA:~1019KB)**. Essa configuração deve ser mantida em todas as versões.
-2. No Library Manager, instale **PubSubClient 2.8**, de Nick O'Leary.
-3. Configure em `config.h` as URLs do govApi e do Keycloak, o host do broker e os intervalos.
-4. Gere o binário em *Sketch -> Export compiled Binary* ou execute:
+### Arduino IDE
+
+1. Em *Preferências → URLs adicionais de gerenciadores de placas*, adicione `https://arduino.esp8266.com/stable/package_esp8266com_index.json`.
+2. No Boards Manager, instale **esp8266 by ESP8266 Community 3.1.2**. Selecione a placa *NodeMCU 1.0 (ESP-12E Module)* e configure **Flash Size: 4MB (FS:2MB OTA:~1019KB)**. Essa configuração deve ser mantida em todas as versões.
+3. No Library Manager, instale **PubSubClient 2.8**, de Nick O'Leary.
+4. Configure o `config.h` (ver abaixo).
+5. *Sketch → Export compiled Binary*. O `.bin` fica na pasta do sketch.
+
+### arduino-cli
 
 ```bash
+arduino-cli config init
+arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+arduino-cli core update-index
+arduino-cli core install esp8266:esp8266@3.1.2
+arduino-cli lib install "PubSubClient@2.8"
+
+# na pasta mqtt_protobuff/
 arduino-cli compile \
   --fqbn esp8266:esp8266:nodemcuv2:eesz=4M2M \
   --export-binaries FIRM_ESP8266_MQTT_PROTOBUFF
 ```
 
+O binário fica em `FIRM_ESP8266_MQTT_PROTOBUFF/build/esp8266.esp8266.nodemcuv2/FIRM_ESP8266_MQTT_PROTOBUFF.ino.bin`. Ele precisa caber no slot de OTA (~1019 KB).
+
+### config.h
+
+Só endereços da plataforma. Use o `HOST_IP` do `.env` da stack:
+
+```c
+#define GOV_MDM_BASE_URL   "http://<HOST_IP>:8082"
+#define GOV_KEYCLOAK_URL   "http://<HOST_IP>:8080"
+#define GOV_KEYCLOAK_REALM "IOT-REALM"
+#define GOV_MQTT_HOST      "<HOST_IP>"
+#define GOV_MQTT_PORT      1883
+```
+
 O mesmo `.bin` pode ser usado em todos os dispositivos. Os dados específicos de cada um são fornecidos pelo arquivo `/prov.txt`.
 
-## Provisioning via LittleFS
+## Provisionar pela plataforma
+
+No ESP8266 não existe firmware separado de provisioning: o mesmo sketch se provisiona sozinho. Por isso o `.bin` é cadastrado duas vezes no SPA.
+
+1. **Cadastrar o firmware de provisioning** (uma vez por versão): em *Firmware*, selecione o chip **ESP8266**, clique em *Novo Firmware*, envie o `.bin` e marque *Firmware de provisionamento*. A versão informada é a que o device reporta até a primeira OTA.
+2. **Gerar o pacote**: ainda com **ESP8266** selecionado, clique em *Provisionar*. Informe o nome do device, a rede WiFi (obrigatória, 2.4 GHz) e o grupo. O SPA baixa um ZIP com o `.bin`, o `littlefs.bin` (com o `/prov.txt`) e um README com o comando de gravação.
+3. **Gravar** (porta em `/dev/ttyUSB0`; o usuário precisa estar no grupo `dialout`):
+
+   ```bash
+   python3 -m esptool --chip esp8266 --port /dev/ttyUSB0 --baud 460800 write_flash \
+     0x0 <firmware>.bin \
+     0x200000 littlefs.bin
+   ```
+
+4. **Acompanhar**: o device aparece como `PENDING`, passa a `PROVISIONING` quando chama o `/provisioning/activate` e vira `ACTIVE` ao publicar o primeiro status.
+
+O token do pacote é de uso único e expira. Se a gravação atrasar ou falhar depois da ativação, gere um pacote novo.
+
+## OTA pela plataforma
+
+1. Cadastre um firmware **operational** para ESP8266 (*Novo Firmware*, sem marcar provisioning) e suba as versões nele.
+2. Na versão desejada, *Deploy* → selecione os devices ESP8266. O SPA só lista devices do mesmo chip e, para ESP8266, só libera o comando `UPDATE`.
+
+## Monitorar
+
+```bash
+arduino-cli monitor -p /dev/ttyUSB0 -c baudrate=115200
+# ou
+python3 -m serial.tools.miniterm /dev/ttyUSB0 115200
+```
+
+## Problemas comuns
+
+| Sintoma | Causa provável |
+|---|---|
+| Log diz que não há credenciais nem `/prov.txt` | `littlefs.bin` não gravado em `0x200000`, ou sketch compilado com outro Flash Size |
+| `/provisioning/activate` responde 4xx | Token já usado ou expirado: gere outro pacote |
+| Conecta no WiFi mas não no MQTT | `GOV_MQTT_HOST` errado, porta 1883 bloqueada ou Keycloak inacessível (o JWT vai no CONNECT) |
+| Status com horário errado logo após o boot | NTP ainda sincronizando; corrige sozinho |
+
+## Provisioning via LittleFS (detalhes)
 
 O arquivo `/prov.txt` contém os dados usados pelo govApi, com as mesmas chaves do NVS do ESP32. Cada linha segue o formato `chave=valor`, sem aspas e em UTF-8. O valor pode conter `=`.
 
@@ -47,11 +113,12 @@ wifi_pass=...
 prov_token=...
 device_id=...
 fw_version=...
+fw_sha=...
 ```
 
 No boot, se não houver credenciais salvas e existir `/prov.txt`, o firmware conecta ao Wi-Fi e chama `/provisioning/activate`. Se a ativação funcionar, salva as credenciais em `/creds.txt` (`client_id`, `client_secret` e `device_id`), grava os dados de Wi-Fi em `/wifi.txt` e apaga `/prov.txt`, pois o token é de uso único.
 
-O valor de `fw_version` é usado até que uma OTA atualize a versão registrada em `/fw.txt`.
+Os valores de `fw_version` e `fw_sha` são usados até que uma OTA atualize a versão registrada em `/fw.txt`. Com o `fw_sha`, um UPDATE para o mesmo binário é recusado antes do download, com a mesma mensagem do ESP32 (`Stopping OTA download due same firmware SHA256`). Sem ele, o device baixa, reinicia e só então percebe que o sketch não mudou.
 
 Se não houver credenciais nem `/prov.txt`, o dispositivo entra em `ERROR`, registra mensagens no log e reinicia após `GOV_BOOT_TIMEOUT_S`.
 
@@ -74,7 +141,9 @@ Os parâmetros `name_max` e `disk_version` precisam corresponder aos usados pelo
 
 O script `tools/gen_prov_littlefs.py` gera a imagem com esses parâmetros e foi validado com o `mklittlefs` do core, nos dois sentidos.
 
-### Gravar na placa
+### Gerar e gravar manualmente
+
+Sem passar pelo SPA (o token ainda vem do govApi):
 
 Instale as dependências:
 
@@ -91,6 +160,7 @@ python3 tools/gen_prov_littlefs.py \
   --token TOKEN \
   --device-id UUID \
   --fw-version 1.0.0 \
+  --fw-sha SHA256_DO_BIN \
   -o littlefs.bin
 ```
 
@@ -99,7 +169,7 @@ Grave o firmware e a imagem:
 ```bash
 python3 -m esptool --chip esp8266 --port /dev/ttyUSB0 \
   --baud 460800 write_flash \
-  0x0 FIRM_ESP8266_MQTT_PROTOBUFF.ino.nodemcu.bin \
+  0x0 FIRM_ESP8266_MQTT_PROTOBUFF.ino.bin \
   0x200000 littlefs.bin
 ```
 
@@ -107,7 +177,7 @@ O binário gerado pelo Arduino já inclui o bootloader (eboot). Não é necessá
 
 Para reprovisionar um dispositivo, gere um novo token e grave outra imagem LittleFS. Isso substitui os arquivos `/creds.txt` e `/wifi.txt`.
 
- ## OTA
+## OTA (detalhes)
 
 Arquivos usados no processo:
 

@@ -135,6 +135,7 @@ public class FlashPackageService {
                 "--token", token,
                 "--device-id", deviceId,
                 "--fw-version", firmware.getVersion(),
+                "--fw-sha", firmware.getSha256(),
                 "-o", fsPath.toString()),
             "gen_prov_littlefs");
 
