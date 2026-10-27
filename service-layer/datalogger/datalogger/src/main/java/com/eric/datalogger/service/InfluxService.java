@@ -1,8 +1,6 @@
 package com.eric.datalogger.service;
 
-import com.eric.datalogger.model.LastPositionDTO;
 import com.eric.datalogger.model.TelemetryDTO;
-import com.eric.datalogger.model.TelemetryFieldsDTO;
 import com.eric.datalogger.model.TelemetryPointDTO;
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.InfluxDBClientFactory;
@@ -154,85 +152,6 @@ public class InfluxService {
         }
 
         return result;
-    }
-
-    // -------------------------------------------------------------------------
-    //  Query — descoberta de campos
-    // -------------------------------------------------------------------------
-
-    /**
-     * Retorna quais fields (sensores) um device já reportou nos últimos 30 dias.
-     * Usado pelo BFF para saber quais gráficos renderizar no dashboard.
-     */
-    public TelemetryFieldsDTO queryFields(String deviceId) {
-        validateDeviceId(deviceId);
-
-        String flux = String.format("""
-            import "influxdata/influxdb/schema"
-            schema.fieldKeys(
-              bucket: "%s",
-              predicate: (r) => r["_measurement"] == "telemetry" and r["device_id"] == "%s",
-              start: -30d
-            )
-            """, bucket, deviceId);
-
-        List<FluxTable> tables = queryApi.query(flux, org);
-        List<String> fields = new ArrayList<>();
-
-        for (FluxTable table : tables) {
-            for (FluxRecord record : table.getRecords()) {
-                Object val = record.getValue();
-                if (val != null) fields.add(val.toString());
-            }
-        }
-
-        return new TelemetryFieldsDTO(deviceId, fields);
-    }
-
-    // -------------------------------------------------------------------------
-    //  Query — última posição conhecida
-    // -------------------------------------------------------------------------
-
-    /**
-     * Retorna a última leitura de latitude, longitude e altitude de um device.
-     * Retorna null se o device nunca reportou posição nos últimos 30 dias.
-     */
-    public LastPositionDTO queryLastPosition(String deviceId) {
-        validateDeviceId(deviceId);
-
-        String flux = String.format("""
-            from(bucket: "%s")
-              |> range(start: -30d)
-              |> filter(fn: (r) => r["_measurement"] == "telemetry")
-              |> filter(fn: (r) => r["device_id"] == "%s")
-              |> filter(fn: (r) => r["_field"] == "latitude" or r["_field"] == "longitude" or r["_field"] == "altitude")
-              |> last()
-            """, bucket, deviceId);
-
-        List<FluxTable> tables = queryApi.query(flux, org);
-
-        Double latitude   = null;
-        Double longitude  = null;
-        Double altitude   = null;
-        Instant recordedAt = null;
-
-        for (FluxTable table : tables) {
-            for (FluxRecord record : table.getRecords()) {
-                String field = record.getField();
-                Object value = record.getValue();
-                if (!(value instanceof Number num)) continue;
-
-                switch (field) {
-                    case "latitude"  -> { latitude  = num.doubleValue(); recordedAt = record.getTime(); }
-                    case "longitude" -> longitude  = num.doubleValue();
-                    case "altitude"  -> altitude   = num.doubleValue();
-                }
-            }
-        }
-
-        if (latitude == null || longitude == null) return null;
-
-        return new LastPositionDTO(deviceId, latitude, longitude, altitude, recordedAt);
     }
 
     // -------------------------------------------------------------------------

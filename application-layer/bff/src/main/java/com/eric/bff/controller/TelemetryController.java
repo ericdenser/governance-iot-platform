@@ -37,15 +37,6 @@ public class TelemetryController {
                 .toEntity(String.class);
     }
 
-    @GetMapping("/{deviceId}/fields")
-    public ResponseEntity<String> getFields(@PathVariable String deviceId) {
-        checkAccess(deviceId);
-        return dataloggerClient.get()
-                .uri(dataloggerUrl + "/datalogger/telemetry/{id}/fields", deviceId)
-                .retrieve()
-                .toEntity(String.class);
-    }
-
     // 403/404 do govApi sobe pelo GlobalExceptionHandler
     private void checkAccess(String deviceId) {
         restClient.get()
