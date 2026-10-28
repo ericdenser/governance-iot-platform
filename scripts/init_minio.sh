@@ -15,7 +15,7 @@ set -a; source .env; set +a
 : "${MINIO_BUCKET:?}"
 
 MINIO_CONTAINER="${MINIO_CONTAINER_NAME:-iot-minio}"
-MC_IMAGE="minio/mc:RELEASE.2025-04-16T18-13-26Z"
+MC_IMAGE="${MC_IMAGE:-minio/mc:RELEASE.2025-04-16T18-13-26Z}"
 
 # Endpoint interno: bate em localhost:9000 do namespace de rede do minio.
 INTERNAL_ENDPOINT="http://localhost:9000"
