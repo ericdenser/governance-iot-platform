@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
 import StatusLabel from '@/components/StatusLabel.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
@@ -177,7 +176,7 @@ onMounted(async () => {
             <span v-if="device.firmware && device.firmwareVersion">
               {{ device.firmware.firmwareName }}
               <span class="mono text-muted"> v{{ device.firmwareVersion.version }}</span>
-              <AppBadge v-if="device.firmware.isProvisioning" variant="primary" class="badge-inline">Provisioning</AppBadge>
+              <span v-if="device.firmware.isProvisioning" class="text-muted"> · provisioning</span>
             </span>
             <span v-else class="text-muted">—</span>
           </div>

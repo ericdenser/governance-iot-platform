@@ -3,6 +3,7 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
+import BrandMark from '@/components/BrandMark.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -83,20 +84,9 @@ const fazerLogout = async () => {
   <div class="layout">
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileOpen }">
-      <div class="sidebar-brand">
-        <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-            <line x1="12" y1="20" x2="12.01" y2="20"/>
-          </svg>
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">Governance IoT</span>
-          <span class="brand-sub">Dashboard</span>
-        </div>
-      </div>
+      <router-link to="/home" class="sidebar-brand">
+        <BrandMark :compact="sidebarCollapsed" />
+      </router-link>
 
       <nav class="sidebar-nav">
         <router-link
@@ -203,55 +193,15 @@ const fazerLogout = async () => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  font-size: var(--text-md);
+  text-decoration: none;
   padding: var(--space-5) var(--space-4);
   border-bottom: 1px solid var(--border);
   min-height: 77px;
   flex-shrink: 0;
 }
+.sidebar.collapsed .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
 
-.brand-icon {
-  width: 36px;
-  height: 36px;
-  background: var(--primary-dim);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary);
-  flex-shrink: 0;
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: opacity 180ms ease, max-width 220ms ease;
-  max-width: 160px;
-  opacity: 1;
-}
-
-.sidebar.collapsed .brand-text {
-  max-width: 0;
-  opacity: 0;
-}
-
-.brand-name {
-  display: block;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.brand-sub {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
 
 /* ─── Nav ───────────────────────────────────────────── */
 .sidebar-nav {
