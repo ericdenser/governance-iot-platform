@@ -31,18 +31,22 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: update
+      # Schema is owned by Flyway (db/migration); Hibernate only checks it matches the entities
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
     enabled: true
+    # Databases created before Flyway (by Hibernate) are marked as V1 and only get V2+
     baseline-on-migrate: true
+    baseline-version: 1
   security:
     oauth2:
       resourceserver:
         jwt:
+          # Public issuer (the "iss" tokens carry); keys are fetched from the internal URL below
           issuer-uri: ${KEYCLOAK_ISSUER_URI}
       client:
         registration:
@@ -53,7 +57,7 @@ spring:
             scope: openid
         provider:
           gov-api:
-            token-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/token
+            token-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}/protocol/openid-connect/token
 
 mqtt:
   broker-url: mqtt://localhost:8883
@@ -131,3 +135,6 @@ logging:
   level:
     org.springframework.web.servlet.DispatcherServlet: DEBUG
 
+# Keycloak reachable on the docker network (same as the issuer outside a reverse proxy)
+keycloak:
+  internal-issuer-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}

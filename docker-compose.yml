@@ -13,8 +13,10 @@ services:
     container_name: iot-broker
     command: /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf
     ports:
-      - "1883:1883"
-      - "8884:8884"
+      # INTERNAL_* = only for local debugging (127.0.0.1 on a shared VM);
+      # PUBLIC_* = what the host reverse proxy (nginx) forwards to
+      - "${INTERNAL_HOST_BIND:-0.0.0.0}:${MQTT_TCP_HOST_PORT:-1883}:1883"
+      - "${PUBLIC_HOST_BIND:-0.0.0.0}:${MQTT_WS_HOST_PORT:-8884}:8884"
     volumes:
       - ./brokers/mosquitto/config:/mosquitto/config
       - ./brokers/mosquitto/data:/mosquitto/data
@@ -36,7 +38,7 @@ services:
     image: postgres:15-alpine
     container_name: iot-postgres
     ports:
-      - "5432:5432"
+      - "${INTERNAL_HOST_BIND:-0.0.0.0}:${POSTGRES_HOST_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -63,7 +65,7 @@ services:
     image: redis:7-alpine
     container_name: iot-redis
     ports:
-      - "6379:6379"
+      - "${INTERNAL_HOST_BIND:-0.0.0.0}:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -91,7 +93,7 @@ services:
       --maxmemory 512mb
       --maxmemory-policy noeviction
     ports:
-      - "6380:6379"
+      - "${INTERNAL_HOST_BIND:-0.0.0.0}:${REDIS_STREAMS_HOST_PORT:-6380}:6379"
     volumes:
       - redis_streams_data:/data
     healthcheck:
@@ -115,8 +117,8 @@ services:
     container_name: iot-minio
     command: server /data --console-address ":9001"
     ports:
-      - "${MINIO_HOST_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+      - "${PUBLIC_HOST_BIND:-0.0.0.0}:${MINIO_HOST_PORT:-9000}:9000"
+      - "${INTERNAL_HOST_BIND:-0.0.0.0}:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     environment: 
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -141,7 +143,7 @@ services:
     image: influxdb:2.7
     container_name: iot-influxdb
     ports:
-      - "8086:8086"
+      - "${INTERNAL_HOST_BIND:-0.0.0.0}:${INFLUX_HOST_PORT:-8086}:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME}
@@ -173,7 +175,7 @@ services:
     # import ja rodou como fase separada no entrypoint; command so sobe o server
     command: ["start-dev"]
     ports:
-      - "8080:8080"
+      - "${PUBLIC_HOST_BIND:-0.0.0.0}:${KEYCLOAK_HOST_PORT:-8080}:8080"
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
@@ -181,8 +183,12 @@ services:
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      # Fixa o hostname que Keycloak usa pra montar URLs (issuer, JWKS, redirects).
-      KC_HOSTNAME: http://${HOST_IP}:8080
+      # Public URL Keycloak uses for issuer and browser redirects.
+      # Behind a reverse proxy on a sub-path: KEYCLOAK_PUBLIC_URL=https://host/path/auth
+      # and KEYCLOAK_RELATIVE_PATH=/path/auth.
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://${HOST_IP}:8080}
+      KC_HTTP_RELATIVE_PATH: ${KEYCLOAK_RELATIVE_PATH:-/}
+      KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME_STRICT: "false"
       # Habilita endpoint /health/{ready,live,started} na porta 9000 (mgmt).
       KC_HEALTH_ENABLED: "true"
@@ -191,8 +197,9 @@ services:
       BFF_CLIENT_SECRET: ${BFF_CLIENT_SECRET}
       AGENT_MQTT_CLIENT_SECRET: ${AGENT_MQTT_CLIENT_SECRET}
       HOST_IP: ${HOST_IP}
-      # Porta do SPA (redirect uris do iot-bff). Default 5173 dev, override 8090 no lab.
-      SPA_HOST_PORT: ${SPA_HOST_PORT:-5173}
+      # iot-bff redirect URIs in the realm template
+      FRONTEND_URL: ${FRONTEND_URL:-http://${HOST_IP}:5173}
+      BFF_PUBLIC_URL: ${BFF_PUBLIC_URL:-http://${HOST_IP}:8083}
       # Senha do user "admin" do IOT-REALM criado no bootstrap do template.
       # Login: admin / <IOT_ADMIN_PASSWORD>. Ele traz ROLE_ADMIN via iot-bff.
       IOT_ADMIN_PASSWORD: ${IOT_ADMIN_PASSWORD:-admin}
@@ -204,7 +211,7 @@ services:
         condition: service_healthy
     healthcheck:
       # Verifica o discovery endpoint do IOT-REALM
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/IOT-REALM/.well-known/openid-configuration HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET ${KEYCLOAK_RELATIVE_PATH:-}/realms/IOT-REALM/.well-known/openid-configuration HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
       interval: 10s
       timeout: 5s
       retries: 30

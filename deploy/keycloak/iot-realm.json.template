@@ -825,22 +825,21 @@
       "clientId": "iot-bff",
       "name": "iot-bff",
       "description": "",
-      "rootUrl": "http://${HOST_IP}:8083",
-      "adminUrl": "http://${HOST_IP}:8083",
-      "baseUrl": "http://${HOST_IP}:${SPA_HOST_PORT}",
+      "rootUrl": "${BFF_PUBLIC_URL}",
+      "adminUrl": "${BFF_PUBLIC_URL}",
+      "baseUrl": "${FRONTEND_URL}",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "secret": "${BFF_CLIENT_SECRET}",
       "redirectUris": [
-        "http://${HOST_IP}:8083/*",
-        "http://${HOST_IP}:8083/login/oauth2/code/keycloak",
-        "http://${HOST_IP}:${SPA_HOST_PORT}/*"
+        "${BFF_PUBLIC_URL}/*",
+        "${FRONTEND_URL}/*"
       ],
       "webOrigins": [
-        "http://${HOST_IP}:8083",
-        "http://${HOST_IP}:${SPA_HOST_PORT}"
+        "${BFF_PUBLIC_URL}",
+        "${FRONTEND_URL}"
       ],
       "notBefore": 0,
       "bearerOnly": false,
@@ -858,7 +857,7 @@
         "client.secret.creation.time": "1785185181",
         "backchannel.logout.session.required": "true",
         "frontchannel.logout.session.required": "true",
-        "post.logout.redirect.uris": "http://${HOST_IP}:${SPA_HOST_PORT}/*",
+        "post.logout.redirect.uris": "${FRONTEND_URL}/*",
         "oauth2.device.authorization.grant.enabled": "false",
         "display.on.consent.screen": "false",
         "backchannel.logout.revoke.offline.tokens": "false"

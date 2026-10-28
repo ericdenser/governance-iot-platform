@@ -22,7 +22,7 @@ public class KeycloakAdminClient {
     @Value("${spring.security.oauth2.client.registration.keycloak.client-secret}")
     private String clientSecret;
 
-    @Value("${spring.security.oauth2.client.provider.keycloak.issuer-uri}")
+    @Value("${app.keycloak-internal-issuer-uri}")
     private String issuerUri;
 
     @Value("${app.keycloak-admin-url}")

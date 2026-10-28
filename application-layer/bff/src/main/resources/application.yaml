@@ -26,9 +26,15 @@ spring:
             scope: openid, profile, email
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        # Explicit endpoints instead of issuer discovery: the browser uses the public
+        # URL, server-side calls stay on the docker network (KEYCLOAK_INTERNAL_ISSUER_URI).
         provider:
           keycloak:
-            issuer-uri: ${KEYCLOAK_ISSUER_URI}
+            authorization-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/auth
+            token-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}/protocol/openid-connect/token
+            jwk-set-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}/protocol/openid-connect/certs
+            user-info-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}/protocol/openid-connect/userinfo
+            user-name-attribute: sub
 
   session:
     store-type: redis
@@ -46,12 +52,16 @@ server:
     max-http-form-post-size: 10MB
 app:
   frontend-url: ${FRONTEND_URL}
+  keycloak-issuer-uri: ${KEYCLOAK_ISSUER_URI}
+  keycloak-internal-issuer-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}
   gov-api-url: ${GOVAPI_URL}
   keycloak-admin-url: ${KEYCLOAK_ADMIN_URL}
   session:
     cookie-secure: ${APP_SESSION_COOKIE_SECURE:false}
     cookie-same-site: ${APP_SESSION_COOKIE_SAME_SITE:Lax}
     cookie-path: ${APP_SESSION_COOKIE_PATH:/}
+    # Other apps on a shared domain also use SESSION/XSRF-TOKEN
+    cookie-name: ${APP_SESSION_COOKIE_NAME:SESSION}
 
 logging:
   level:

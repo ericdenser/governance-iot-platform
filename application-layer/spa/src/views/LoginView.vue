@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import BrandMark from '@/components/BrandMark.vue'
+import { withBase } from '@/utils/basePath'
 import StarfieldBackdrop from '@/components/StarfieldBackdrop.vue'
 
 const route = useRoute()
@@ -9,7 +10,7 @@ const route = useRoute()
 const sessionExpired = computed(() => route.query.expired === '1')
 
 const fazerLogin = () => {
-  window.location.href = '/api/oauth2/authorization/keycloak'
+  window.location.href = withBase('api/oauth2/authorization/keycloak')
 }
 
 type FeatureKind = 'provision' | 'ota' | 'telemetry' | 'governance'

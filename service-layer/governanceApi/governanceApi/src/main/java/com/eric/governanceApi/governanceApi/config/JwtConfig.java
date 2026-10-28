@@ -21,9 +21,15 @@ public class JwtConfig {
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
     private String issuerUri;
 
+    @Value("${keycloak.internal-issuer-uri}")
+    private String internalIssuerUri;
+
     @Bean
     public JwtDecoder jwtDecoder() {
-        NimbusJwtDecoder decoder = JwtDecoders.fromIssuerLocation(issuerUri);
+        // Keys from the internal URL, "iss" checked against the public issuer
+        NimbusJwtDecoder decoder = NimbusJwtDecoder
+                .withJwkSetUri(internalIssuerUri + "/protocol/openid-connect/certs")
+                .build();
 
         OAuth2TokenValidator<Jwt> defaultValidators = JwtValidators.createDefaultWithIssuer(issuerUri);
 

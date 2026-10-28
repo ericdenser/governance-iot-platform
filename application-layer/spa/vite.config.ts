@@ -6,6 +6,8 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 
 export default defineConfig({
+  // Sub-path deploy behind a reverse proxy, e.g. VITE_BASE_PATH=/governance/
+  base: process.env.VITE_BASE_PATH || '/',
   plugins: [
     vue(),
     vueDevTools(),

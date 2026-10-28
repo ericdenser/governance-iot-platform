@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withBase } from '@/utils/basePath'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import L from 'leaflet'
@@ -102,7 +103,7 @@ const popupContent = (deviceId: string): HTMLElement => {
     `<div class="dmp-row"><span class="dmp-dot" style="background:${statusColor(p.status)}"></span>${esc(p.status)}</div>` +
     `<div class="dmp-row dmp-mono">${p.latitude.toFixed(6)}, ${p.longitude.toFixed(6)}</div>` +
     `<div class="dmp-row">Visto: ${esc(fmtSeen(p.lastSeen))}</div>` +
-    `<a class="dmp-link" href="/devices/${encodeURIComponent(p.deviceId)}">Ver dispositivo →</a>`
+    `<a class="dmp-link" href="${withBase(`devices/${encodeURIComponent(p.deviceId)}`)}">Ver dispositivo →</a>`
   el.querySelector('a')?.addEventListener('click', (e) => {
     e.preventDefault()
     router.push(`/devices/${p.deviceId}`)

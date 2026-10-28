@@ -9,8 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -21,15 +20,13 @@ import org.springframework.security.web.util.matcher.RequestHeaderRequestMatcher
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.session.web.http.CookieSerializer;
 import org.springframework.session.web.http.DefaultCookieSerializer;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @EnableWebSecurity
 @Configuration
 public class SecurityConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
-
-    @Autowired
-    private ClientRegistrationRepository clientRegistrationRepository;
 
     @Autowired
     private AdminOnlyFilter adminOnlyFilter;
@@ -46,10 +43,16 @@ public class SecurityConfig {
     @Value("${app.session.cookie-path:/}")
     private String cookiePath;
 
+    @Value("${app.session.cookie-name:SESSION}")
+    private String cookieName;
+
+    @Value("${app.keycloak-issuer-uri}")
+    private String keycloakIssuerUri;
+
     @Bean
     public CookieSerializer cookieSerializer() {
         DefaultCookieSerializer s = new DefaultCookieSerializer();
-        s.setCookieName("SESSION");
+        s.setCookieName(cookieName);
         s.setSameSite(cookieSameSite);
         s.setUseSecureCookie(cookieSecure);
         s.setCookiePath(cookiePath);
@@ -59,7 +62,8 @@ public class SecurityConfig {
     @Bean
     public CookieCsrfTokenRepository csrfTokenRepository() {
         CookieCsrfTokenRepository repo = CookieCsrfTokenRepository.withHttpOnlyFalse();
-        repo.setCookieCustomizer(cookie -> cookie.sameSite("Strict"));
+        // Same path as the session cookie so apps on a shared domain don't overwrite each other
+        repo.setCookieCustomizer(cookie -> cookie.sameSite("Strict").path(cookiePath));
         return repo;
     }
 
@@ -120,38 +124,33 @@ public class SecurityConfig {
             .logout(log -> log
                 .logoutSuccessHandler(oidcLogoutSuccessHandler())
                 .invalidateHttpSession(true)
-                .deleteCookies("SESSION")
+                .deleteCookies(cookieName)
             )
             .build();
     }
 
+    // RP-initiated logout built from the public issuer (no discovery metadata available)
     private LogoutSuccessHandler oidcLogoutSuccessHandler() {
-        OidcClientInitiatedLogoutSuccessHandler oidcHandler =
-                new OidcClientInitiatedLogoutSuccessHandler(this.clientRegistrationRepository);
-        oidcHandler.setPostLogoutRedirectUri(frontendUrl + "/");
-        oidcHandler.setDefaultTargetUrl(frontendUrl + "/");
-
-        // XHR (SPA) → 200 JSON com logoutUrl; navegação normal → 302 tradicional
         return (request, response, authentication) -> {
-            String requestedWith = request.getHeader("X-Requested-With");
-            boolean isXhr = "XMLHttpRequest".equals(requestedWith);
-
-            if (!isXhr) {
-                oidcHandler.onLogoutSuccess(request, response, authentication);
-                return;
+            String redirect = frontendUrl + "/";
+            String logoutUrl = redirect;
+            if (authentication != null && authentication.getPrincipal() instanceof OidcUser oidcUser) {
+                logoutUrl = UriComponentsBuilder
+                        .fromUriString(keycloakIssuerUri + "/protocol/openid-connect/logout")
+                        .queryParam("id_token_hint", oidcUser.getIdToken().getTokenValue())
+                        .queryParam("post_logout_redirect_uri", redirect)
+                        .encode()
+                        .toUriString();
             }
 
-            // Reusa a lógica do OidcClientInitiatedLogoutSuccessHandler pra montar a URL
-            // sem redirecionar: wrap num response fake que só coleta o Location.
-            LocationCapturingResponse capture = new LocationCapturingResponse(response);
-            oidcHandler.onLogoutSuccess(request, capture, authentication);
-
-            String logoutUrl = capture.getCapturedLocation();
-            if (logoutUrl == null) logoutUrl = frontendUrl + "/";
-
-            response.setStatus(HttpStatus.OK.value());
-            response.setContentType("application/json");
-            response.getWriter().write("{\"logoutUrl\":\"" + logoutUrl.replace("\"", "\\\"") + "\"}");
+            // XHR (SPA) gets 200 JSON with logoutUrl; normal navigation gets a 302
+            if ("XMLHttpRequest".equals(request.getHeader("X-Requested-With"))) {
+                response.setStatus(HttpStatus.OK.value());
+                response.setContentType("application/json");
+                response.getWriter().write("{\"logoutUrl\":\"" + logoutUrl.replace("\"", "\\\"") + "\"}");
+            } else {
+                response.sendRedirect(logoutUrl);
+            }
         };
     }
 }

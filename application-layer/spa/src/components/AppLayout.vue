@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
 import BrandMark from '@/components/BrandMark.vue'
+import { BASE, withBase } from '@/utils/basePath'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -65,7 +66,7 @@ const fazerLogout = async () => {
   const match = document.cookie.match(new RegExp('(^| )XSRF-TOKEN=([^;]+)'))
   const csrfToken = match ? decodeURIComponent(match[2]) : ''
   try {
-    const res = await fetch('/api/logout', {
+    const res = await fetch(withBase('api/logout'), {
       method: 'POST',
       headers: {
         'X-XSRF-TOKEN': csrfToken,
@@ -74,13 +75,13 @@ const fazerLogout = async () => {
       credentials: 'include',
     })
     if (!res.ok) {
-      window.location.href = '/'
+      window.location.href = BASE
       return
     }
     const { logoutUrl } = await res.json()
-    window.location.href = logoutUrl || '/'
+    window.location.href = logoutUrl || BASE
   } catch {
-    window.location.href = '/'
+    window.location.href = BASE
   }
 }
 </script>
