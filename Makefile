@@ -7,6 +7,11 @@ ENV_FILE  := $(REPO_ROOT)/.env
 # Nome da rede docker compartilhada entre composes.
 DOCKER_NETWORK := app-net
 
+# Espera maxima (s) no up. Depois de um clean o Keycloak importa o realm e cria
+# o schema do zero. Sobrescreva na chamada: make up KEYCLOAK_WAIT_S=600
+KEYCLOAK_WAIT_S ?= 300
+SERVICE_WAIT_S  ?= 180
+
 # Composes de infra e serviços.
 INFRA_COMPOSE := $(REPO_ROOT)/docker-compose.yml
 SERVICE_COMPOSES := \
@@ -106,13 +111,13 @@ up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 	done
 	@printf "$(CYAN)Bootstrap MinIO (bucket + access key)...$(RESET)\n"
 	@$(MAKE) --no-print-directory init-minio
-	@printf "$(CYAN)Aguardando keycloak healthy (pode levar 30-60s no primeiro boot)...$(RESET)\n"
-	@for i in $$(seq 1 60); do \
+	@printf "$(CYAN)Aguardando keycloak healthy (ate $(KEYCLOAK_WAIT_S)s; primeiro boot apos clean e o mais lento)...$(RESET)\n"
+	@for i in $$(seq 1 $$(( $(KEYCLOAK_WAIT_S) / 2 ))); do \
 		if docker inspect --format '{{.State.Health.Status}}' iot-keycloak 2>/dev/null | grep -q healthy; then \
-			printf "$(GREEN)OK$(RESET) keycloak healthy\n"; break; \
+			printf "$(GREEN)OK$(RESET) keycloak healthy em ~$$(( i * 2 ))s\n"; break; \
 		fi; \
-		if [ $$i -eq 60 ]; then \
-			printf "$(RED)ERRO:$(RESET) keycloak nao ficou healthy em 120s. Rode $(CYAN)docker logs iot-keycloak$(RESET) pra investigar.\n"; \
+		if [ $$i -eq $$(( $(KEYCLOAK_WAIT_S) / 2 )) ]; then \
+			printf "$(RED)ERRO:$(RESET) keycloak nao ficou healthy em $(KEYCLOAK_WAIT_S)s. Rode $(CYAN)docker logs iot-keycloak$(RESET) pra investigar.\n"; \
 			exit 1; \
 		fi; \
 		sleep 2; \
@@ -122,8 +127,8 @@ up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 	@# e nao continua puxando CPU pros seguintes.
 	@for f in $(SERVICE_COMPOSES); do \
 		printf "$(CYAN)=== up: $$f (aguardando healthy)$(RESET)\n"; \
-		if ! docker compose --env-file $(ENV_FILE) -f $$f up -d --wait --wait-timeout 120; then \
-			printf "$(RED)FALHOU:$(RESET) $$f nao ficou healthy em 120s.\n"; \
+		if ! docker compose --env-file $(ENV_FILE) -f $$f up -d --wait --wait-timeout $(SERVICE_WAIT_S); then \
+			printf "$(RED)FALHOU:$(RESET) $$f nao ficou healthy em $(SERVICE_WAIT_S)s.\n"; \
 			printf "Debug: $(CYAN)docker logs \$$(docker compose -f $$f ps -q | head -1)$(RESET)\n"; \
 			exit 1; \
 		fi; \
@@ -167,6 +172,29 @@ status:  ## Status detalhado (health + restarts) de todos containers do stack
 		else \
 			printf "  \033[33m%-20s\033[0m (nao existe)\n" "$$base"; \
 		fi; \
+	done
+
+rebuild: check-env net  ## Rebuild + recria so os servicos citados. Uso: make rebuild SVC=spa (ou SVC="bff spa")
+	@if [ -z "$(SVC)" ]; then \
+		printf "$(RED)ERRO:$(RESET) especifique o servico. Ex: $(CYAN)make rebuild SVC=spa$(RESET) (govapi, agent-mqtt, event-handler, datalogger, bff, spa)\n"; \
+		exit 1; \
+	fi
+	@for svc in $(SVC); do \
+		found=; \
+		for f in $(SERVICE_COMPOSES); do \
+			if docker compose --env-file $(ENV_FILE) -f $$f config --services 2>/dev/null | grep -qx "$$svc"; then \
+				found=$$f; break; \
+			fi; \
+		done; \
+		if [ -z "$$found" ]; then \
+			printf "$(RED)ERRO:$(RESET) servico '$$svc' nao existe em nenhum compose de app\n"; exit 1; \
+		fi; \
+		printf "$(CYAN)=== rebuild: $$svc ===$(RESET)\n"; \
+		docker compose --env-file $(ENV_FILE) -f $$found build $$svc || exit 1; \
+		if ! docker compose --env-file $(ENV_FILE) -f $$found up -d --wait --wait-timeout $(SERVICE_WAIT_S) $$svc; then \
+			printf "$(RED)FALHOU:$(RESET) $$svc nao ficou healthy em $(SERVICE_WAIT_S)s\n"; exit 1; \
+		fi; \
+		printf "$(GREEN)OK$(RESET) $$svc no ar\n"; \
 	done
 
 logs:  ## Logs em tempo real de UM container. Uso: make logs SVC=iot-govapi
