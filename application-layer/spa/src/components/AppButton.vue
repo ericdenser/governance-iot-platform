@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineProps<{
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'danger-ghost'
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
   disabled?: boolean
@@ -85,6 +85,16 @@ defineProps<{
 .ghost:hover:not(:disabled) {
   background: var(--panel);
   color: var(--text);
+}
+
+/* Secondary destructive action: red text, no fill */
+.danger-ghost {
+  background: transparent;
+  color: var(--danger);
+  border-color: transparent;
+}
+.danger-ghost:hover:not(:disabled) {
+  background: var(--danger-dim);
 }
 
 /* Spinner */

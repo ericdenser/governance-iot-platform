@@ -5,6 +5,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
 import ChipSelector from '@/components/ChipSelector.vue'
+import StatusLabel from '@/components/StatusLabel.vue'
 import { firmwareApi } from '@/services/firmware'
 import { sensorsApi } from '@/services/sensors'
 import { groupsApi } from '@/services/groups'
@@ -18,7 +19,7 @@ import type {
 } from '@/types/models'
 import { errorMessage, errorMessageFromBlob } from '@/utils/errors'
 import { toast } from '@/composables/useToast'
-import { absoluteTime, relativeTime } from '@/utils/format'
+import { absoluteTime } from '@/utils/format'
 import { chipLabel, chipOf } from '@/utils/chips'
 
 const authStore = useAuthStore()
@@ -51,21 +52,13 @@ const chipFirmwares = computed(() =>
   firmwares.value.filter(fw => chipOf(fw.targetChip) === selectedChip.value)
 )
 
-// Provisioning em grupo proprio no topo; o resto e firmware operacional
-const sections = computed(() => [
-  {
-    key: 'provisioning',
-    title: 'Provisioning',
-    items: chipFirmwares.value.filter(fw => fw.provisioningFirmware),
-    empty: `Nenhum firmware de provisioning para ${chipLabel(selectedChip.value)}`,
-  },
-  {
-    key: 'operational',
-    title: 'Operational',
-    items: chipFirmwares.value.filter(fw => !fw.provisioningFirmware),
-    empty: `Nenhum firmware operational para ${chipLabel(selectedChip.value)}`,
-  },
-])
+const operationalFirmwares = computed(() =>
+  chipFirmwares.value.filter(fw => !fw.provisioningFirmware)
+)
+
+// Last activity: newest version upload, or creation when there is no version yet
+const updatedAt = (fw: FirmwareResponseDTO) => fw.latestVersion?.uploadedAt ?? fw.createdAt
+const fmtDate = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
 
 const provisioningFirmware = computed(() =>
   chipFirmwares.value.find(fw => fw.provisioningFirmware) ?? null
@@ -237,53 +230,70 @@ onMounted(async () => {
 
 <template>
   <AppLayout>
-    <AppCard>
-      <template #actions>
-        <div class="actions-row">
-          <ChipSelector v-model="selectedChip" />
-          <template v-if="canCreate">
-            <AppButton size="lg" variant="secondary" @click="openPackage">Provisionar</AppButton>
-            <AppButton size="lg" variant="primary" @click="openCreate(false)">Novo Firmware</AppButton>
-          </template>
-        </div>
-      </template>
+    <div class="toolbar">
+      <ChipSelector v-model="selectedChip" />
+      <div v-if="canCreate" class="toolbar-actions">
+        <AppButton variant="secondary" @click="openPackage">Provisionar</AppButton>
+        <AppButton variant="primary" @click="openCreate(false)">Novo firmware</AppButton>
+      </div>
+    </div>
 
-      <div v-if="loading" class="empty">Carregando...</div>
-      <table v-else class="tbl">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>Última versão</th>
-            <th>Grupo</th>
-            <th>Enviado por</th>
-            <th>Criado</th>
-          </tr>
-        </thead>
-        <tbody v-for="section in sections" :key="section.key">
-          <tr class="group-row">
-            <td colspan="5">
-              {{ section.title }}
-            </td>
-          </tr>
-          <tr v-for="fw in section.items" :key="fw.firmwareId" class="tbl-row" @click="goToDetail(fw.firmwareId)">
-            <td class="font-medium">{{ fw.firmwareName }}</td>
-            <td>
-              <span v-if="fw.latestVersion" class="mono">v{{ fw.latestVersion.version }}</span>
-              <span v-else class="text-muted">—</span>
-            </td>
-            <td class="text-sm">
-              <span v-if="!fw.ownerGroupId" class="owner-platform">Plataforma</span>
-              <span v-else class="owner-group">{{ groupName(fw.ownerGroupId) }}</span>
-            </td>
-            <td class="text-sm">{{ fw.createdByUsername ?? '—' }}</td>
-            <td class="text-muted text-sm" :title="absoluteTime(fw.createdAt)">{{ relativeTime(fw.createdAt) }}</td>
-          </tr>
-          <tr v-if="!section.items.length">
-            <td colspan="5" class="empty-row">{{ section.empty }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </AppCard>
+    <div v-if="loading" class="empty">Carregando...</div>
+    <template v-else>
+      <!-- Only one provisioning firmware per chip: a single line instead of a table -->
+      <section class="block">
+        <h3 class="block-title">Provisioning</h3>
+        <button v-if="provisioningFirmware" type="button" class="prov-line" @click="goToDetail(provisioningFirmware.firmwareId)">
+          <span class="font-medium">{{ provisioningFirmware.firmwareName }}</span>
+          <span v-if="provisioningFirmware.latestVersion" class="mono">v{{ provisioningFirmware.latestVersion.version }}</span>
+          <StatusLabel v-if="provisioningFirmware.latestVersion" kind="firmware" :code="provisioningFirmware.latestVersion.status" no-icon />
+          <span class="text-muted" :title="absoluteTime(updatedAt(provisioningFirmware))">atualizado em {{ fmtDate(updatedAt(provisioningFirmware)) }}</span>
+          <span class="chevron">→</span>
+        </button>
+        <p v-else class="prov-empty">
+          Nenhum firmware de provisioning para {{ chipLabel(selectedChip) }}.
+          <button v-if="authStore.isAdmin" type="button" class="link-btn" @click="openCreate(true)">Cadastrar</button>
+        </p>
+      </section>
+
+      <section class="block">
+        <h3 class="block-title">Operational <span class="count">{{ operationalFirmwares.length }}</span></h3>
+        <AppCard no-padding>
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Última versão</th>
+                <th>Versões</th>
+                <th>Grupo</th>
+                <th>Atualizado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="fw in operationalFirmwares" :key="fw.firmwareId" class="tbl-row" @click="goToDetail(fw.firmwareId)">
+                <td class="font-medium">{{ fw.firmwareName }}</td>
+                <td>
+                  <template v-if="fw.latestVersion">
+                    <span class="mono">v{{ fw.latestVersion.version }}</span>
+                    <StatusLabel kind="firmware" :code="fw.latestVersion.status" no-icon class="ver-status" />
+                  </template>
+                  <span v-else class="text-muted">—</span>
+                </td>
+                <td class="text-muted">{{ fw.versionsCount }}</td>
+                <td>
+                  <span v-if="!fw.ownerGroupId" class="text-muted">Plataforma</span>
+                  <span v-else>{{ groupName(fw.ownerGroupId) }}</span>
+                </td>
+                <td class="text-muted" :title="absoluteTime(updatedAt(fw))">{{ fmtDate(updatedAt(fw)) }}</td>
+              </tr>
+              <tr v-if="!operationalFirmwares.length">
+                <td colspan="5" class="empty-row">Nenhum firmware operational para {{ chipLabel(selectedChip) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </AppCard>
+      </section>
+    </template>
 
     <!-- ── Create Firmware modal ────────────────────────────────────────────── -->
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
@@ -466,18 +476,34 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.actions-row { display: flex; gap: var(--space-2); }
-.ml-1 { margin-left: var(--space-1); }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-6); }
+.toolbar-actions { display: flex; gap: var(--space-2); }
+
+.block + .block { margin-top: var(--space-6); }
+.block-title { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0 0 var(--space-2); }
+.count { font-weight: 400; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+
+.prov-line {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  color: var(--text); font-family: var(--font-sans); font-size: var(--text-sm); text-align: left;
+  cursor: pointer; transition: border-color var(--transition);
+}
+.prov-line:hover { border-color: var(--border-strong); }
+.prov-line .chevron { margin-left: auto; color: var(--text-muted); }
+.prov-line:hover .chevron { color: var(--accent); }
+.prov-empty { font-size: var(--text-sm); color: var(--text-muted); margin: 0; padding: var(--space-3) 0; }
+.link-btn { background: none; border: none; padding: 0; margin-left: var(--space-1); color: var(--accent); font: inherit; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
 
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
-.tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: var(--space-3) var(--space-4); text-align: left; white-space: nowrap; }
+.tbl td { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); font-size: var(--text-sm); }
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
-
-.group-row td { padding: var(--space-5) 0 var(--space-2); border-top: none; font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
-tbody:first-of-type .group-row td { padding-top: var(--space-1); }
-.empty-row { padding: var(--space-3) 0; color: var(--text-muted); font-size: var(--text-sm); }
+.ver-status { margin-left: var(--space-2); font-size: var(--text-xs); }
+.empty-row { color: var(--text-muted); }
 
 .mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; color: var(--text); }
@@ -486,8 +512,6 @@ tbody:first-of-type .group-row td { padding-top: var(--space-1); }
 .text-danger { color: var(--danger); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 
-.owner-platform { font-size: var(--text-xs); background: var(--accent-dim); color: var(--primary); border-radius: var(--radius-sm); padding: 1px 6px; font-weight: 500; }
-.owner-group { font-size: var(--text-xs); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1px 6px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); width: 520px; max-width: 94vw; max-height: 85vh; display: flex; flex-direction: column; gap: var(--space-4); overflow-y: auto; }

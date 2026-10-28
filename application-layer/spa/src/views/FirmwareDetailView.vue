@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
 import StatusLabel from '@/components/StatusLabel.vue'
 import AppButton from '@/components/AppButton.vue'
 import { firmwareApi } from '@/services/firmware'
@@ -78,7 +77,10 @@ const detailVersion = ref<FirmwareVersionResponseDTO | null>(null)
 const detailDevices = ref<DeviceSummaryDTO[]>([])
 const loadingDetailDevices = ref(false)
 
+const detailSummary = ref<FirmwareVersionSummaryDTO | null>(null)
+
 const openVersionDetail = async (versionSummary: FirmwareVersionSummaryDTO) => {
+  detailSummary.value = versionSummary
   detailVersion.value = null
   showDetail.value = true
   loadingDetailDevices.value = true
@@ -164,6 +166,7 @@ const deploying = ref(false)
 const deployError = ref('')
 
 const openDeploy = async (versionSummary: FirmwareVersionSummaryDTO) => {
+  showDetail.value = false
   deployVersionId.value = versionSummary.versionId
   deployVersionString.value = versionSummary.version
   selectedDeployIds.value = new Set()
@@ -201,6 +204,7 @@ const doDeploy = async () => {
 
 // ── Deprecate version ────────────────────────────────────────────────────────
 const doDeprecate = async (v: FirmwareVersionSummaryDTO) => {
+  showDetail.value = false
   const ok = await confirm({
     title: `Deprecar versão v${v.version}?`,
     message: 'Esta ação é IRREVERSÍVEL. Para desfazer, será necessário subir uma nova versão com o fix.',
@@ -222,6 +226,7 @@ const reuploadTarget = ref<FirmwareVersionSummaryDTO | null>(null)
 const reuploadingId = ref<string | null>(null)
 
 const openReupload = (v: FirmwareVersionSummaryDTO) => {
+  showDetail.value = false
   reuploadTarget.value = v
   reuploadInput.value?.click()
 }
@@ -247,6 +252,7 @@ const onReuploadFile = async (e: Event) => {
 
 // ── Delete version / firmware ────────────────────────────────────────────────
 const doDeleteVersion = async (v: FirmwareVersionSummaryDTO) => {
+  showDetail.value = false
   const ok = await confirm({
     title: `Excluir versão v${v.version}?`,
     message: 'Isso deletará também o binário do storage. Ação irreversível.',
@@ -261,6 +267,8 @@ const doDeleteVersion = async (v: FirmwareVersionSummaryDTO) => {
     toast.error(errorMessage(e, 'Erro ao excluir versão.'))
   }
 }
+
+const canDeploy = (v: FirmwareVersionSummaryDTO) => v.status !== 'DEPRECATED' && v.status !== 'CORRUPTED'
 
 const doDeleteFirmware = async () => {
   if (!firmware.value) return
@@ -300,63 +308,56 @@ onMounted(async () => {
         <div>
           <button class="back-btn" @click="router.push('/firmware')">← Firmware</button>
           <h1 class="firmware-name">{{ firmware.firmwareName }}</h1>
-          <div class="firmware-meta">
-            <span v-if="!firmware.ownerGroupId" class="owner-platform">Plataforma</span>
-            <span v-else class="owner-group">{{ groupName(firmware.ownerGroupId) }}</span>
-            <AppBadge v-if="firmware.provisioningFirmware" variant="primary">Provisioning</AppBadge>
-            <span class="text-muted text-sm">criado por {{ firmware.createdByUsername ?? '—' }} em {{ fmt(firmware.createdAt) }}</span>
-          </div>
+          <!-- Plain meta line, items separated by dots -->
+          <p class="firmware-meta">
+            <span :class="{ 'text-muted': !firmware.ownerGroupId }">{{ groupName(firmware.ownerGroupId) }}</span>
+            <span v-if="firmware.provisioningFirmware">Provisioning</span>
+            <span class="mono">{{ chipLabel(firmware.targetChip) }}</span>
+            <span>criado por {{ firmware.createdByUsername ?? '—' }} em {{ fmt(firmware.createdAt) }}</span>
+          </p>
           <p v-if="firmware.description" class="firmware-desc">{{ firmware.description }}</p>
         </div>
         <div class="header-actions">
-          <AppButton v-if="canDelete" variant="danger" size="lg" @click="doDeleteFirmware">Excluir Firmware</AppButton>
-          <AppButton v-if="canManage" variant="primary" size="lg" @click="openUpload">+ Nova Versão</AppButton>
+          <AppButton v-if="canDelete" variant="danger-ghost" @click="doDeleteFirmware">Excluir firmware</AppButton>
+          <AppButton v-if="canManage" variant="primary" @click="openUpload">Nova versão</AppButton>
         </div>
       </div>
 
-      <!-- Versions table -->
-      <AppCard title="Versões">
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>Versão</th>
-              <th>Status</th>
-              <th>Enviado por</th>
-              <th>Data upload</th>
-              <th>Deploys</th>
-              <th>Tamanho</th>
-              <th v-if="canManage">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="v in versions" :key="v.versionId" class="tbl-row" @click="openVersionDetail(v)">
-              <td class="mono font-medium">v{{ v.version }}</td>
-              <td><StatusLabel kind="firmware" :code="v.status" no-icon /></td>
-              <td class="text-sm">{{ v.createdByUsername ?? '—' }}</td>
-              <td class="text-muted text-sm" :title="fmt(v.uploadedAt)">{{ fmtDate(v.uploadedAt) }}</td>
-              <td class="text-sm">{{ v.deployCount }}</td>
-              <td class="text-muted text-sm">{{ bytes(v.sizeBytes) }}</td>
-              <td v-if="canManage" @click.stop>
-                <div class="row-actions">
-                  <AppButton size="sm" variant="secondary"
-                    :disabled="v.status === 'DEPRECATED' || v.status === 'CORRUPTED'"
-                    @click="openDeploy(v)">Deploy</AppButton>
-                  <AppButton v-if="v.status === 'CORRUPTED'" size="sm" variant="primary"
-                    :loading="reuploadingId === v.versionId"
-                    @click="openReupload(v)">Reenviar binário</AppButton>
-                  <AppButton v-if="v.status !== 'DEPRECATED'" size="sm" variant="danger"
-                    @click="doDeprecate(v)">Deprecar</AppButton>
-                  <AppButton v-if="v.status === 'DEPRECATED' && canDelete" size="sm" variant="danger"
-                    @click="doDeleteVersion(v)">Excluir</AppButton>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!versions.length">
-              <td :colspan="canManage ? 7 : 6" class="empty">Nenhuma versão registrada</td>
-            </tr>
-          </tbody>
-        </table>
-      </AppCard>
+      <section>
+        <h3 class="block-title">Versões <span class="count">{{ versions.length }}</span></h3>
+        <AppCard no-padding>
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Versão</th>
+                <th>Status</th>
+                <th>Deploys</th>
+                <th>Tamanho</th>
+                <th>Enviado por</th>
+                <th>Data</th>
+                <th v-if="canManage"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="v in versions" :key="v.versionId" class="tbl-row" @click="openVersionDetail(v)">
+                <td class="mono font-medium">v{{ v.version }}</td>
+                <td><StatusLabel kind="firmware" :code="v.status" no-icon /></td>
+                <td>{{ v.deployCount }}</td>
+                <td class="text-muted">{{ bytes(v.sizeBytes) }}</td>
+                <td>{{ v.createdByUsername ?? '—' }}</td>
+                <td class="text-muted" :title="fmt(v.uploadedAt)">{{ fmtDate(v.uploadedAt) }}</td>
+                <!-- Other version actions live in the version modal -->
+                <td v-if="canManage" class="cell-action" @click.stop>
+                  <AppButton v-if="canDeploy(v)" size="sm" variant="secondary" @click="openDeploy(v)">Deploy</AppButton>
+                </td>
+              </tr>
+              <tr v-if="!versions.length">
+                <td :colspan="canManage ? 7 : 6" class="empty">Nenhuma versão registrada</td>
+              </tr>
+            </tbody>
+          </table>
+        </AppCard>
+      </section>
 
       <input ref="reuploadInput" type="file" accept=".bin" style="display:none" @change="onReuploadFile" />
     </div>
@@ -372,8 +373,8 @@ onMounted(async () => {
               <div class="detail-sub">
                 <span class="mono">v{{ detailVersion.version }}</span>
                 <StatusLabel kind="firmware" :code="detailVersion.status" no-icon />
-                <AppBadge v-if="detailVersion.provisioningFirmware" variant="primary">Provisioning</AppBadge>
-                <span class="text-muted text-xs">{{ groupName(detailVersion.ownerGroupId) }}</span>
+                <span v-if="detailVersion.provisioningFirmware">Provisioning</span>
+                <span :class="{ 'text-muted': !detailVersion.ownerGroupId }">{{ groupName(detailVersion.ownerGroupId) }}</span>
               </div>
             </div>
           </div>
@@ -432,7 +433,17 @@ onMounted(async () => {
         </template>
 
         <div class="modal-footer">
+          <div v-if="canManage && detailSummary" class="footer-left">
+            <AppButton v-if="detailSummary.status === 'CORRUPTED'" variant="secondary"
+              :loading="reuploadingId === detailSummary.versionId" @click="openReupload(detailSummary)">Reenviar binário</AppButton>
+            <AppButton v-if="detailSummary.status !== 'DEPRECATED'" variant="danger-ghost"
+              @click="doDeprecate(detailSummary)">Deprecar</AppButton>
+            <AppButton v-if="detailSummary.status === 'DEPRECATED' && canDelete" variant="danger-ghost"
+              @click="doDeleteVersion(detailSummary)">Excluir versão</AppButton>
+          </div>
           <AppButton variant="ghost" @click="showDetail = false">Fechar</AppButton>
+          <AppButton v-if="canManage && detailSummary && canDeploy(detailSummary)" variant="primary"
+            @click="openDeploy(detailSummary)">Deploy</AppButton>
         </div>
       </div>
     </div>
@@ -542,19 +553,22 @@ onMounted(async () => {
 .header-actions { display: flex; gap: var(--space-2); }
 .back-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: var(--text-sm); margin-bottom: var(--space-2); padding: 0; }
 .back-btn:hover { color: var(--text); }
-.firmware-name { font-size: var(--text-2xl); font-weight: 700; color: var(--text); margin: 0 0 var(--space-2); }
-.firmware-meta { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.firmware-name { font-size: var(--text-xl); font-weight: 600; color: var(--text); margin: 0 0 var(--space-1); }
+.firmware-meta { display: flex; align-items: center; flex-wrap: wrap; margin: 0; font-size: var(--text-sm); color: var(--text-secondary); }
+.firmware-meta > span + span::before,
+.detail-sub > * + *::before { content: '·'; margin: 0 var(--space-2); color: var(--text-muted); }
 .firmware-desc { color: var(--text-muted); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
 
-.owner-platform { font-size: var(--text-xs); background: var(--accent-dim); color: var(--primary); border-radius: var(--radius-sm); padding: 2px 8px; font-weight: 500; }
-.owner-group { font-size: var(--text-xs); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 8px; }
 
+.block-title { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0 0 var(--space-2); }
+.count { font-weight: 400; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; white-space: nowrap; }
-.tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
+.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: var(--space-3) var(--space-4); text-align: left; white-space: nowrap; }
+.tbl td { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); font-size: var(--text-sm); }
+.cell-action { text-align: right; width: 1%; white-space: nowrap; }
+.footer-left { display: flex; gap: var(--space-2); margin-right: auto; }
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
-.row-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 
 .mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; color: var(--text); }
@@ -574,7 +588,7 @@ onMounted(async () => {
 
 /* Detail modal (nível 3) */
 .detail-modal-header { display: flex; align-items: flex-start; justify-content: space-between; }
-.detail-sub { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); flex-wrap: wrap; }
+.detail-sub { display: flex; align-items: center; margin-top: var(--space-1); flex-wrap: wrap; font-size: var(--text-sm); color: var(--text-secondary); }
 .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
 .detail-full { grid-column: 1 / -1; }
 .detail-item { display: flex; flex-direction: column; gap: 2px; }
