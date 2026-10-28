@@ -74,6 +74,8 @@ govapi:
 
 keycloak:
   url: ${KEYCLOAK_ADMIN_URL}
+  # Keycloak on the docker network (same as the issuer outside a reverse proxy)
+  internal-issuer-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}
 
 device:
   token:
@@ -134,7 +136,3 @@ management:
 logging:
   level:
     org.springframework.web.servlet.DispatcherServlet: DEBUG
-
-# Keycloak reachable on the docker network (same as the issuer outside a reverse proxy)
-keycloak:
-  internal-issuer-uri: ${KEYCLOAK_INTERNAL_ISSUER_URI:${KEYCLOAK_ISSUER_URI}}
