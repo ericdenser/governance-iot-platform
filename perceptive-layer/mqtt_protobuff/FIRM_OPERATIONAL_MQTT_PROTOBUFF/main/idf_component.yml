@@ -3,11 +3,8 @@ dependencies:
   espressif/mdns: '*'
   esp-idf-lib/ds3231: '*'
   esp-idf-lib/bmp280: '*'
-  espressif/esp_lvgl_port:
-    version: ^2.6.0
-    rules:
-      - if: "$CONFIG{GOV_LCD_ENABLED} == True"
-  lvgl/lvgl:
-    version: ^9.2.0
-    rules:
-      - if: "$CONFIG{GOV_LCD_ENABLED} == True"
+  # Sempre baixados: dependencia condicional ao Kconfig faz o component manager
+  # apagar o LVGL na primeira passada (sem sdkconfig) e quebrar o menuconfig.
+  # Com GOV_LCD_ENABLED=n nada referencia o LVGL e o linker descarta.
+  espressif/esp_lvgl_port: ^2.6.0
+  lvgl/lvgl: ^9.2.0
