@@ -8,6 +8,7 @@ import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import BatteryBar from '@/components/BatteryBar.vue'
 import EventList from '@/components/EventList.vue'
+import ErrorList from '@/components/ErrorList.vue'
 import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
@@ -57,13 +58,6 @@ const deleting = ref(false)
 const liveBatteryMv = computed(() => liveState.value?.batteryMv ?? device.value?.batteryMv ?? null)
 const liveBatteryTs = computed(() => liveState.value?.batteryTs ?? device.value?.batteryTs ?? null)
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
-
-const errExpanded = ref<Set<string>>(new Set())
-const toggleErrExpand = (id: string) => {
-  const next = new Set(errExpanded.value)
-  if (next.has(id)) next.delete(id); else next.add(id)
-  errExpanded.value = next
-}
 
 const loadCommands = async () => {
   const r = await devicesApi.getCommands(deviceId, cmdPage.value)
@@ -210,59 +204,30 @@ onMounted(async () => {
         </div>
       </AppCard>
 
-      <!-- COMMANDS -->
-      <AppCard v-if="tab === 'commands'" title="Histórico de Comandos">
+      <!-- Same lists as the Commands/Events/Errors pages, filtered to this device -->
+      <AppCard v-if="tab === 'commands'">
         <table class="tbl">
-          <thead><tr><th>Tipo</th><th>Status</th><th>Enviado em</th><th>Concluído em</th></tr></thead>
+          <thead><tr><th>Comando</th><th>Status</th><th>Enviado em</th><th>Concluído em</th></tr></thead>
           <tbody>
             <tr v-for="c in commands" :key="c.commandId">
-              <td class="mono text-sm">{{ c.commandType }}</td>
+              <td><span class="code-tag">{{ c.commandType }}</span></td>
               <td><StatusLabel kind="command" :code="c.status" /></td>
               <td class="text-muted text-sm">{{ fmt(c.sentAt) }}</td>
               <td class="text-muted text-sm">{{ fmt(c.completedAt) }}</td>
             </tr>
-            <tr v-if="!commands.length"><td colspan="4" class="empty">Nenhum comando</td></tr>
+            <tr v-if="!commands.length"><td colspan="4" class="empty">Nenhum comando enviado</td></tr>
           </tbody>
         </table>
         <AppPagination :page="cmdPage" :total-pages="cmdTotal" @change="changeCmdPage" />
       </AppCard>
 
-      <!-- EVENTS -->
-      <AppCard v-if="tab === 'events'" title="Eventos">
+      <AppCard v-if="tab === 'events'">
         <EventList :events="events" :show-device="false" />
         <AppPagination :page="evPage" :total-pages="evTotal" @change="changeEvPage" />
       </AppCard>
 
-      <!-- ERRORS -->
-      <AppCard v-if="tab === 'errors'" title="Erros">
-        <table class="tbl">
-          <thead><tr><th>Código</th><th>Status</th><th>Reportado em</th><th>Fixado em</th><th>Detalhes</th></tr></thead>
-          <tbody>
-            <template v-for="e in errors" :key="e.errorId">
-              <tr>
-                <td><span class="code-tag">{{ e.error }}</span></td>
-                <td><StatusLabel kind="error" :code="e.status" /></td>
-                <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
-                <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
-                <td>
-                  <button v-if="e.details || e.message" class="expand-btn" :class="{ open: errExpanded.has(e.errorId) }" @click="toggleErrExpand(e.errorId)">
-                    <span>{{ errExpanded.has(e.errorId) ? '▴' : '▾' }}</span>
-                  </button>
-                  <span v-else class="text-muted text-sm">—</span>
-                </td>
-              </tr>
-              <tr v-if="errExpanded.has(e.errorId)" class="detail-row">
-                <td colspan="5">
-                  <div class="detail-box">
-                    <p v-if="e.message" class="detail-message">{{ e.message }}</p>
-                    <pre v-if="e.details" class="detail-pre">{{ e.details }}</pre>
-                  </div>
-                </td>
-              </tr>
-            </template>
-            <tr v-if="!errors.length"><td colspan="5" class="empty">Nenhum erro</td></tr>
-          </tbody>
-        </table>
+      <AppCard v-if="tab === 'errors'">
+        <ErrorList :errors="errors" :show-device="false" />
         <AppPagination :page="errPage" :total-pages="errTotal" @change="changeErrPage" />
       </AppCard>
     </div>
@@ -302,10 +267,4 @@ onMounted(async () => {
 .text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; }
 
-.expand-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 6px; cursor: pointer; color: var(--text-muted); font-size: var(--text-xs); transition: border-color var(--transition), color var(--transition); }
-.expand-btn:hover, .expand-btn.open { border-color: var(--primary); color: var(--primary); }
-.detail-row td { background: var(--panel); border-top: none; padding: 0; }
-.detail-box { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border-left: 2px solid var(--danger); margin: var(--space-1) 0 var(--space-2); }
-.detail-message { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
-.detail-pre { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); white-space: pre-wrap; word-break: break-all; margin: 0; line-height: 1.5; }
 </style>

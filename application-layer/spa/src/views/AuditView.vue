@@ -4,7 +4,8 @@ import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import StatusLabel from '@/components/StatusLabel.vue'
 import AppPagination from '@/components/AppPagination.vue'
-import { auditApi } from '@/services/audit'
+import FilterBar from '@/components/FilterBar.vue'
+import { auditApi, type AuditFilters } from '@/services/audit'
 import type { AuditLogResponseDTO } from '@/types/models'
 
 
@@ -15,9 +16,21 @@ const totalPages = ref(1)
 
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 
+// AuditAction enum in the govApi
+const ACTIONS = [
+  'COMMAND_SENT', 'FIRMWARE_UPLOADED', 'FIRMWARE_DEPLOYED', 'FIRMWARE_DEPRECATED', 'FIRMWARE_SET_PROVISIONING',
+  'FIRMWARE_BINARY_REUPLOADED', 'FIRMWARE_DELETED', 'FIRMWARE_VERSION_DELETED', 'DEVICE_REVOKED',
+  'FLASH_PACKAGE_GENERATED', 'SENSOR_REGISTERED', 'GROUP_CREATED', 'GROUP_DELETED', 'DEVICE_ADDED_TO_GROUP',
+  'DEVICE_REMOVED_FROM_GROUP', 'USER_ASSIGNED_TO_GROUP', 'USER_REMOVED_FROM_GROUP', 'DEVICE_DELETED',
+]
+const filters = ref<AuditFilters>({})
+const action = ref('')
+
+const applyFilters = (f: AuditFilters) => { filters.value = f; page.value = 0; load() }
+const changeAction = () => { page.value = 0; load() }
 
 const load = async () => {
-  const r = await auditApi.list(page.value)
+  const r = await auditApi.list(page.value, { ...filters.value, action: action.value })
   entries.value = r.data.content ?? []
   totalPages.value = r.data.page?.totalPages ?? 1
 }
@@ -29,6 +42,13 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 <template>
   <AppLayout>
     <AppCard>
+      <FilterBar class="filters" placeholder="Buscar por ID, usuário ou ID do alvo" @change="applyFilters">
+        <select v-model="action" class="field" @change="changeAction">
+          <option value="">Todas as ações</option>
+          <option v-for="a in ACTIONS" :key="a" :value="a">{{ a }}</option>
+        </select>
+      </FilterBar>
+
       <div v-if="loading" class="empty">Carregando...</div>
       <table v-else class="tbl">
         <thead>
@@ -70,6 +90,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .text-sm { font-size: var(--text-sm); }
 .text-xs { font-size: var(--text-xs); }
 .text-muted { color: var(--text-muted); }
+.filters { margin-bottom: var(--space-5); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 .action-cell { white-space: nowrap; }
 .actor-id { display: block; }

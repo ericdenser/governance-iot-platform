@@ -8,6 +8,7 @@ import type {
   CommandRecordResponseDTO,
   EventRegistryResponseDTO,
   ErrorRecordResponseDTO,
+  PendingDeviceDTO,
   Page,
 } from '@/types/models'
 
@@ -36,6 +37,9 @@ export const devicesApi = {
   },
   mapPositions: () => api.get<DeviceMapPositionDTO[]>('/devices/map-positions'),
   get: (id: string) => api.get<DeviceDetailDTO>(`/devices/${id}`),
+  // Only for devices that never activated (status PENDING)
+  discardPending: (id: string) => api.delete(`/devices/${id}/pending`),
+  listPending: () => api.get<PendingDeviceDTO[]>('/devices/pending'),
   getCommands: (id: string, page = 0) =>
     api.get<Page<CommandRecordResponseDTO>>(`/devices/${id}/commands?page=${page}&size=10&sort=sentAt,desc`),
   getEvents: (id: string, page = 0) =>

@@ -2,7 +2,7 @@
 // Pra renomear um status ou mudar a cor dele na tela, edite so aqui.
 
 export type StatusTone = 'success' | 'warning' | 'danger' | 'accent' | 'neutral'
-export type StatusIcon = 'check' | 'cross' | 'half' | 'pending' | 'dash' | 'alert'
+export type StatusIcon = 'check' | 'cross' | 'half' | 'pending' | 'dash' | 'alert' | 'none'
 
 export interface StatusInfo {
   label: string
@@ -57,7 +57,7 @@ const MAP: Record<StatusKind, Record<string, StatusInfo>> = {
   },
   // Status de tratamento de um erro reportado pelo device
   error: {
-    PENDING:      s('Em aberto', 'warning', 'pending'),
+    PENDING:      s('Em aberto', 'warning', 'none'),
     FIXED:        s('Resolvido', 'success', 'check'),
     RETRY_FAILED: s('Falhou ao resolver', 'danger', 'cross'),
     NOT_FIXABLE:  s('Sem correção', 'danger', 'cross'),
@@ -114,3 +114,6 @@ export const statusInfo = (kind: StatusKind, code: string | null | undefined): S
 
 export const statusText = (kind: StatusKind, code: string | null | undefined): string =>
   statusInfo(kind, code).label
+
+// Known codes of a kind, e.g. for filter selects
+export const statusCodes = (kind: StatusKind): string[] => Object.keys(MAP[kind])

@@ -17,7 +17,7 @@ import type {
   CreateFirmwareRequest,
   TargetChip,
 } from '@/types/models'
-import { errorMessage, errorMessageFromBlob } from '@/utils/errors'
+import { errorMessage } from '@/utils/errors'
 import { toast } from '@/composables/useToast'
 import { absoluteTime } from '@/utils/format'
 import { chipLabel, chipOf } from '@/utils/chips'
@@ -62,14 +62,6 @@ const fmtDate = (iso: string | null | undefined) => iso ? new Date(iso).toLocale
 
 const provisioningFirmware = computed(() =>
   chipFirmwares.value.find(fw => fw.provisioningFirmware) ?? null
-)
-
-const provisioningLatestDeprecated = computed(() =>
-  provisioningFirmware.value?.latestVersion?.status === 'DEPRECATED'
-)
-
-const provisioningReady = computed(() =>
-  !!provisioningFirmware.value && !provisioningLatestDeprecated.value
 )
 
 const load = async () => {
@@ -168,54 +160,6 @@ const doCreate = async () => {
   } finally { creating.value = false }
 }
 
-// ── Generate Flash Package ────────────────────────────────────────────────────
-const showPackage = ref(false)
-const packageForm = ref({ deviceName: '', wifiSsid: '', wifiPass: '', groupId: '' })
-const showWifiPass = ref(false)
-const generating = ref(false)
-const generateError = ref('')
-
-const openPackage = () => {
-  packageForm.value = { deviceName: '', wifiSsid: '', wifiPass: '', groupId: '' }
-  showWifiPass.value = false
-  generateError.value = ''
-  showPackage.value = true
-}
-
-const doGenerate = async () => {
-  const { deviceName, wifiSsid, wifiPass, groupId } = packageForm.value
-  if (!deviceName.trim() || !wifiSsid.trim() || !wifiPass.trim()) {
-    generateError.value = 'Todos os campos são obrigatórios.'
-    return
-  }
-  generating.value = true; generateError.value = ''
-  try {
-    const payload: { deviceName: string; wifiSsid: string; wifiPass: string; groupId?: string; chip: TargetChip } = {
-      deviceName: deviceName.trim(),
-      wifiSsid: wifiSsid.trim(),
-      wifiPass: wifiPass.trim(),
-      chip: selectedChip.value,
-    }
-    if (groupId) payload.groupId = groupId
-    const r = await firmwareApi.generatePackage(payload)
-    const url = URL.createObjectURL(r.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `flash_package_${deviceName.trim().replace(/[^a-zA-Z0-9_-]/g, '_')}.zip`
-    a.click()
-    URL.revokeObjectURL(url)
-    showPackage.value = false
-    toast.success(`Pacote de flash gerado para "${deviceName.trim()}"`)
-  } catch (e: unknown) {
-    generateError.value = await errorMessageFromBlob(e, 'Erro ao gerar pacote.')
-  } finally { generating.value = false }
-}
-
-const openCreateFromPackage = () => {
-  showPackage.value = false
-  openCreate(true)
-}
-
 // ── Navigation ────────────────────────────────────────────────────────────────
 const goToDetail = (firmwareId: string) => router.push(`/firmware/${firmwareId}`)
 
@@ -233,7 +177,6 @@ onMounted(async () => {
     <div class="toolbar">
       <ChipSelector v-model="selectedChip" />
       <div v-if="canCreate" class="toolbar-actions">
-        <AppButton variant="secondary" @click="openPackage">Provisionar</AppButton>
         <AppButton variant="primary" @click="openCreate(false)">Novo firmware</AppButton>
       </div>
     </div>
@@ -381,97 +324,6 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ── Provisionar modal ─────────────────────────────────────────── -->
-    <div v-if="showPackage" class="modal-overlay" @click.self="showPackage = false">
-      <div class="modal">
-        <h3 class="modal-title">Provisionar dispositivo <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></h3>
-
-        <!-- Estado 1: nenhum firmware de provisioning cadastrado -->
-        <div v-if="!provisioningFirmware" class="prov-warning">
-          <svg class="warn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <div>
-            <p class="warn-title">Sem firmware de provisionamento registrado para {{ chipLabel(selectedChip) }}</p>
-            <p class="warn-desc" v-if="authStore.isAdmin">É necessário ter um firmware marcado como provisioning para gerar o pacote flash.</p>
-            <p class="warn-desc" v-else>É necessário ter um firmware marcado como provisioning. Contate um administrador para registrar um.</p>
-          </div>
-        </div>
-
-        <!-- Estado 2: existe provisioning, mas versão mais recente está DEPRECATED -->
-        <div v-else-if="provisioningLatestDeprecated" class="prov-warning">
-          <svg class="warn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <div>
-            <p class="warn-title">Versão de provisionamento está obsoleta</p>
-            <p class="warn-desc">
-              A versão mais recente do firmware <strong>{{ provisioningFirmware.firmwareName }}</strong>
-              (<span class="mono">v{{ provisioningFirmware.latestVersion?.version }}</span>) foi marcada como DEPRECATED
-              e não pode ser usada para provisionar novos dispositivos.
-              Contate um administrador para subir uma versão corrigida.
-            </p>
-          </div>
-        </div>
-
-        <!-- Estado 3: provisioning OK -->
-        <div v-else class="prov-ok">
-          <svg class="ok-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          <div>
-            <p class="ok-title">Firmware de provisionamento</p>
-            <p class="ok-desc">
-              <span class="mono">{{ provisioningFirmware.firmwareName }}</span>
-              <span class="mono text-muted" v-if="provisioningFirmware.latestVersion"> v{{ provisioningFirmware.latestVersion.version }}</span>
-            </p>
-          </div>
-        </div>
-
-        <template v-if="provisioningReady">
-          <div class="form-group">
-            <label>Nome do dispositivo</label>
-            <input v-model="packageForm.deviceName" class="field" placeholder="ex: sensor-armazem-01" />
-          </div>
-          <div class="form-group">
-            <label>SSID da rede WiFi</label>
-            <input v-model="packageForm.wifiSsid" class="field" placeholder="MinhaRede" autocomplete="off" />
-          </div>
-          <div class="form-group">
-            <label>Senha WiFi</label>
-            <div class="pass-row">
-              <input v-model="packageForm.wifiPass" :type="showWifiPass ? 'text' : 'password'"
-                class="field pass-field" placeholder="••••••••" autocomplete="new-password" />
-              <button class="pass-toggle" @click="showWifiPass = !showWifiPass" type="button">
-                {{ showWifiPass ? 'Ocultar' : 'Mostrar' }}
-              </button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Grupo <span class="text-muted">(opcional)</span></label>
-            <select v-model="packageForm.groupId" class="field">
-              <option value="">Nenhum</option>
-              <option v-for="g in groups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
-            </select>
-          </div>
-        </template>
-
-        <p v-if="generateError" class="field-error">{{ generateError }}</p>
-        <div class="modal-footer" :style="!provisioningFirmware && authStore.isAdmin ? 'flex-direction: row-reverse; justify-content: flex-start; gap: 100px' : ''">
-          <AppButton v-if="!provisioningFirmware && authStore.isAdmin" variant="primary" @click="openCreateFromPackage">
-            Registrar Firmware de Provisionamento
-          </AppButton>
-          <div style="display:flex;gap:8px">
-            <AppButton variant="ghost" @click="showPackage = false">Cancelar</AppButton>
-            <AppButton v-if="provisioningReady" variant="primary" :loading="generating" @click="doGenerate">
-              Gerar e Baixar
-            </AppButton>
-          </div>
-        </div>
-      </div>
-    </div>
   </AppLayout>
 </template>
 
@@ -523,10 +375,6 @@ onMounted(async () => {
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
 .field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; resize: vertical; width: 100%; box-sizing: border-box; }
 .field:focus { border-color: var(--primary); }
-.pass-row { display: flex; gap: var(--space-2); }
-.pass-field { flex: 1; }
-.pass-toggle { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-xs); color: var(--text-muted); cursor: pointer; white-space: nowrap; }
-.pass-toggle:hover { border-color: var(--primary); color: var(--text); }
 .checkbox-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text); cursor: pointer; }
 .field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 
@@ -536,12 +384,4 @@ onMounted(async () => {
 .pin-label { font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
 .pin-field { width: 60px; padding: 4px 8px; resize: none; }
 
-.prov-warning { display: flex; gap: var(--space-3); padding: var(--space-4); background: var(--danger-dim); border: 1px solid var(--danger); border-radius: var(--radius-md); }
-.warn-icon { width: 20px; height: 20px; color: var(--danger); flex-shrink: 0; margin-top: 2px; }
-.warn-title { font-size: var(--text-sm); font-weight: 600; color: var(--danger); margin: 0 0 4px; }
-.warn-desc { font-size: var(--text-xs); color: var(--text-muted); margin: 0; line-height: 1.5; }
-.prov-ok { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--success-dim); border: 1px solid var(--border); border-radius: var(--radius-md); align-items: center; }
-.ok-icon { width: 18px; height: 18px; color: var(--success); flex-shrink: 0; }
-.ok-title { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
-.ok-desc { display: flex; align-items: center; gap: var(--space-2); margin: 4px 0 0; font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 </style>

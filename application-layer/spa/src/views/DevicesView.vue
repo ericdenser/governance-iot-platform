@@ -3,8 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppButton from '@/components/AppButton.vue'
-import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import { devicesApi } from '@/services/devices'
 import { useLiveStateStore } from '@/stores/liveState'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import StatusLabel from '@/components/StatusLabel.vue'
@@ -27,8 +27,8 @@ type MergedDevice = DeviceSummaryDTO & {
 }
 
 // ── State ────────────────────────────────────────────────────────────────
-const authStore = useAuthStore()
 const liveStore = useLiveStateStore()
+const authStore = useAuthStore()
 const router = useRouter()
 
 const devices = ref<DeviceSummaryDTO[]>([])
@@ -208,9 +208,8 @@ onMounted(load)
         <p class="page-sub">{{ totalElements }} registrados · {{ counts.online }} online · {{ counts.warning }} com alerta</p>
       </div>
       <div class="header-right">
-        <AppButton v-if="authStore.isAdmin" variant="primary" size="md"
-                   @click="router.push('/firmware')">
-          Provisionar
+        <AppButton v-if="authStore.canProvision" variant="primary" size="md" @click="router.push('/provisioning')">
+          Provisionar dispositivo
         </AppButton>
       </div>
     </div>

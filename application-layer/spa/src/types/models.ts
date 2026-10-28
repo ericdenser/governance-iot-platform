@@ -375,6 +375,18 @@ export interface Page<T> {
   }
 }
 
+// ── Provisioning ────────────────────────────────────────────────────────────
+export interface PendingDeviceDTO {
+  deviceId: string
+  name: string
+  chip: TargetChip
+  status: DeviceStatus
+  createdAt: string
+  createdByUsername: string | null
+  groupNames: string[]
+  tokenExpiresAt: string | null
+}
+
 // ── Telemetria (datalogger / Influx) ────────────────────────────────────────
 export interface TelemetryPointDTO {
   timestamp: string

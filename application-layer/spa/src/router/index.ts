@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/devices/:id', name: 'device-detail', meta: { title: 'Dispositivo' }, component: () => import('../views/DeviceDetailView.vue') },
     { path: '/analytics', name: 'analytics',  meta: { title: 'Métricas' },    component: () => import('../views/AnalyticsView.vue') },
     { path: '/map',      name: 'map',        meta: { title: 'Mapa' },         component: () => import('../views/MapView.vue') },
+    { path: '/provisioning', name: 'provisioning', meta: { title: 'Provisionamento', requiresProvisioner: true }, component: () => import('../views/ProvisioningView.vue') },
     { path: '/firmware', name: 'firmware',   meta: { title: 'Firmware' },     component: () => import('../views/FirmwareView.vue') },
     { path: '/firmware/:firmwareId', name: 'firmware-detail', meta: { title: 'Firmware' }, component: () => import('../views/FirmwareDetailView.vue') },
     { path: '/sensors',  name: 'sensors',    meta: { title: 'Sensores' },     component: () => import('../views/SensorsView.vue') },
@@ -36,6 +37,11 @@ router.beforeEach(async (to, _, next) => {
   if (to.name !== 'login' && !authStore.isAuthenticated) return next({ name: 'login' })
   if (to.name === 'login' && authStore.isAuthenticated) return next({ name: 'dashboard' })
   if (to.meta.requiresAdmin && !authStore.isAdmin) return next({ name: 'dashboard' })
+  if (to.meta.requiresProvisioner) {
+    // Refresh: group roles may have changed during the session
+    await authStore.loadManagedGroups(true)
+    if (!authStore.canProvision) return next({ name: 'dashboard' })
+  }
 
   if (to.name === 'dashboard' && authStore.isAuthenticated) {
     const saved = sessionStorage.getItem(NEXT_STORAGE_KEY)

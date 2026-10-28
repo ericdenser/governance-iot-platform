@@ -2,34 +2,42 @@
 import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import StatusLabel from '@/components/StatusLabel.vue'
 import AppPagination from '@/components/AppPagination.vue'
-import { errorsApi } from '@/services/errors'
+import ErrorList from '@/components/ErrorList.vue'
+import FilterBar from '@/components/FilterBar.vue'
+import { errorsApi, type ErrorFilters } from '@/services/errors'
+import { statusCodes, statusText } from '@/utils/statusLabels'
 import type { ErrorRecordResponseDTO } from '@/types/models'
 
+// Device error codes (DeviceError enum in the govApi)
+const ERROR_CODES = [
+  'NVS_INIT_FAIL', 'NVS_WRITE_FAIL', 'NVS_COMMIT_FAIL', 'NVS_LOAD_FAIL', 'WIFI_TIMEOUT', 'TIME_SYNC_FAIL',
+  'PROVISIONING_REQUEST_FAIL', 'PROVISIONING_RESPONSE_INVALID', 'MQTT_INIT_FAIL', 'MQTT_DISCONNECTED',
+  'CRASH_ROLLBACK', 'OTA_FAIL', 'HTTP_INIT_FAIL', 'HTTP_REQUEST_FAIL', 'MEMORY_ALOCATION_FAIL',
+  'KEY_GENERATION_FAIL', 'CSR_SUBJECT_NAME_FAIL', 'CSR_TO_PEM_FAIL', 'KEY_MISSING', 'CERT_MISSING',
+  'TOPIC_SUBSCRIBE_FAIL', 'WATCHDOG_INIT_FAIL', 'WATCHDOG_ADD_FAIL', 'WATCHDOG_REMOVE_FAIL',
+  'TOPIC_FORMAT_INVALID', 'COMMAND_RESPONSE_INVALID', 'DEVICE_ID_MISSING', 'WIFI_CREDENTIALS_MISSING',
+  'FIRMWARE_VERSION_MISSING', 'FIRMWARE_ROLLBACK_FAILED', 'UNKNOWN',
+]
 
 const errors = ref<ErrorRecordResponseDTO[]>([])
 const loading = ref(true)
 const page = ref(0)
 const totalPages = ref(1)
-const expanded = ref<Set<string>>(new Set())
-
-
-const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
-
-const toggleExpand = (id: string) => {
-  const next = new Set(expanded.value)
-  if (next.has(id)) next.delete(id); else next.add(id)
-  expanded.value = next
-}
+const filters = ref<ErrorFilters>({})
+const code = ref('')
+const status = ref('')
+const statuses = statusCodes('error')
 
 const load = async () => {
-  expanded.value = new Set()
-  const r = await errorsApi.list(page.value)
+  const r = await errorsApi.list(page.value, { ...filters.value, code: code.value, status: status.value })
   errors.value = r.data.content ?? []
   totalPages.value = r.data.page?.totalPages ?? 1
 }
+
 const changePage = (p: number) => { page.value = p; load() }
+const applyFilters = (f: ErrorFilters) => { filters.value = f; page.value = 0; load() }
+const changeSelect = () => { page.value = 0; load() }
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })
 </script>
@@ -37,71 +45,25 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 <template>
   <AppLayout>
     <AppCard>
-      <div v-if="loading" class="empty">Carregando...</div>
-      <table v-else class="tbl">
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Status</th>
-            <th>Dispositivo</th>
-            <th>Reportado em</th>
-            <th>Fixado em</th>
-            <th>Detalhes</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="e in errors" :key="e.errorId">
-            <tr>
-              <td><span class="code-tag">{{ e.error }}</span></td>
-              <td><StatusLabel kind="error" :code="e.status" /></td>
-              <td class="text-sm">{{ e.deviceName ?? e.deviceId ?? '—' }}</td>
-              <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
-              <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
-              <td>
-                <button
-                  v-if="e.details || e.message"
-                  class="expand-btn"
-                  :class="{ open: expanded.has(e.errorId) }"
-                  @click="toggleExpand(e.errorId)"
-                  :title="expanded.has(e.errorId) ? 'Fechar detalhes' : 'Ver detalhes'"
-                >
-                  <span class="expand-icon">{{ expanded.has(e.errorId) ? '▴' : '▾' }}</span>
-                </button>
-                <span v-else class="text-muted text-sm">—</span>
-              </td>
-            </tr>
-            <tr v-if="expanded.has(e.errorId)" class="detail-row">
-              <td colspan="6">
-                <div class="detail-box">
-                  <p v-if="e.message" class="detail-message">{{ e.message }}</p>
-                  <pre v-if="e.details" class="detail-pre">{{ e.details }}</pre>
-                </div>
-              </td>
-            </tr>
-          </template>
-          <tr v-if="!errors.length"><td colspan="6" class="empty">Nenhum erro encontrado</td></tr>
-        </tbody>
-      </table>
+      <FilterBar class="filters" placeholder="Buscar por ID, dispositivo ou mensagem" @change="applyFilters">
+        <select v-model="code" class="field" @change="changeSelect">
+          <option value="">Todos os códigos</option>
+          <option v-for="c in ERROR_CODES" :key="c" :value="c">{{ c }}</option>
+        </select>
+        <select v-model="status" class="field" @change="changeSelect">
+          <option value="">Todos os status</option>
+          <option v-for="s in statuses" :key="s" :value="s">{{ statusText('error', s) }}</option>
+        </select>
+      </FilterBar>
 
+      <div v-if="loading" class="empty">Carregando...</div>
+      <ErrorList v-else :errors="errors" />
       <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />
     </AppCard>
   </AppLayout>
 </template>
 
 <style scoped>
-.tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
-.tbl td { padding: var(--space-3) 12px var(--space-3) 0; border-top: 1px solid var(--border); vertical-align: middle; }
-.text-sm { font-size: var(--text-sm); }
-.text-muted { color: var(--text-muted); }
+.filters { margin-bottom: var(--space-5); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
-
-.expand-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 6px; cursor: pointer; color: var(--text-muted); font-size: var(--text-xs); transition: border-color var(--transition), color var(--transition); }
-.expand-btn:hover, .expand-btn.open { border-color: var(--primary); color: var(--primary); }
-.expand-icon { display: inline-block; }
-
-.detail-row td { background: var(--panel); border-top: none; padding: 0; }
-.detail-box { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border-left: 2px solid var(--danger); margin: var(--space-1) 0 var(--space-2); }
-.detail-message { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
-.detail-pre { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); white-space: pre-wrap; word-break: break-all; margin: 0; line-height: 1.5; }
 </style>
