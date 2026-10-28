@@ -232,7 +232,9 @@ services:
 
 networks:
   app-net:
-    external: true
+    # Same network name the service composes and the Makefile read from .env
+    name: ${DOCKER_NETWORK:-app-net}
+    external: ${DOCKER_NETWORK_EXTERNAL:-true}
 
 volumes:
   postgres_data:
