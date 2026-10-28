@@ -116,10 +116,30 @@ public class DeviceController {
                 .toEntity(byte[].class);
 
         String disposition = upstream.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
+        // SPA uses the device id to follow the activation
+        String deviceId = upstream.getHeaders().getFirst("X-Device-Id");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition != null ? disposition : "attachment; filename=\"flash_package.zip\"")
+                .header("X-Device-Id", deviceId != null ? deviceId : "")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(upstream.getBody());
+    }
+
+    @GetMapping("/pending")
+    public ResponseEntity<String> listPending() {
+        return restClient.get()
+                .uri(govApiUrl + "/provisioning/pending")
+                .retrieve()
+                .toEntity(String.class);
+    }
+
+    @DeleteMapping("/{deviceId}/pending")
+    public ResponseEntity<Void> discardPending(@PathVariable String deviceId) {
+        restClient.delete()
+                .uri(govApiUrl + "/provisioning/" + deviceId + "/pending")
+                .retrieve()
+                .toBodilessEntity();
+        return ResponseEntity.noContent().build();
     }
 
     private String queryString(HttpServletRequest request) {

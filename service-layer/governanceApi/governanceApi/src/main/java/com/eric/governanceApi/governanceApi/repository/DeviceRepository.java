@@ -145,4 +145,5 @@ public interface DeviceRepository extends JpaRepository<Device, Long>{
             WHERE fv.id = :versionId OR pv.id = :versionId OR av.id = :versionId
             """)
     long countDevicesReferencingVersion(@Param("versionId") Long versionId);
+    List<Device> findByStatusIn(java.util.Collection<com.eric.governanceApi.governanceApi.enums.status.DeviceStatus> statuses);
 }

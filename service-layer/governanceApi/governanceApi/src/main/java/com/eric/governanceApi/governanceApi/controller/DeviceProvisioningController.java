@@ -6,6 +6,7 @@ import com.eric.governanceApi.governanceApi.model.request.GenerateFlashPackageRe
 import com.eric.governanceApi.governanceApi.model.request.RegisterDeviceRequest;
 import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.model.response.DeviceCredentialsDTO;
+import com.eric.governanceApi.governanceApi.model.response.PendingDeviceDTO;
 import com.eric.governanceApi.governanceApi.service.DeviceProvisioningService;
 import com.eric.governanceApi.governanceApi.service.DeviceRevokeService;
 import com.eric.governanceApi.governanceApi.service.FlashPackageService;
@@ -20,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -61,6 +63,18 @@ public class DeviceProvisioningController {
         return ResponseEntity.ok(ApiResponse.success(credentials, httpRequest.getRequestURI()));
     }
 
+    @GetMapping("/pending")
+    public ResponseEntity<ApiResponse<List<PendingDeviceDTO>>> listPending(HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(ApiResponse.success(provisioningService.listPending(), httpRequest.getRequestURI()));
+    }
+
+    // Removes a device that never activated, with its token
+    @DeleteMapping("/{deviceId}/pending")
+    public ResponseEntity<Void> discardPending(@PathVariable String deviceId) {
+        provisioningService.discardPending(deviceId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{deviceId}/revoke")
     public ResponseEntity<ApiResponse<String>> revokeDevice(@PathVariable String deviceId, HttpServletRequest httpRequest) throws Exception {
         String msg = deviceRevokeService.revokeDevice(deviceId);
@@ -69,12 +83,13 @@ public class DeviceProvisioningController {
 
     @PostMapping("/generate-package")   
     public ResponseEntity<byte[]> generateFlashPackage(@Valid @RequestBody GenerateFlashPackageRequest request) throws IOException {
-        byte[] zip = flashPackageService.generatePackage(request);
+        FlashPackageService.GeneratedPackage pkg = flashPackageService.generatePackage(request);
         String filename = "flash_package_" + request.deviceName().replaceAll("[^a-zA-Z0-9_-]", "_") + ".zip";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header("X-Device-Id", pkg.deviceId())
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(zip);
+                .body(pkg.zip());
     }
 
 

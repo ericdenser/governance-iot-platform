@@ -1,5 +1,6 @@
 package com.eric.governanceApi.governanceApi.repository;
 
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -14,7 +15,7 @@ import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
 import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
 
-public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long> {
+public interface ErrorRecordRepository extends JpaRepository<ErrorRecord, Long>, JpaSpecificationExecutor<ErrorRecord> {
 
     @Query("SELECT e FROM ErrorRecord e WHERE e.device.deviceId = :deviceId AND e.error = :error AND e.status = :status ORDER BY e.reportedAt DESC LIMIT 1")
     Optional<ErrorRecord> findLatestByDeviceAndErrorAndStatus(

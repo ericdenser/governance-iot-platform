@@ -2,12 +2,16 @@ package com.eric.governanceApi.governanceApi.service;
 
 import com.eric.governanceApi.governanceApi.audit.Auditable;
 import com.eric.governanceApi.governanceApi.enums.AuditAction;
+import com.eric.governanceApi.governanceApi.enums.DeviceError;
 import com.eric.governanceApi.governanceApi.enums.ErrorCode;
+import com.eric.governanceApi.governanceApi.enums.status.ErrorStatus;
 import com.eric.governanceApi.governanceApi.enums.status.DeviceStatus;
 import com.eric.governanceApi.governanceApi.enums.status.FirmwareStatus;
 import com.eric.governanceApi.governanceApi.exceptions.ConflictException;
 import com.eric.governanceApi.governanceApi.exceptions.ResourceNotFoundException;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
+import com.eric.governanceApi.governanceApi.model.entity.ErrorRecord;
+import com.eric.governanceApi.governanceApi.model.entity.EventRegistry;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceIdNameProjection;
 import com.eric.governanceApi.governanceApi.model.projection.DeviceSummaryProjection;
@@ -23,10 +27,12 @@ import com.eric.governanceApi.governanceApi.repository.DeviceGroupMembershipRepo
 import com.eric.governanceApi.governanceApi.repository.DeviceRepository;
 import com.eric.governanceApi.governanceApi.repository.ErrorRecordRepository;
 import com.eric.governanceApi.governanceApi.repository.EventRegistryRepository;
+import com.eric.governanceApi.governanceApi.repository.SearchSpecs;
 import com.eric.governanceApi.governanceApi.service.HotStateService.LiveState;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,7 +41,10 @@ import java.util.Map;
 import java.util.Set;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -213,26 +222,41 @@ public class DeviceService {
     }
 
     @Transactional(readOnly = true)
-    public Page<EventRegistryResponseDTO> listAllEvents(Pageable pageable) {
-        if (isAdmin()) {
-            return eventRegistryRepository.findAllByOrderByOcurredAtDesc(pageable)
-                    .map(EventRegistryResponseDTO::from);
+    // Search on id/device, type and date; non-admins only see devices of their groups
+    public Page<EventRegistryResponseDTO> listAllEvents(String q, String type, Instant from, Instant to, Pageable pageable) {
+        Specification<EventRegistry> spec = Specification.allOf(
+                SearchSpecs.textSearch(q, "eventId", "device.name", "device.deviceId"),
+                SearchSpecs.equal("eventName", type == null || type.isBlank() ? null : type),
+                SearchSpecs.between("ocurredAt", from, to));
+        if (!isAdmin()) {
+            String actorId = currentActorId();
+            if (actorId == null) return Page.empty(pageable);
+            spec = spec.and(SearchSpecs.deviceInUserGroups(actorId));
         }
-        String actorId = currentActorId();
-        if (actorId == null) return Page.empty(pageable);
-        return eventRegistryRepository.findAllByKeycloakUserId(actorId, pageable)
+        return eventRegistryRepository.findAll(spec, newestFirst(pageable, "ocurredAt"))
                 .map(EventRegistryResponseDTO::from);
     }
 
+    private static Pageable newestFirst(Pageable pageable, String attr) {
+        if (pageable.getSort().isSorted()) return pageable;
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, attr));
+    }
+
     @Transactional(readOnly = true)
-    public Page<ErrorRecordResponseDTO> listAllErrors(Pageable pageable) {
-        if (isAdmin()) {
-            return errorRecordRepository.findAllByOrderByReportedAtDesc(pageable)
-                    .map(ErrorRecordResponseDTO::from);
+    // Search on id/device/message, error code, status and date; non-admins only see their groups
+    public Page<ErrorRecordResponseDTO> listAllErrors(String q, DeviceError code, ErrorStatus status,
+                                                      Instant from, Instant to, Pageable pageable) {
+        Specification<ErrorRecord> spec = Specification.allOf(
+                SearchSpecs.textSearch(q, "errorId", "message", "device.name", "device.deviceId"),
+                SearchSpecs.equal("error", code),
+                SearchSpecs.equal("status", status),
+                SearchSpecs.between("reportedAt", from, to));
+        if (!isAdmin()) {
+            String actorId = currentActorId();
+            if (actorId == null) return Page.empty(pageable);
+            spec = spec.and(SearchSpecs.deviceInUserGroups(actorId));
         }
-        String actorId = currentActorId();
-        if (actorId == null) return Page.empty(pageable);
-        return errorRecordRepository.findAllByKeycloakUserId(actorId, pageable)
+        return errorRecordRepository.findAll(spec, newestFirst(pageable, "reportedAt"))
                 .map(ErrorRecordResponseDTO::from);
     }
 

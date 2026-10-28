@@ -34,6 +34,10 @@ public class FlashPackageService {
 
     // ESP8266 (core Arduino 3.1.2, Flash Size 4MB FS:2MB): inicio do LittleFS
     private static final String ESP8266_FS_OFFSET = "0x200000";
+
+    // Erased otadata (0xe000, 8 KB). Without it a board that already ran an OTA keeps
+    // booting the old ota_1 app and ignores the provisioning firmware written to ota_0.
+    private static final int OTADATA_SIZE = 0x2000;
     private static final String LITTLEFS_SCRIPT_RESOURCE = "/scripts/gen_prov_littlefs.py";
 
     @Value("${provisioning.nvs-python-path:python3}")
@@ -57,8 +61,11 @@ public class FlashPackageService {
         this.storageService = storageService;
     }
 
+    // deviceId goes back to the client so it can follow the activation
+    public record GeneratedPackage(byte[] zip, String deviceId) {}
+
     @Auditable(action = AuditAction.FLASH_PACKAGE_GENERATED, targetType = "DEVICE")
-    public byte[] generatePackage(GenerateFlashPackageRequest request) throws IOException {
+    public GeneratedPackage generatePackage(GenerateFlashPackageRequest request) throws IOException {
 
         Path tempDir = Files.createTempDirectory("flash_pkg_");
         try {
@@ -85,7 +92,7 @@ public class FlashPackageService {
                     : buildEsp32Package(request, token.getToken(), deviceId, firmware, firmwarePath, firmwareLabel, tempDir);
 
                 log.info("Package generated for '{}' — firmware='{}'", request.deviceName(), firmwareLabel);
-                return zip;
+                return new GeneratedPackage(zip, deviceId);
             } catch (IOException | RuntimeException e) {
                 provisioningService.discardPendingDevice(deviceId);
                 throw e;
@@ -109,9 +116,15 @@ public class FlashPackageService {
         writeCsv(csvPath, request, token, deviceId, firmware.getVersion());
         generateNvsBin(csvPath, nvsBinPath);
 
+        Path otadataPath = tempDir.resolve("ota_data_initial.bin");
+        byte[] erased = new byte[OTADATA_SIZE];
+        java.util.Arrays.fill(erased, (byte) 0xFF);
+        Files.write(otadataPath, erased);
+
         return buildZip(List.of(
                 new ZipItem(bootloaderPath, "bootloader.bin"),
                 new ZipItem(partTablePath,  "partition-table.bin"),
+                new ZipItem(otadataPath,    "ota_data_initial.bin"),
                 new ZipItem(firmwarePath,   firmwareLabel),
                 new ZipItem(nvsBinPath,     "nvs_device.bin")),
             buildReadme(request.deviceName(), token, firmwareLabel));
@@ -183,7 +196,6 @@ public class FlashPackageService {
                 fw_version,data,string,%s
                 """.formatted(request.wifiSsid(), request.wifiPass(), token, deviceId, firmwareVersion);
 
-        log.info(csv);
         Files.writeString(csvPath, csv);
     }
 
@@ -267,12 +279,14 @@ public class FlashPackageService {
                     0x0     bootloader.bin \\
                     0x8000  partition-table.bin \\
                     0x9000  nvs_device.bin \\
+                    0xe000  ota_data_initial.bin \\
                     0x10000 %s
 
                 Enderecos de flash:
                   Bootloader       -> 0x0
                   Partition table  -> 0x8000
                   NVS              -> 0x9000
+                  OTA data         -> 0xe000  (zerado: garante boot no firmware gravado)
                   Firmware         -> 0x10000
 
                 ATENCAO: nao use erase_flash antes deste comando.

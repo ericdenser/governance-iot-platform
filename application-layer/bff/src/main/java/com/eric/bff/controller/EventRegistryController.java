@@ -1,6 +1,8 @@
 package com.eric.bff.controller;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.URI;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,7 +30,7 @@ public class EventRegistryController {
     @GetMapping
     public ResponseEntity<String> getAllEvents(HttpServletRequest request) {
         return restClient.get()
-                .uri(govApiUrl + "/events" + queryString(request))
+                .uri(URI.create(govApiUrl + "/events" + queryString(request))) // already encoded by the browser, no re-encoding
                 .retrieve()
                 .toEntity(String.class );
     } 
