@@ -14,6 +14,7 @@ services:
         NPM_NO_PROXY: ${NPM_NO_PROXY:-localhost,127.0.0.1}
         VITE_BFF_URL: ${BFF_PUBLIC_URL:-http://localhost:8083}
         VITE_BASE_PATH: ${SPA_BASE_PATH:-/}
+        VITE_CARTO_API_KEY: ${CARTO_API_KEY:-}
     container_name: ${SPA_CONTAINER_NAME:-spa}
     ports:
       - "${SPA_HOST_BIND:-0.0.0.0}:${SPA_HOST_PORT:-5173}:80"

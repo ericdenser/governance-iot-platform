@@ -213,10 +213,11 @@ onMounted(() => {
     zoom: 4,
     scrollWheelZoom: props.scrollWheelZoom,
   })
-  // Basemap CARTO dark matter (mesmo estilo do geomap do Grafana)
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // Basemap CARTO dark matter (mesmo estilo do geomap do Grafana).
+  // Sem chave a CARTO devolve o tile com marca d'agua "API KEY REQUIRED".
+  const cartoKey = import.meta.env.VITE_CARTO_API_KEY
+  L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png${cartoKey ? `?key=${encodeURIComponent(cartoKey)}` : ''}`, {
     maxZoom: 20,
-    subdomains: 'abcd',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(map)
   markerLayer = L.layerGroup().addTo(map)
