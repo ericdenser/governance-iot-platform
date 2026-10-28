@@ -4,8 +4,8 @@ SHELL := /bin/bash
 REPO_ROOT := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 ENV_FILE  := $(REPO_ROOT)/.env
 
-# Nome da rede docker compartilhada entre composes.
-DOCKER_NETWORK := app-net
+# Docker network shared by the composes: same value they read from .env (default app-net)
+DOCKER_NETWORK := $(or $(shell grep -E '^DOCKER_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r'),app-net)
 
 # Espera maxima (s) no up. Depois de um clean o Keycloak importa o realm e cria
 # o schema do zero. Sobrescreva na chamada: make up KEYCLOAK_WAIT_S=600
@@ -53,23 +53,38 @@ check-env:  ## Valida que .env existe e tem os campos obrigatorios
 	fi
 	@printf "$(GREEN)OK$(RESET) .env valido\n"
 
-init-secrets:  ## Gera secrets aleatorios pros clients Keycloak no .env (idempotente)
+init-secrets:  ## Gera todos os secrets vazios ou "changeme" no .env (idempotente)
 	@if [ ! -f "$(ENV_FILE)" ]; then \
 		printf "$(RED)ERRO:$(RESET) .env nao encontrado. Rode $(CYAN)cp .env.example .env$(RESET) antes.\n"; \
 		exit 1; \
 	fi
-	@for var in GOVAPI_CLIENT_SECRET BFF_CLIENT_SECRET AGENT_MQTT_CLIENT_SECRET; do \
+	@# Hex only: the Keycloak realm is rendered with sed, so |, & or quotes would break it.
+	@# MinIO limits: access key 3-20 chars, secret key 8-40 chars.
+	@for var in GOVAPI_CLIENT_SECRET BFF_CLIENT_SECRET AGENT_MQTT_CLIENT_SECRET \
+	            POSTGRES_PASSWORD INFLUX_PASSWORD INFLUX_TOKEN \
+	            MINIO_ROOT_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY; do \
 		current=$$(grep -E "^$$var=" "$(ENV_FILE)" | cut -d= -f2-); \
-		if [ -z "$$current" ] || [ "$$current" = "changeme" ]; then \
-			new=$$(openssl rand -base64 32 | tr -d '=+/\n' | cut -c1-32); \
+		if [ -z "$$current" ] || [ "$$current" = "changeme" ] || [ "$$current" = "changeme-influx-token" ]; then \
+			case $$var in \
+				MINIO_ACCESS_KEY) new="gov$$(openssl rand -hex 8)" ;; \
+				MINIO_*)          new=$$(openssl rand -hex 16) ;; \
+				*)                new=$$(openssl rand -hex 24) ;; \
+			esac; \
 			if grep -qE "^$$var=" "$(ENV_FILE)"; then \
 				sed -i "s|^$$var=.*|$$var=$$new|" "$(ENV_FILE)"; \
 			else \
 				echo "$$var=$$new" >> "$(ENV_FILE)"; \
 			fi; \
-			printf "$(GREEN)OK$(RESET) $$var gerado (32 chars aleatorios)\n"; \
+			printf "$(GREEN)OK$(RESET) $$var gerado\n"; \
 		else \
 			printf "$(YELLOW)SKIP$(RESET) $$var ja setado (nao sobrescreve)\n"; \
+		fi; \
+	done
+	@# Admin passwords are typed by people, so they are not generated here
+	@for var in KEYCLOAK_ADMIN_PASSWORD IOT_ADMIN_PASSWORD; do \
+		current=$$(grep -E "^$$var=" "$(ENV_FILE)" | cut -d= -f2-); \
+		if [ -z "$$current" ] || [ "$$current" = "admin" ]; then \
+			printf "$(RED)ATENCAO:$(RESET) $$var vazio ou 'admin'. Defina uma senha no .env antes do primeiro make up.\n"; \
 		fi; \
 	done
 	@printf "$(CYAN)Secrets prontos.$(RESET) Rode $(CYAN)make up$(RESET) pra subir.\n"
