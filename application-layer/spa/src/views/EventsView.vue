@@ -25,7 +25,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <template>
   <AppLayout>
-    <AppCard title="Eventos" description="Histórico de eventos reportados pelos dispositivos">
+    <AppCard>
       <div v-if="loading" class="empty">Carregando...</div>
       <EventList v-else :events="events" />
       <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />

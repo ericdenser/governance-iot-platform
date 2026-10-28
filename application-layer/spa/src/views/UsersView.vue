@@ -188,7 +188,7 @@ onMounted(load)
 
 <template>
   <AppLayout>
-    <AppCard title="Usuários">
+    <AppCard>
       <template #actions>
         <div class="header-actions">
           <input

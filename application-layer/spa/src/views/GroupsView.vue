@@ -288,7 +288,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
   <AppLayout>
     <div class="groups-grid">
       <!-- Group list -->
-      <AppCard title="Grupos">
+      <AppCard>
         <template #actions>
           <AppButton v-if="authStore.isAdmin" size="md" variant="primary" @click="showCreate = true">Novo Grupo</AppButton>
         </template>

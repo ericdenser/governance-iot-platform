@@ -40,7 +40,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <template>
   <AppLayout>
-    <AppCard title="Sensores" description="Tipos de sensor reconhecidos pelo sistema">
+    <AppCard>
       <template #actions>
         <AppButton v-if="authStore.isAdmin" size="lg" variant="primary" @click="showForm = true">
           Registrar Sensor

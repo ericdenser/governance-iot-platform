@@ -28,7 +28,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <template>
   <AppLayout>
-    <AppCard title="Audit Log" description="Registro de todas as ações administrativas realizadas no sistema">
+    <AppCard>
       <div v-if="loading" class="empty">Carregando...</div>
       <table v-else class="tbl">
         <thead>

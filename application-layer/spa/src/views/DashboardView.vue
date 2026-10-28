@@ -114,20 +114,21 @@ onMounted(async () => {
 
       <TelemetryChart :devices="mergedDevices" />
 
-      <AppCard title="Mapa dos dispositivos" class="panel">
+      <!-- Card inteiro leva ao mapa completo; mapa e filtros param o clique -->
+      <AppCard title="Mapa dos dispositivos" class="panel map-card" role="link" tabindex="0"
+               @click="$router.push('/map')" @keydown.enter="$router.push('/map')">
         <template #actions>
-          <div class="minimap-actions">
+          <div class="minimap-actions" @click.stop>
             <button class="icon-btn" title="Configurar minimapa" @click="showMinimapConfig = !showMinimapConfig">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
             </button>
-            <router-link to="/map" class="map-full-link">Mapa completo →</router-link>
           </div>
         </template>
 
-        <div v-if="showMinimapConfig" class="minimap-config">
+        <div v-if="showMinimapConfig" class="minimap-config" @click.stop>
           <div class="chips">
             <button
               class="chip"
@@ -152,7 +153,7 @@ onMounted(async () => {
           </label>
         </div>
 
-        <div class="minimap">
+        <div class="minimap" @click.stop>
           <DeviceMap
             :status-filter="minimapConfig.statusFilter"
             :auto-fit="minimapConfig.autoFit"
@@ -231,13 +232,11 @@ onMounted(async () => {
 }
 .icon-btn:hover { background: var(--panel); color: var(--text); }
 
-.map-full-link {
-  font-size: var(--text-xs);
-  color: var(--primary);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.map-full-link:hover { text-decoration: underline; }
+.map-card { cursor: pointer; transition: border-color var(--transition); }
+.map-card:hover, .map-card:focus-visible { border-color: var(--border-strong); }
+.map-card :deep(.card-title)::after { content: ' →'; color: var(--text-muted); transition: color var(--transition); }
+.map-card:hover :deep(.card-title)::after { color: var(--accent); }
+.minimap { cursor: default; }
 
 .minimap-config {
   display: flex;

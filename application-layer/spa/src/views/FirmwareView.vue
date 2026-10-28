@@ -237,7 +237,7 @@ onMounted(async () => {
 
 <template>
   <AppLayout>
-    <AppCard title="Firmware">
+    <AppCard>
       <template #actions>
         <div class="actions-row">
           <ChipSelector v-model="selectedChip" />

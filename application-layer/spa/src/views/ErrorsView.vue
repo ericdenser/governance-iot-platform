@@ -36,7 +36,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 <template>
   <AppLayout>
-    <AppCard title="Erros" description="Erros reportados pelos dispositivos">
+    <AppCard>
       <div v-if="loading" class="empty">Carregando...</div>
       <table v-else class="tbl">
         <thead>

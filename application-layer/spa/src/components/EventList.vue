@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import StatusLabel from '@/components/StatusLabel.vue'
 import type { EventRegistryResponseDTO } from '@/types/models'
-import { absoluteTime, relativeTime } from '@/utils/format'
+import { absoluteTime } from '@/utils/format'
 
 withDefaults(defineProps<{
   events: EventRegistryResponseDTO[]
@@ -46,7 +46,7 @@ const toggle = (id: string) => {
             <span v-if="e.resultMessage" class="msg">{{ e.resultMessage }}</span>
             <span v-else class="text-muted">—</span>
           </td>
-          <td class="cell-date text-muted text-sm" :title="absoluteTime(e.occurredAt)">{{ relativeTime(e.occurredAt) }}</td>
+          <td class="cell-date text-muted text-sm">{{ absoluteTime(e.occurredAt) }}</td>
         </tr>
         <tr v-if="!events.length">
           <td :colspan="showDevice ? 5 : 4" class="empty">Nenhum evento encontrado</td>
@@ -67,7 +67,7 @@ const toggle = (id: string) => {
 .col-device     { width: 14%; }
 .col-transition { width: 20%; }
 .col-msg        { width: auto; }
-.col-date       { width: 11%; }
+.col-date       { width: 16%; }
 
 .row { cursor: pointer; }
 .row:hover td { background: var(--muted); }
