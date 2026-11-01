@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.eric.governanceApi.governanceApi.model.request.AssignUserRequest;
@@ -39,9 +40,10 @@ public class GroupController {
         return ResponseEntity.status(HttpStatus.CREATED).body(groupService.createGroup(request));
     }
 
+    // all=true: every group (name/description only for non-members, myRole null)
     @GetMapping
-    public ResponseEntity<List<DeviceGroupResponseDTO>> list() {
-        return ResponseEntity.ok(groupService.listGroups());
+    public ResponseEntity<List<DeviceGroupResponseDTO>> list(@RequestParam(defaultValue = "false") boolean all) {
+        return ResponseEntity.ok(groupService.listGroups(all));
     }
 
     @GetMapping("/{groupId}")

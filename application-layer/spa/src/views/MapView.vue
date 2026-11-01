@@ -2,10 +2,10 @@
 import { ref, watch } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import DeviceMap from '@/components/DeviceMap.vue'
-import type { DeviceStatus } from '@/types/models'
+import { CONN_STATES } from '@/utils/connection'
+import { statusText } from '@/utils/statusLabels'
 
 const STORAGE_KEY = 'map_view_config'
-const ALL_STATUSES: DeviceStatus[] = ['ACTIVE', 'PENDING', 'PROVISIONING', 'COMMAND_PENDING', 'REVOKED', 'ERROR']
 
 interface MapConfig {
   statusFilter: string[]
@@ -18,7 +18,8 @@ const loadConfig = (): MapConfig => {
     if (raw) {
       const c = JSON.parse(raw)
       return {
-        statusFilter: Array.isArray(c.statusFilter) ? c.statusFilter : [],
+        // Old configs stored device statuses; keep only connection states
+        statusFilter: Array.isArray(c.statusFilter) ? c.statusFilter.filter((x: string) => (CONN_STATES as string[]).includes(x)) : [],
         autoFit: c.autoFit !== false,
       }
     }
@@ -50,7 +51,7 @@ const clearFilter = () => { config.value.statusFilter = [] }
             @click="clearFilter"
           >Todos</button>
           <button
-            v-for="s in ALL_STATUSES"
+            v-for="s in CONN_STATES"
             :key="s"
             class="chip"
             :class="{ active: config.statusFilter.includes(s) }"
@@ -58,7 +59,7 @@ const clearFilter = () => { config.value.statusFilter = [] }
             @click="toggleStatus(s)"
           >
             <span class="chip-dot" />
-            {{ s }}
+            {{ statusText('conn', s) }}
           </button>
         </div>
         <div class="toolbar-right">
@@ -133,12 +134,9 @@ const clearFilter = () => { config.value.statusFilter = [] }
   border-radius: 50%;
   background: var(--status-unknown);
 }
-.chip[data-status="ACTIVE"] .chip-dot { background: var(--status-active); }
-.chip[data-status="PENDING"] .chip-dot { background: var(--status-pending); }
-.chip[data-status="PROVISIONING"] .chip-dot { background: var(--status-provisioning); }
-.chip[data-status="COMMAND_PENDING"] .chip-dot { background: var(--status-command-pending); }
-.chip[data-status="REVOKED"] .chip-dot { background: var(--status-revoked); }
-.chip[data-status="ERROR"] .chip-dot { background: var(--status-error); }
+.chip[data-status="online"] .chip-dot { background: var(--status-active); }
+.chip[data-status="offline"] .chip-dot { background: var(--status-unknown); }
+.chip[data-status="pending"] .chip-dot { background: var(--status-pending); }
 
 .toolbar-right {
   display: flex;

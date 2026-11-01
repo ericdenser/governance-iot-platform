@@ -10,6 +10,7 @@ import AppPagination from '@/components/AppPagination.vue'
 import { commandsApi } from '@/services/commands'
 import { devicesApi } from '@/services/devices'
 import { firmwareApi } from '@/services/firmware'
+import { isOnline } from '@/utils/connection'
 import type {
   CommandBatchDTO,
   CommandRecordResponseDTO,
@@ -122,6 +123,19 @@ const openFirmwareModal = async () => {
     firmwareList.value = all.filter(fw => chipOf(fw.targetChip) === selectedChip.value)
   } finally { loadingFirmwares.value = false }
 }
+
+// Picker lists firmwares, each with its versions (newest first)
+const firmwareGroups = computed(() => {
+  const byId = new Map<string, { firmwareId: string; firmwareName: string; versions: DeployableVersionProjection[] }>()
+  for (const fw of firmwareList.value) {
+    let g = byId.get(fw.firmwareId)
+    if (!g) { g = { firmwareId: fw.firmwareId, firmwareName: fw.firmwareName, versions: [] }; byId.set(fw.firmwareId, g) }
+    g.versions.push(fw)
+  }
+  const groups = [...byId.values()]
+  for (const g of groups) g.versions.sort((a, b) => (b.uploadedAt ?? '').localeCompare(a.uploadedAt ?? ''))
+  return groups.sort((a, b) => a.firmwareName.localeCompare(b.firmwareName))
+})
 
 const confirmFirmwareAndSend = async () => {
   if (!pickedFirmware.value) return
@@ -360,7 +374,8 @@ onUnmounted(() => {
                   <span class="dev-name">{{ d.name }}</span>
                   <span class="dev-meta mono">{{ d.firmwareVersion ? 'v' + d.firmwareVersion : '—' }}</span>
                 </div>
-                <span class="status-dot ok"></span>
+                <span class="status-dot" :class="isOnline(d.lastSeen) ? 'ok' : 'off'"
+                  :title="isOnline(d.lastSeen) ? 'Online' : `Offline · visto ${relativeTime(d.lastSeen)}`"></span>
               </label>
             </div>
           </section>
@@ -451,14 +466,20 @@ onUnmounted(() => {
         <div v-if="loadingFirmwares" class="empty">Carregando firmwares...</div>
         <div v-else-if="!firmwareList.length" class="empty">Nenhum firmware disponível para {{ chipLabel(selectedChip) }}</div>
         <div v-else class="fw-list">
-          <button v-for="fw in firmwareList" :key="fw.versionId"
-            class="fw-row"
-            :class="{ selected: pickedFirmware?.versionId === fw.versionId }"
-            @click="pickedFirmware = fw">
-            <span class="fw-name">{{ fw.firmwareName }}</span>
-            <span class="fw-version mono">v{{ fw.version }}</span>
-            <StatusLabel kind="firmware" :code="fw.status" />
-          </button>
+          <section v-for="g in firmwareGroups" :key="g.firmwareId" class="fw-group">
+            <header class="fw-group-head">
+              <span class="fw-name">{{ g.firmwareName }}</span>
+              <span class="fw-group-count mono">{{ g.versions.length }} {{ g.versions.length === 1 ? 'versão' : 'versões' }}</span>
+            </header>
+            <button v-for="fw in g.versions" :key="fw.versionId"
+              class="fw-row"
+              :class="{ selected: pickedFirmware?.versionId === fw.versionId }"
+              @click="pickedFirmware = fw">
+              <span class="fw-version mono">v{{ fw.version }}</span>
+              <span class="fw-date" :title="absoluteTime(fw.uploadedAt)">{{ relativeTime(fw.uploadedAt) }}</span>
+              <StatusLabel kind="firmware" :code="fw.status" />
+            </button>
+          </section>
         </div>
 
         <p v-if="pickedFirmware && sameVersionSelectedCount > 0" class="modal-hint mono warn">
@@ -535,6 +556,7 @@ onUnmounted(() => {
 .dev-meta { font-size: var(--text-xs); color: var(--text-muted); }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .status-dot.ok { background: var(--success); }
+.status-dot.off { background: var(--status-unknown); }
 
 /* ── Commands list ────────────────────────────────────────────────────── */
 .cmd-list { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -597,7 +619,12 @@ onUnmounted(() => {
 .fw-row:hover { border-color: var(--primary); }
 .fw-row.selected { border-color: var(--accent-border); background: var(--accent-dim); }
 .fw-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fw-version { font-size: var(--text-sm); color: var(--text-muted); }
+.fw-version { font-size: var(--text-sm); color: var(--text); flex: 1; }
+.fw-date { font-size: var(--text-xs); color: var(--text-muted); }
+.fw-group { display: flex; flex-direction: column; gap: var(--space-1); }
+.fw-group + .fw-group { margin-top: var(--space-3); }
+.fw-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding: 0 var(--space-1) var(--space-1); }
+.fw-group-count { font-size: var(--text-xs); color: var(--text-muted); }
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }

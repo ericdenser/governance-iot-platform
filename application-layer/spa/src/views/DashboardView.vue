@@ -13,13 +13,12 @@ import { devicesApi } from '@/services/devices'
 import { eventsApi } from '@/services/events'
 import { errorsApi } from '@/services/errors'
 import { useLiveStateStore } from '@/stores/liveState'
-import { isOnline } from '@/utils/connection'
+import { CONN_STATES, connState } from '@/utils/connection'
 import { absoluteTime, relativeTime } from '@/utils/format'
 import { statusText } from '@/utils/statusLabels'
 import type {
   DeviceHealth,
   DeviceSummaryDTO,
-  DeviceStatus,
   EventRegistryResponseDTO,
   ErrorRecordResponseDTO,
 } from '@/types/models'
@@ -48,11 +47,10 @@ const mergedDevices = computed(() =>
 )
 
 const totalDevices = computed(() => mergedDevices.value.length)
-const onlineDevices = computed(() => mergedDevices.value.filter(d => d.status !== 'REVOKED' && isOnline(d.lastSeen)).length)
+const onlineDevices = computed(() => mergedDevices.value.filter(d => connState(d.status, d.lastSeen) === 'online').length)
 const warningDevices = computed(() => mergedDevices.value.filter(d => d.health === 'WARNING').length)
 
 const MINIMAP_STORAGE_KEY = 'dashboard_minimap_config'
-const ALL_STATUSES: DeviceStatus[] = ['ACTIVE', 'PENDING', 'PROVISIONING', 'COMMAND_PENDING', 'REVOKED', 'ERROR']
 
 interface MinimapConfig {
   statusFilter: string[]
@@ -65,7 +63,8 @@ const loadMinimapConfig = (): MinimapConfig => {
     if (raw) {
       const c = JSON.parse(raw)
       return {
-        statusFilter: Array.isArray(c.statusFilter) ? c.statusFilter : [],
+        // Old configs stored device statuses; keep only connection states
+        statusFilter: Array.isArray(c.statusFilter) ? c.statusFilter.filter((x: string) => (CONN_STATES as string[]).includes(x)) : [],
         autoFit: c.autoFit !== false,
       }
     }
@@ -136,7 +135,7 @@ onMounted(async () => {
               @click="minimapConfig.statusFilter = []"
             >Todos</button>
             <button
-              v-for="s in ALL_STATUSES"
+              v-for="s in CONN_STATES"
               :key="s"
               class="chip"
               :class="{ active: minimapConfig.statusFilter.includes(s) }"
@@ -144,7 +143,7 @@ onMounted(async () => {
               @click="toggleMinimapStatus(s)"
             >
               <span class="chip-dot" />
-              {{ statusText('device', s) }}
+              {{ statusText('conn', s) }}
             </button>
           </div>
           <label class="autofit-toggle">
@@ -170,7 +169,7 @@ onMounted(async () => {
               <tr v-for="d in mergedDevices.slice(0, 8)" :key="d.deviceId" class="tbl-row"
                   @click="$router.push(`/devices/${d.deviceId}`)">
                 <td>{{ d.name }}</td>
-                <td><StatusLabel kind="device" :code="d.status" /></td>
+                <td><StatusLabel kind="conn" :code="connState(d.status, d.lastSeen)" /></td>
                 <td class="mono muted">{{ d.firmwareVersion ? `v${d.firmwareVersion}` : '—' }}</td>
                 <td><BatteryBar :mv="d.batteryMv" :ts="d.batteryTs" :device-status="d.status" /></td>
                 <td class="muted" :title="absoluteTime(d.lastSeen)">{{ relativeTime(d.lastSeen) }}</td>
@@ -274,12 +273,9 @@ onMounted(async () => {
 }
 
 .chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-unknown); }
-.chip[data-status="ACTIVE"] .chip-dot { background: var(--status-active); }
-.chip[data-status="PENDING"] .chip-dot { background: var(--status-pending); }
-.chip[data-status="PROVISIONING"] .chip-dot { background: var(--status-provisioning); }
-.chip[data-status="COMMAND_PENDING"] .chip-dot { background: var(--status-command-pending); }
-.chip[data-status="REVOKED"] .chip-dot { background: var(--status-revoked); }
-.chip[data-status="ERROR"] .chip-dot { background: var(--status-error); }
+.chip[data-status="online"] .chip-dot { background: var(--status-active); }
+.chip[data-status="offline"] .chip-dot { background: var(--status-unknown); }
+.chip[data-status="pending"] .chip-dot { background: var(--status-pending); }
 
 .autofit-toggle {
   display: inline-flex;

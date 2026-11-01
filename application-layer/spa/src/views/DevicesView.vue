@@ -8,12 +8,11 @@ import { devicesApi } from '@/services/devices'
 import { useLiveStateStore } from '@/stores/liveState'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import StatusLabel from '@/components/StatusLabel.vue'
-import { isOnline } from '@/utils/connection'
+import { connState, type ConnState } from '@/utils/connection'
 import { absoluteTime, relativeTime } from '@/utils/format'
 import type { DeviceHealth, DeviceSummaryDTO } from '@/types/models'
 
 // ── Connection state (client-side, so pelo lastSeen) ─────────────────────
-type ConnState = 'online' | 'offline' | 'pending'
 type DeviceFilter = 'all' | 'online' | 'offline' | 'warning'
 const FILTER_LABEL: Record<DeviceFilter, string> = { all: 'Todos', online: 'Online', offline: 'Offline', warning: 'Com alerta' }
 
@@ -71,12 +70,7 @@ const mergedDevices = computed<MergedDevice[]>(() =>
 )
 
 // ── Helpers de connection state ──────────────────────────────────────────
-const connStateOf = (d: MergedDevice): ConnState => {
-  if (d.status === 'PENDING' || d.status === 'PROVISIONING') return 'pending'
-  if (d.status === 'REVOKED') return 'offline'
-
-  return isOnline(d.lastSeen) ? 'online' : 'offline'
-}
+const connStateOf = (d: MergedDevice): ConnState => connState(d.status, d.lastSeen)
 
 const isWarning = (d: MergedDevice): boolean => d.health === 'WARNING'
 
@@ -189,7 +183,20 @@ watch(liveDivergence, (sig) => {
   reloadTimer = setTimeout(() => { reloadTimer = null; load(true) }, RELOAD_DELAY_MS)
 })
 
-onUnmounted(() => { if (reloadTimer) clearTimeout(reloadTimer) })
+// The SSE status of a device running a plain command stays ACTIVE the whole time,
+// so the divergence above never fires when the DB closes it (webhook or timeout).
+// Poll while some card still shows a pending command.
+const PENDING_POLL_MS = 5000
+const hasPendingCommand = computed(() =>
+  devices.value.some(d => d.status === 'COMMAND_PENDING' || d.status === 'OTA_PENDING'))
+const pendingPoll = setInterval(() => {
+  if (document.visibilityState === 'visible' && hasPendingCommand.value) load(true)
+}, PENDING_POLL_MS)
+
+onUnmounted(() => {
+  if (reloadTimer) clearTimeout(reloadTimer)
+  clearInterval(pendingPoll)
+})
 
 const goToPage = (n: number) => {
   if (n < 0 || n >= totalPages.value) return

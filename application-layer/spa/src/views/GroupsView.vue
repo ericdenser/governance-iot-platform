@@ -164,13 +164,19 @@ const canUpdateRole = (u: GroupMemberResponseDTO) => {
   return false
 }
 
+// Non-members only see that the group exists
+const canOpen = (g: DeviceGroupResponseDTO) => authStore.isAdmin || g.myRole != null
+
 const load = async () => {
-  const r = await groupsApi.list()
+  const r = await groupsApi.list(true)
   groups.value = Array.isArray(r.data) ? r.data : []
 }
 
 const selectGroup = async (g: DeviceGroupResponseDTO) => {
   selectedGroup.value = g
+  groupDevices.value = []
+  groupUsers.value = []
+  if (!canOpen(g)) return
   loadingDetail.value = true
   try {
     const needUsers = !allUsers.value.length
@@ -302,7 +308,10 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             @click="selectGroup(g)"
           >
             <div class="group-info">
-              <span class="group-name">{{ g.name }}</span>
+              <span class="group-name">
+                {{ g.name }}
+                <svg v-if="!canOpen(g)" class="lock" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Sem acesso"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
               <span class="group-desc text-muted text-xs" v-if="g.description">{{ g.description }}</span>
             </div>
             <AppButton
@@ -318,14 +327,20 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       <!-- Group detail -->
       <div v-if="selectedGroup" class="detail-col">
         <AppCard :title="selectedGroup.name">
-          <template #actions>
+          <template v-if="canOpen(selectedGroup)" #actions>
             <div style="display: flex; gap: var(--space-2);">
               <AppButton v-if="canManageDevices" size="md" variant="secondary" @click="openAddDevice">Adicionar Dispositivo</AppButton>
               <AppButton v-if="canManageUsers" size="md" variant="secondary" @click="openAssignUser">Adicionar Usuário</AppButton>
             </div>
           </template>
 
-          <div v-if="loadingDetail" class="empty">Carregando...</div>
+          <div v-if="!canOpen(selectedGroup)" class="placeholder">
+            <div class="placeholder-inner no-access">
+              <p v-if="selectedGroup.description" class="text-sm">{{ selectedGroup.description }}</p>
+              <p>Você não faz parte deste grupo. Peça a um OWNER do grupo ou a um administrador para ser incluído.</p>
+            </div>
+          </div>
+          <div v-else-if="loadingDetail" class="empty">Carregando...</div>
           <div v-else class="detail-sections">
             <!-- Devices -->
             <div class="section">
@@ -391,7 +406,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
                     <td class="text-sm">{{ u.role }}</td>
                     <td class="text-xs text-muted">{{ u.assignedByUsername ?? '—' }}</td>
                     <td class="col-actions-cell">
-                      <div style="display: flex; gap: var(--space-1); justify-content: flex-end;">
+                      <div class="row-actions">
                         <AppButton v-if="canUpdateRole(u)" size="sm" variant="secondary" @click="openUpdateRole(u)">Atualizar Papel</AppButton>
                         <AppButton v-if="canManageUsers" size="sm" variant="ghost" @click="doRemoveUser(u.keycloakUserId)">Remover</AppButton>
                       </div>
@@ -509,14 +524,18 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .group-item { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--border); cursor: pointer; border-radius: var(--radius-md); transition: background var(--transition); gap: var(--space-2); }
 .group-item:last-child { border-bottom: none; }
 .group-item:hover { background: var(--panel); }
-.group-item.active { background: var(--panel); outline: 1px solid var(--primary); }
+.group-item.active { background: var(--border); }
+.group-item.active .group-name { font-weight: 600; }
 .group-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.group-name { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
+.group-name { font-size: var(--text-sm); font-weight: 500; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
+.lock { color: var(--text-muted); flex-shrink: 0; }
 .group-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .detail-col { min-width: 0; }
 .placeholder { display: flex; align-items: center; justify-content: center; min-height: 160px; }
 .placeholder-inner { color: var(--text-muted); font-size: var(--text-sm); }
+.no-access { max-width: 420px; text-align: center; display: flex; flex-direction: column; gap: var(--space-2); }
+.no-access p { margin: 0; }
 
 .detail-sections { display: flex; flex-direction: column; gap: var(--space-10); }
 .section {}
@@ -534,6 +553,9 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .tbl.aligned .col-assigned { width: 25%; }
 .tbl.aligned .col-actions  { width: 20%; }
 .tbl.aligned .col-actions-cell { text-align: right; }
+.tbl.aligned td { overflow-wrap: anywhere; }
+/* Buttons stack instead of spilling over Papel / Atribuido por on narrow widths */
+.row-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; }
 .mono { font-family: var(--font-mono); }
 .cell-main { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 .font-medium { font-weight: 500; }

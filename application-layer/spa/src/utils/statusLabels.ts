@@ -63,7 +63,7 @@ const MAP: Record<StatusKind, Record<string, StatusInfo>> = {
     NOT_FIXABLE:  s('Sem correção', 'danger', 'cross'),
   },
   firmware: {
-    STAGED:     s('Em preparo', 'neutral', 'pending'),
+    STAGED:     s('Em preparo', 'neutral', 'none'),
     DEPLOYED:   s('Publicado', 'success', 'check'),
     DEPRECATED: s('Descontinuado', 'neutral', 'dash'),
     CORRUPTED:  s('Corrompido', 'danger', 'cross'),

@@ -7,7 +7,8 @@ import type {
 } from '@/types/models'
 
 export const groupsApi = {
-  list: () => api.get<DeviceGroupResponseDTO[]>('/groups'),
+  // all: every group, myRole null where the user is not a member
+  list: (all = false) => api.get<DeviceGroupResponseDTO[]>('/groups', { params: all ? { all: true } : undefined }),
   get: (id: string) => api.get<DeviceGroupResponseDTO>(`/groups/${id}`),
   create: (payload: { name: string; description?: string }) => api.post<DeviceGroupResponseDTO>('/groups', payload),
   delete: (id: string) => api.delete<void>(`/groups/${id}`),
