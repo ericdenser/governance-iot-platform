@@ -6,6 +6,8 @@
 #include "AppState.h"
 #include "esp_crt_bundle.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <vector>
 #include <utility>
 #include <algorithm>
@@ -13,6 +15,11 @@
 #define BROKER_URL     CONFIG_GOV_MQTT_BROKER_URI
 #define MAX_RECONNECT_ATTEMPTS  5
 #define RECONNECT_DELAY_MS      5000
+// The JWT fetch is an HTTPS request (TLS handshake): too much for the esp_timer
+// task stack, so the timers only wake this worker
+#define WORKER_STACK_SIZE       8192
+#define WORK_RECONNECT          (1 << 0)
+#define WORK_REFRESH            (1 << 1)
 
 static const char *TAG = "MqttManager";
 esp_mqtt_client_handle_t mqtt_client = NULL;
@@ -24,6 +31,7 @@ static std::string s_device_id;
 static int                s_reconnect_count = 0;
 static esp_timer_handle_t s_reconnect_timer = NULL;
 static esp_timer_handle_t s_refresh_timer   = NULL;  // refresh JWT
+static TaskHandle_t       s_worker_task     = NULL;
 static bool               s_is_connected    = false;
 static bool               s_error_reported  = false;
 static bool               s_boot_audited    = false;
@@ -43,8 +51,10 @@ static void resubscribe_all() {
 }
 
 
-static void refresh_timer_cb(void*) {
-     if (mqtt_client == NULL) return;
+static void schedule_reconnect();
+
+static void do_refresh() {
+    if (mqtt_client == NULL) return;
     ESP_LOGI(TAG, "Safe JWT refresh — invalidating cache + reconnecting.");
     AuthManager::invalidateCache();
     if (mqtt_client) {
@@ -54,16 +64,17 @@ static void refresh_timer_cb(void*) {
     }
 }
 
-// Chamado pelo timer após RECONNECT_DELAY_MS para tentar reconectar
-static void reconnect_timer_cb(void*) {
-     if (mqtt_client == NULL) return;
+// Runs on the worker RECONNECT_DELAY_MS after a disconnect
+static void do_reconnect() {
+    if (mqtt_client == NULL) return;
     s_reconnect_count++;
     ESP_LOGW(TAG, "[%d/%d] Tentando reconectar ao broker MQTT...",
              s_reconnect_count, MAX_RECONNECT_ATTEMPTS);
     
     s_current_jwt = AuthManager::getJwt();
     if (s_current_jwt.empty()) {
-        ESP_LOGE(TAG, "JWT vazio no reconnect - abortando tentativa.");
+        ESP_LOGE(TAG, "JWT vazio no reconnect - nova tentativa agendada.");
+        schedule_reconnect();
         return;
     }
 
@@ -76,10 +87,27 @@ static void reconnect_timer_cb(void*) {
     cfg.session.disable_clean_session = true;
     cfg.buffer.size     = 4096;
     cfg.buffer.out_size = 4096;
+    cfg.network.disable_auto_reconnect = true;
     esp_mqtt_set_config(mqtt_client, &cfg);
 
     esp_mqtt_client_reconnect(mqtt_client);
-             
+}
+
+static void mqtt_worker_task(void*) {
+    for (;;) {
+        uint32_t work = 0;
+        xTaskNotifyWait(0, UINT32_MAX, &work, portMAX_DELAY);
+        if (work & WORK_REFRESH)   do_refresh();
+        if (work & WORK_RECONNECT) do_reconnect();
+    }
+}
+
+static void reconnect_timer_cb(void*) {
+    if (s_worker_task) xTaskNotify(s_worker_task, WORK_RECONNECT, eSetBits);
+}
+
+static void refresh_timer_cb(void*) {
+    if (s_worker_task) xTaskNotify(s_worker_task, WORK_REFRESH, eSetBits);
 }
 
 // Agenda próxima tentativa ou seta erro se esgotou as tentativas
@@ -211,6 +239,9 @@ void MqttManager::init_mqtt(void) {
         timer_args.name     = "mqtt_reconnect";
         esp_timer_create(&timer_args, &s_reconnect_timer);
     }
+    if (s_worker_task == NULL) {
+        xTaskCreate(mqtt_worker_task, "mqtt_worker", WORKER_STACK_SIZE, NULL, 5, &s_worker_task);
+    }
 
     esp_mqtt_client_config_t mqtt_cfg = {};
     mqtt_cfg.broker.address.uri = BROKER_URL;
@@ -225,6 +256,11 @@ void MqttManager::init_mqtt(void) {
 
     mqtt_cfg.buffer.size     = 4096;
     mqtt_cfg.buffer.out_size = 4096;
+
+    // Reconnects only through the worker, which fetches a fresh JWT first. The
+    // built-in retry would reuse the expired one every 10s (broker answers 5) and
+    // keep a TLS session open while the token request needs its own (OOM).
+    mqtt_cfg.network.disable_auto_reconnect = true;
 
     // Inicializa e registra o event loop do MQTT
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
