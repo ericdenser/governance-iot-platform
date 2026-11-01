@@ -190,6 +190,10 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
             case IP_EVENT_STA_GOT_IP: {
                 ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data; // Obtém as informações do IP
                 ESP_LOGI(TAG, "HANDLER >> Connected to ip: " IPSTR, IP2STR(&event->ip_info.ip));
+                esp_netif_dns_info_t dns = {};
+                esp_netif_get_dns_info(event->esp_netif, ESP_NETIF_DNS_MAIN, &dns);
+                ESP_LOGI(TAG, "HANDLER >> Gateway: " IPSTR " | DNS: " IPSTR,
+                         IP2STR(&event->ip_info.gw), IP2STR(&dns.ip.u_addr.ip4));
             
                 set_success();
                 break;
