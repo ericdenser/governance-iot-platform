@@ -1,0 +1,34 @@
+menu "Governance - sensor MQ135 (qualidade do ar)"
+
+    config GOV_MQ135_ENABLED
+        bool "MQ135 instalado"
+        default y
+        help
+            Code "mq135". Metric: co2_ppm (only after the warm-up).
+
+    config GOV_MQ135_GPIO
+        int "GPIO do AO (ADC1: GPIO1..GPIO10)"
+        default 6
+        depends on GOV_MQ135_ENABLED
+
+    config GOV_MQ135_DIVIDER_X100
+        int "Fator do divisor x100 (10k/10k = 200, 10k/20k = 150)"
+        default 150
+        depends on GOV_MQ135_ENABLED
+
+    config GOV_MQ135_RL_OHM
+        int "RL do modulo (ohm)"
+        default 10000
+        depends on GOV_MQ135_ENABLED
+
+    config GOV_MQ135_R0_OHM
+        int "R0 calibrado em ar limpo (ohm)"
+        default 76630
+        depends on GOV_MQ135_ENABLED
+
+    config GOV_MQ135_WARMUP_S
+        int "Aquecimento apos ligar (s)"
+        default 120
+        depends on GOV_MQ135_ENABLED
+
+endmenu

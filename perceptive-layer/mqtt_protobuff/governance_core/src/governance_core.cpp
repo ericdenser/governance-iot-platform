@@ -26,6 +26,8 @@
 #include "PayloadManager.h"
 #include "OtaManager.h"
 #include "CommandProcessor.h"
+#include "gov_sensor.h"
+#include "esp_wifi.h"
 
 #include "pb_encode.h"
 #include "device_status.pb.h"
@@ -360,7 +362,7 @@ static void telemetry_task(void* /*pvParameters*/) {
             if (telemetryPublished == true) {vTaskDelay(pdMS_TO_TICKS(5000)); continue;}
         #endif
 
-        if (s_hooks.read_telemetry == nullptr) {
+        if (s_hooks.read_telemetry == nullptr && gov_sensor_count() == 0) {
             #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
                 telemetryPublished = true;
             #endif
@@ -369,7 +371,21 @@ static void telemetry_task(void* /*pvParameters*/) {
         }
 
         sensor_reading_t readings[GOVERNANCE_MAX_READINGS] = {};
-        int n = s_hooks.read_telemetry(readings, GOVERNANCE_MAX_READINGS);
+        int n = 0;
+        if (gov_sensor_count() > 0) {
+            n = gov_sensors_collect(readings, GOVERNANCE_MAX_READINGS);
+            wifi_ap_record_t ap = {};
+            if (n < GOVERNANCE_MAX_READINGS && esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+                strlcpy(readings[n].key, "rssi", sizeof(readings[n].key));
+                readings[n].value = (float)ap.rssi;
+                n++;
+            }
+        }
+        // extra readings from the app, after the plugins
+        if (s_hooks.read_telemetry != nullptr) {
+            int extra = s_hooks.read_telemetry(readings + n, GOVERNANCE_MAX_READINGS - n);
+            if (extra > 0) n += extra;
+        }
         if (n <= 0) {
             #if CONFIG_GOV_FIRMWARE_DEEP_SLEEP
                 telemetryPublished = true;
@@ -735,9 +751,11 @@ static void handle_time_sync() {
 }
 
 static void handle_sensor_discovery() {
-    SLOG_I("Iniciando descoberta de sensores (via hook do user code)...");
+    SLOG_I("Iniciando descoberta de sensores...");
 
-    if (s_hooks.sensor_discovery != nullptr) {
+    if (gov_sensor_count() > 0) {
+        g_activeSensors = gov_sensors_discover();
+    } else if (s_hooks.sensor_discovery != nullptr) {
         const char* csv = s_hooks.sensor_discovery();
         g_activeSensors = (csv != nullptr) ? csv : "";
     } else {

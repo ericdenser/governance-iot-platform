@@ -1,0 +1,27 @@
+menu "Governance - GPS (UART NMEA)"
+
+    config GOV_SENSOR_GPS
+        bool "GPS instalado"
+        default y
+        help
+            Code "gps". Metrics: latitude, longitude, altitude (only with a fix).
+
+    config GOV_GPS_POWER_PIN
+        int "GPIO de alimentacao do GPS (transistor)"
+        default 5
+        help
+            Nivel 1 = GPS ligado, 0 = desligado.
+
+    config GOV_GPS_UART_TX_PIN
+        int "UART TX GPIO (ESP TX -> GPS RX)"
+        default 17
+
+    config GOV_GPS_UART_RX_PIN
+        int "UART RX GPIO (ESP RX <- GPS TX)"
+        default 18
+
+    config GOV_GPS_UART_PORT
+        int "Porta UART"
+        default 1
+
+endmenu

@@ -2,7 +2,7 @@
 #include <string.h>
 #include <time.h>
 #include "ui_common.h"
-#include "SensorCache.h"
+#include "gov_sensor.h"
 #include "nvs.h"
 #include "esp_mac.h"
 #include "esp_wifi.h"
@@ -166,11 +166,11 @@ void ui_status_tick() {
         set_row(ROW_IP, nullptr);
     }
 
-    SensorSnapshot s = SensorCache::get();
-    if (s.chip_valid) { snprintf(buf, sizeof(buf), "%.1f \xC2\xB0""C", s.chip_c); set_row(ROW_CHIP, buf); }
-    else              { set_row(ROW_CHIP, nullptr); }
-    if (s.bat_valid)  { snprintf(buf, sizeof(buf), "%.2f V", s.bat_mv / 1000.0f); set_row(ROW_BAT, buf); }
-    else              { set_row(ROW_BAT, nullptr); }
+    float v = 0;
+    if (ui_metric("chip_temp", "temp_c", &v)) { snprintf(buf, sizeof(buf), "%.1f \xC2\xB0""C", v); set_row(ROW_CHIP, buf); }
+    else                                      { set_row(ROW_CHIP, nullptr); }
+    if (ui_metric("battery_adc", "battery_mv", &v)) { snprintf(buf, sizeof(buf), "%.2f V", v / 1000.0f); set_row(ROW_BAT, buf); }
+    else                                            { set_row(ROW_BAT, nullptr); }
 
     snprintf(buf, sizeof(buf), "%lu KB (min %lu)",
              (unsigned long)(esp_get_free_heap_size() / 1024),
@@ -185,7 +185,7 @@ void ui_status_tick() {
     set_row(ROW_UPTIME, buf);
 
     set_row(ROW_RESET, reset_reason_text(esp_reset_reason()));
-    set_row(ROW_SENSORS, s_sensors);
+    ui_status_set_sensors(gov_sensors_active_csv());
 
     struct tm tmv;
     if (ui_local_time(&tmv)) {

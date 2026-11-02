@@ -1,0 +1,11 @@
+menu "Governance - barramento I2C dos sensores"
+
+    config GOV_I2C_SDA_PIN
+        int "GPIO SDA"
+        default 8
+
+    config GOV_I2C_SCL_PIN
+        int "GPIO SCL"
+        default 9
+
+endmenu

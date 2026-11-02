@@ -168,9 +168,4 @@ void display_next_screen() {
     lvgl_port_unlock();
 }
 
-void display_set_sensors(const char* csv) {
-    if (!s_ready) return;
-    if (!lvgl_port_lock(100)) return;
-    ui_status_set_sensors(csv);
-    lvgl_port_unlock();
-}
+

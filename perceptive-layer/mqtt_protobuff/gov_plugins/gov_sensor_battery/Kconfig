@@ -1,0 +1,23 @@
+menu "Governance - bateria (ADC)"
+
+    config GOV_SENSOR_BATTERY
+        bool "Medir bateria pelo ADC"
+        default y
+        help
+            Code "battery_adc". Metric: battery_mv.
+
+    config GOV_BAT_GPIO
+        int "GPIO do divisor da bateria (ADC1: GPIO1..GPIO10)"
+        default 4
+
+    config GOV_BAT_DIVIDER_X100
+        int "Fator do divisor x100"
+        default 202
+        help
+            Tensao real = tensao no pino * fator/100 (ex: 5V viram ~2.5V no pino -> 202).
+
+    config GOV_BAT_MIN_VALID_MV
+        int "Abaixo disso (mV) a leitura e tratada como invalida"
+        default 2600
+
+endmenu

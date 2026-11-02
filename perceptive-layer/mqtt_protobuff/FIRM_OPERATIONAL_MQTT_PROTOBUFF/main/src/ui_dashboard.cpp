@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <time.h>
 #include "ui_common.h"
-#include "SensorCache.h"
+#include "gov_sensor.h"
+#include "gov_sensor_mq135.h"
 
 #define SPARK_POINTS 30   // x 10 s = 5 min
 
@@ -18,13 +19,13 @@ static Metric    s_temp, s_hum, s_press, s_air;
 static lv_obj_t* s_air_dot  = nullptr;
 static lv_obj_t* s_clock    = nullptr;
 
-static lv_color_t air_color(AirLevel lvl) {
+static lv_color_t air_color(gov_air_level_t lvl) {
     switch (lvl) {
-        case AirLevel::GOOD:     return COLOR_OK;
-        case AirLevel::MODERATE: return COLOR_WARN;
-        case AirLevel::POOR:     return COLOR_TEMP;
-        case AirLevel::BAD:      return COLOR_ERR;
-        default:                 return COLOR_MUTED;
+        case GOV_AIR_GOOD:     return COLOR_OK;
+        case GOV_AIR_MODERATE: return COLOR_WARN;
+        case GOV_AIR_POOR:     return COLOR_TEMP;
+        case GOV_AIR_BAD:      return COLOR_ERR;
+        default:               return COLOR_MUTED;
     }
 }
 
@@ -143,24 +144,30 @@ lv_obj_t* ui_dashboard_create(int w, int h) {
 }
 
 void ui_dashboard_tick() {
-    SensorSnapshot s = SensorCache::get();
+    float temp = 0, hum = 0, press = 0, co2 = 0;
+    bool has_temp  = ui_metric("bmp280", "temperature", &temp);
+    bool has_hum   = ui_metric("bmp280", "humidity", &hum);
+    bool has_press = ui_metric("bmp280", "pressure", &press);
+    bool has_air   = ui_metric("mq135", "co2_ppm", &co2);
+    int  warmup    = gov_sensor_is_active("mq135") ? gov_mq135_warmup_left_s() : 0;
 
-    set_value(s_temp,  s.env_valid, "%.1f", s.temp_c);
-    set_value(s_hum,   s.env_valid && s.hum_valid, "%.0f", s.hum_pct);
-    set_value(s_press, s.env_valid, "%.0f", s.press_hpa);
+    set_value(s_temp,  has_temp, "%.1f", temp);
+    set_value(s_hum,   has_hum, "%.0f", hum);
+    set_value(s_press, has_press, "%.0f", press);
 
-    lv_color_t ac = air_color(s.air_level);
+    gov_air_level_t level = has_air ? gov_mq135_classify(co2) : GOV_AIR_UNKNOWN;
+    lv_color_t ac = air_color(level);
     lv_obj_set_style_bg_color(s_air_dot, ac, 0);
-    lv_obj_set_style_text_color(s_air.value, s.air_valid ? ac : COLOR_TEXT, 0);
-    lv_chart_set_series_color(s_air.chart, s_air.series, s.air_valid ? ac : COLOR_MUTED);
+    lv_obj_set_style_text_color(s_air.value, has_air ? ac : COLOR_TEXT, 0);
+    lv_chart_set_series_color(s_air.chart, s_air.series, has_air ? ac : COLOR_MUTED);
 
     char sub[32];
-    if (s.air_valid) {
-        ui_label_update(s_air.value, Mq135Manager::levelText(s.air_level));
-        snprintf(sub, sizeof(sub), "~%.0f ppm CO2", s.co2_ppm);
-    } else if (s.air_warming) {
+    if (has_air) {
+        ui_label_update(s_air.value, gov_mq135_level_text(level));
+        snprintf(sub, sizeof(sub), "~%.0f ppm CO2", co2);
+    } else if (warmup > 0) {
         ui_label_update(s_air.value, UI_NO_DATA);
-        snprintf(sub, sizeof(sub), "aquecendo %d:%02d", s.air_warmup_left_s / 60, s.air_warmup_left_s % 60);
+        snprintf(sub, sizeof(sub), "aquecendo %d:%02d", warmup / 60, warmup % 60);
     } else {
         ui_label_update(s_air.value, UI_NO_DATA);
         sub[0] = '\0';
@@ -178,9 +185,9 @@ void ui_dashboard_tick() {
 }
 
 void ui_dashboard_sample() {
-    SensorSnapshot s = SensorCache::get();
-    push_point(s_temp,  s.env_valid, s.temp_c);
-    push_point(s_hum,   s.env_valid && s.hum_valid, s.hum_pct);
-    push_point(s_press, s.env_valid, s.press_hpa);
-    push_point(s_air,   s.air_valid, s.co2_ppm);
+    float v = 0;
+    push_point(s_temp,  ui_metric("bmp280", "temperature", &v), v);
+    push_point(s_hum,   ui_metric("bmp280", "humidity", &v), v);
+    push_point(s_press, ui_metric("bmp280", "pressure", &v), v);
+    push_point(s_air,   ui_metric("mq135", "co2_ppm", &v), v);
 }
