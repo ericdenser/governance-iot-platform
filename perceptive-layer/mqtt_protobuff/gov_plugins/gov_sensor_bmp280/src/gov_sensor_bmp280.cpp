@@ -10,6 +10,7 @@ static const char* TAG = "bmp280";
 
 static bmp280_t s_dev;
 static uint8_t  s_addr = BMP280_I2C_ADDRESS_0;
+static bool     s_desc = false;
 
 static bool probe(void) {
     if (gov_i2c_probe(BMP280_I2C_ADDRESS_0)) { s_addr = BMP280_I2C_ADDRESS_0; return true; }
@@ -20,10 +21,15 @@ static bool probe(void) {
 static esp_err_t init(void) {
     bmp280_params_t params;
     bmp280_init_default_params(&params);
-    memset(&s_dev, 0, sizeof(s_dev));
 
-    esp_err_t err = bmp280_init_desc(&s_dev, s_addr, GOV_I2C_PORT,
-                                     (gpio_num_t)CONFIG_GOV_I2C_SDA_PIN, (gpio_num_t)CONFIG_GOV_I2C_SCL_PIN);
+    esp_err_t err = ESP_OK;
+    // the I2C descriptor is created once; the chip is reconfigured on every reconnection
+    if (!s_desc) {
+        memset(&s_dev, 0, sizeof(s_dev));
+        err = bmp280_init_desc(&s_dev, s_addr, GOV_I2C_PORT,
+                               (gpio_num_t)CONFIG_GOV_I2C_SDA_PIN, (gpio_num_t)CONFIG_GOV_I2C_SCL_PIN);
+        s_desc = (err == ESP_OK);
+    }
     if (err == ESP_OK) err = bmp280_init(&s_dev, &params);
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "%s em 0x%02X", s_dev.id == BME280_CHIP_ID ? "BME280" : "BMP280", s_addr);
@@ -51,4 +57,5 @@ const gov_sensor_t gov_sensor_bmp280 = {
     .read             = read,
     .info             = GOV_SENSOR_INFO("{\"code\":\"bmp280\",\"pins\":{\"SDA\":" GOV_STR(CONFIG_GOV_I2C_SDA_PIN) ",\"SCL\":" GOV_STR(CONFIG_GOV_I2C_SCL_PIN) "},"
                                         "\"metrics\":[\"temperature\",\"pressure\",\"humidity\"]}"),
+    .hotplug          = true,
 };

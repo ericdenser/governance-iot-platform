@@ -1,4 +1,4 @@
-menu "Governance - bateria (ADC)"
+menu "Sensor: bateria (ADC)"
 
     config GOV_SENSOR_BATTERY
         bool "Medir bateria pelo ADC"

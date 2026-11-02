@@ -2,6 +2,7 @@
 
 #include "esp_err.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "governance_core.h"
 
@@ -23,10 +24,11 @@ typedef struct {
     uint32_t    sample_period_ms;    // 0 = read only when telemetry is sent
 
     bool      (*probe)(void);
-    esp_err_t (*init)(void);
+    esp_err_t (*init)(void);         // on every detection (boot or hot-plug), must be safe to repeat
     int       (*read)(gov_reading_t* out, int max);
 
     const char* info;                // GOV_SENSOR_INFO(...), read by the platform from the .bin
+    bool        hotplug;             // probe() is re-run while running to detect plug/unplug
 } gov_sensor_t;
 
 #define GOV_STR_(x) #x
@@ -44,13 +46,15 @@ int       gov_sensor_count(void);
 bool gov_sensor_get(const char* code, const char* metric, float* value, int64_t* age_ms);
 bool gov_sensor_is_active(const char* code);
 
-// CSV of active sensor codes (empty until discovery runs)
-const char* gov_sensors_active_csv(void);
+// CSV of active sensor codes, copied into out (empty until discovery runs)
+void gov_sensors_active_csv(char* out, size_t len);
 
 // Used by the core
 const char* gov_sensors_discover(void);
 int         gov_sensors_collect(sensor_reading_t* out, int max);
 void        gov_sensors_sample_due(int64_t now_us);
+// Re-probes hotplug sensors; true if the active list changed
+bool        gov_sensors_rescan(int64_t now_us);
 
 #ifdef __cplusplus
 }

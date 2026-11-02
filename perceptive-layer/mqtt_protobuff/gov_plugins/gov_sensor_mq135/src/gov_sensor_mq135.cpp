@@ -15,11 +15,13 @@
 #define MQ135_MIN_MV 50.0f
 #define MQ135_EMA    0.3f
 #define MQ135_LOG_US (30LL * 1000000)
+#define MQ135_FRESH_AIR_PPM 420.0f
 
 static const char* TAG = "Mq135";
 
-static bool  s_configured = false;
-static float s_ema        = -1.0f;
+static bool    s_configured = false;
+static float   s_ema        = -1.0f;
+static int64_t s_powered_us = 0;   // detection time, start of the warm-up
 
 // Logs when the signal appears/disappears and every 30 s
 static void log_diag(bool present, int pin_mv, float vs, float rs, float ppm) {
@@ -31,7 +33,10 @@ static void log_diag(bool present, int pin_mv, float vs, float rs, float ppm) {
     last_us      = now;
 
     if (present) {
-        ESP_LOGI(TAG, "pino=%d mV sensor=%.0f mV Rs=%.0f ohm ppm=%.0f", pin_mv, vs, rs, ppm);
+        // R0 that would make this reading 420 ppm: read it in fresh air to calibrate
+        float r0_fresh = rs / powf(MQ135_FRESH_AIR_PPM / MQ135_PARA, 1.0f / MQ135_PARB);
+        ESP_LOGI(TAG, "pino=%d mV sensor=%.0f mV Rs=%.0f ohm ppm=%.0f | R0 p/ ar limpo=%.0f (atual %d)",
+                 pin_mv, vs, rs, ppm, r0_fresh, CONFIG_GOV_MQ135_R0_OHM);
     } else {
         ESP_LOGW(TAG, "sem sinal: pino=%d mV (sensor=%.0f mV < %.0f). Conferir AO (nao DO), divisor e GPIO%d",
                  pin_mv, vs, MQ135_MIN_MV, CONFIG_GOV_MQ135_GPIO);
@@ -69,6 +74,11 @@ static bool probe(void) {
     return measure(&ppm);
 }
 
+static esp_err_t init(void) {
+    s_powered_us = esp_timer_get_time();
+    return ESP_OK;
+}
+
 static int read(gov_reading_t* out, int max) {
     float ppm;
     // keeps the EMA running during the warm-up, but only reports after it
@@ -80,13 +90,14 @@ static int read(gov_reading_t* out, int max) {
 #else
 
 static bool probe(void) { return false; }
+static esp_err_t init(void) { return ESP_OK; }
 static int read(gov_reading_t*, int) { return 0; }
 
 #endif
 
 int gov_mq135_warmup_left_s(void) {
 #if CONFIG_GOV_MQ135_ENABLED
-    int left = CONFIG_GOV_MQ135_WARMUP_S - (int)(esp_timer_get_time() / 1000000);
+    int left = CONFIG_GOV_MQ135_WARMUP_S - (int)((esp_timer_get_time() - s_powered_us) / 1000000);
     return left > 0 ? left : 0;
 #else
     return 0;
@@ -114,8 +125,9 @@ const gov_sensor_t gov_sensor_mq135 = {
     .code             = "mq135",
     .sample_period_ms = 2000,
     .probe            = probe,
-    .init             = nullptr,
+    .init             = init,
     .read             = read,
     .info             = GOV_SENSOR_INFO("{\"code\":\"mq135\",\"pins\":{\"AO\":" GOV_STR(CONFIG_GOV_MQ135_GPIO) "},"
                                         "\"metrics\":[\"co2_ppm\"]}"),
+    .hotplug          = true,
 };

@@ -185,7 +185,9 @@ void ui_status_tick() {
     set_row(ROW_UPTIME, buf);
 
     set_row(ROW_RESET, reset_reason_text(esp_reset_reason()));
-    ui_status_set_sensors(gov_sensors_active_csv());
+    char csv[GOV_SENSOR_MAX * 25];
+    gov_sensors_active_csv(csv, sizeof(csv));
+    ui_status_set_sensors(csv);
 
     struct tm tmv;
     if (ui_local_time(&tmv)) {

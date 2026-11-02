@@ -1,5 +1,0 @@
-config GOV_SENSOR_CHIP_TEMP
-    bool "Temperatura interna do chip"
-    default y
-    help
-        Code "chip_temp". Metric: temp_c (used by the platform HIGH_TEMP health check).

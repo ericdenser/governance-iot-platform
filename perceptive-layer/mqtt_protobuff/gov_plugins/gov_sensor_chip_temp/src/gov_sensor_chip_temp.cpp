@@ -37,4 +37,5 @@ const gov_sensor_t gov_sensor_chip_temp = {
     .init             = init,
     .read             = read,
     .info             = GOV_SENSOR_INFO("{\"code\":\"chip_temp\",\"pins\":{},\"metrics\":[\"temp_c\"]}"),
+    .hotplug          = false,
 };

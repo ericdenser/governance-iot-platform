@@ -6,6 +6,8 @@
 #include "AppState.h"
 #include "esp_crt_bundle.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <vector>
@@ -20,6 +22,9 @@
 #define WORKER_STACK_SIZE       8192
 #define WORK_RECONNECT          (1 << 0)
 #define WORK_REFRESH            (1 << 1)
+// TLS needs a large contiguous block; below this, only a reboot defragments the heap
+#define LOW_MEM_BLOCK_BYTES     (20 * 1024)
+#define LOW_MEM_MAX_FAILS       3
 
 static const char *TAG = "MqttManager";
 esp_mqtt_client_handle_t mqtt_client = NULL;
@@ -36,6 +41,7 @@ static bool               s_is_connected    = false;
 static bool               s_error_reported  = false;
 static bool               s_boot_audited    = false;
 static bool               s_jwt_pending     = false;
+static int                s_low_mem_fails   = 0;
 
 static std::vector<std::pair<std::string, int>> s_subscriptions;
 
@@ -73,7 +79,14 @@ static void do_reconnect() {
     
     s_current_jwt = AuthManager::getJwt();
     if (s_current_jwt.empty()) {
-        ESP_LOGE(TAG, "JWT vazio no reconnect - nova tentativa agendada.");
+        // any 8-bit heap: with PSRAM, mbedTLS allocates there
+        size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+        ESP_LOGE(TAG, "JWT vazio no reconnect (heap livre %u, maior bloco %u) - nova tentativa agendada.",
+                 (unsigned)esp_get_free_heap_size(), (unsigned)largest);
+        if (largest < LOW_MEM_BLOCK_BYTES && ++s_low_mem_fails >= LOW_MEM_MAX_FAILS) {
+            ESP_LOGE(TAG, "Sem memoria para TLS apos %d tentativas. Reiniciando.", s_low_mem_fails);
+            esp_restart();
+        }
         schedule_reconnect();
         return;
     }
@@ -141,6 +154,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGI(TAG, "Conectado ao Broker MQTT com sucesso!");
             s_is_connected    = true;
             s_reconnect_count = 0;
+            s_low_mem_fails   = 0;
             s_error_reported  = false;
             esp_timer_stop(s_reconnect_timer);
             // primeira conexao do boot sempre passa pelo BOOT_AUDIT (subscribe + validacao do fw),

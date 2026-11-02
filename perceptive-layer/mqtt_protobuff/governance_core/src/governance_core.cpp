@@ -489,9 +489,13 @@ static void status_task(void* /*pvParameters*/) {
         proto.ssid.funcs.encode       = encode_string; proto.ssid.arg       = (void*)ssid.c_str();
         proto.state                   = (uint32_t)AppState::get();
         proto.timestamp               = (uint64_t)time(NULL);
-        if (!g_activeSensors.empty()) {
+        // current list: plugins can be plugged/unplugged while running
+        char sensors[GOV_SENSOR_MAX * 25] = "";
+        if (gov_sensor_count() > 0) gov_sensors_active_csv(sensors, sizeof(sensors));
+        else                        strlcpy(sensors, g_activeSensors.c_str(), sizeof(sensors));
+        if (sensors[0] != '\0') {
             proto.active_sensors.funcs.encode = encode_string;
-            proto.active_sensors.arg          = (void*)g_activeSensors.c_str();
+            proto.active_sensors.arg          = (void*)sensors;
         }
 
         pb_ostream_t os = pb_ostream_from_buffer(msg.payload, sizeof(msg.payload));

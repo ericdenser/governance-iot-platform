@@ -106,4 +106,6 @@ const gov_sensor_t gov_sensor_gps = {
                                         ",\"RX\":" GOV_STR(CONFIG_GOV_GPS_UART_TX_PIN)
                                         ",\"POWER\":" GOV_STR(CONFIG_GOV_GPS_POWER_PIN) "},"
                                         "\"metrics\":[\"latitude\",\"longitude\",\"altitude\"]}"),
+    // probe reinstalls the UART the GPS task is using
+    .hotplug          = false,
 };

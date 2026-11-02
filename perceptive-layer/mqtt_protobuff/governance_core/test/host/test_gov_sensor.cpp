@@ -30,6 +30,15 @@ static const gov_sensor_t sensor_flag   = { "fake_e", 0, probe_yes, nullptr, nul
 static const gov_sensor_t bad_code      = { "Fake-X", 0, probe_yes, nullptr, nullptr };
 static const gov_sensor_t no_probe      = { "fake_f", 0, nullptr, nullptr, nullptr };
 
+static bool plugged = false;
+static int  inits_hp = 0;
+static bool probe_plug(void) { return plugged; }
+static esp_err_t init_hp(void) { inits_hp++; return ESP_OK; }
+static int read_hp(gov_reading_t* out, int) { out[0] = { "co2_ppm", 450.0f }; return 1; }
+static const gov_sensor_t sensor_hp     = { "fake_hp", 1000, probe_plug, init_hp, read_hp, nullptr, true };
+// not hotplug: stays as detected at boot even if it disappears
+static const gov_sensor_t sensor_fixed  = { "fake_fixed", 0, probe_plug, nullptr, nullptr, nullptr, false };
+
 int main() {
     // registration rules
     CHECK(gov_sensor_register(&bad_code) == ESP_ERR_INVALID_ARG);
@@ -40,11 +49,14 @@ int main() {
     CHECK(gov_sensor_register(&sensor_broken) == ESP_OK);
     CHECK(gov_sensor_register(&sensor_now) == ESP_OK);
     CHECK(gov_sensor_register(&sensor_flag) == ESP_OK);
-    CHECK(gov_sensor_count() == 5);
+    CHECK(gov_sensor_register(&sensor_hp) == ESP_OK);
+    CHECK(gov_sensor_register(&sensor_fixed) == ESP_OK);
+    CHECK(gov_sensor_count() == 7);
 
     // discovery: absent and failed-init sensors are left out, init runs once
     const char* csv = gov_sensors_discover();
     CHECK(strcmp(csv, "fake_a,fake_d,fake_e") == 0);
+    CHECK(inits_hp == 0);
     CHECK(inits_a == 1);
     CHECK(g_tasks_created == 1);
     gov_sensors_discover();
@@ -92,6 +104,33 @@ int main() {
     memset(out, 0, sizeof(out));
     n = gov_sensors_collect(out, 16);
     CHECK(n == 1 && strcmp(out[0].key, "level") == 0);
+
+    // hot-plug: plugged after boot -> init runs and it joins the list
+    char list[400];
+    plugged = true;
+    CHECK(gov_sensors_rescan(5000000));
+    CHECK(inits_hp == 1);
+    gov_sensors_active_csv(list, sizeof(list));
+    CHECK(strcmp(list, "fake_a,fake_d,fake_e,fake_hp") == 0);
+    CHECK(!gov_sensor_is_active("fake_fixed"));
+    CHECK(!gov_sensors_rescan(5100000));
+
+    g_fake_now_us = 5000000;
+    gov_sensors_sample_due(g_fake_now_us);
+    CHECK(gov_sensor_get("fake_hp", "co2_ppm", &v, &age) && v == 450.0f);
+
+    // unplugged -> leaves the list and its cache is dropped
+    plugged = false;
+    CHECK(gov_sensors_rescan(6000000));
+    gov_sensors_active_csv(list, sizeof(list));
+    CHECK(strcmp(list, "fake_a,fake_d,fake_e") == 0);
+    CHECK(!gov_sensor_get("fake_hp", "co2_ppm", &v, &age));
+
+    // plugged again -> init runs again (reconfigures the chip)
+    plugged = true;
+    CHECK(gov_sensors_rescan(7000000));
+    CHECK(inits_hp == 2);
+    CHECK(!gov_sensor_get("fake_hp", "co2_ppm", &v, &age));
 
     printf("%s (%d failure(s))\n", failures ? "FAILED" : "OK", failures);
     return failures ? 1 : 0;

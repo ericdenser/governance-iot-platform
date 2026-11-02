@@ -27,7 +27,7 @@ Exemplo: um AHT25 (I2C, temperatura e umidade).
 ```
 gov_sensor_aht25/
 ├── CMakeLists.txt
-├── Kconfig
+├── Kconfig.projbuild
 ├── idf_component.yml        (só se usar biblioteca do registry)
 ├── include/gov_sensor_aht25.h
 └── src/gov_sensor_aht25.cpp
@@ -42,11 +42,15 @@ idf_component_register(
 )
 ```
 
-`Kconfig`. A opção aparece sozinha no `idf.py menuconfig`, em Component config:
+`Kconfig.projbuild`. Com `.projbuild`, o menu aparece no primeiro nível do `idf.py menuconfig`, junto com os outros "Sensor: …"; com `Kconfig` ele ficaria escondido em Component config:
 ```
-config GOV_SENSOR_AHT25
-    bool "Sensor AHT25 (I2C 0x38)"
-    default y
+menu "Sensor: AHT25"
+
+    config GOV_SENSOR_AHT25
+        bool "Sensor AHT25 (I2C 0x38)"
+        default y
+
+endmenu
 ```
 
 `include/gov_sensor_aht25.h`
@@ -134,11 +138,12 @@ Como os pinos são definidos na compilação, cada pinagem diferente é uma comp
 
 - **`code`:** `[a-z0-9_]{1,24}`, único. Se não seguir a regra, o kernel rejeita o registro e mostra o erro no log.
 - **`probe()`:** sem efeitos colaterais além do necessário para detectar o sensor. Só ele é obrigatório além do `code`.
-- **`init()`:** opcional. Se devolver erro, o sensor é tratado como ausente. Roda uma vez por boot.
+- **`init()`:** opcional. Roda a cada detecção (no boot e em cada reconexão por hot-plug), então precisa poder rodar de novo. Se devolver erro, o sensor é tratado como ausente.
 - **`read()`:** opcional; sensores sem leitura, como o DS3231, só aparecem como presentes. Devolve quantas leituras preencheu; `0` quando ainda não há dado válido (sem fix, aquecendo...). Cada leitura sai na telemetria.
 - **`metric`:** nome literal (`"temperature"`), no máximo 15 caracteres.
 - **`info`:** use `GOV_SENSOR_INFO` e `GOV_STR(CONFIG_...)`, nunca números fixos, para o manifesto acompanhar o menuconfig. Os pinos têm o nome impresso **no módulo do sensor**: no GPS, `TX` é o TX do módulo, ligado ao GPIO de RX do ESP. Sem `info`, o sensor funciona, mas a plataforma não mostra os pinos dele.
 - **Pinos de ADC:** são configurados por GPIO (ADC1: GPIO1 a GPIO10), não por canal.
+- **`hotplug`:** se `true`, o kernel refaz o `probe()` a cada 30 s com o sistema rodando. O sensor ligado depois do boot entra na lista; o desligado sai, e a plataforma registra o evento. Use só quando o `probe()` for seguro de repetir enquanto o sensor está em uso: endereço I2C ou leitura de ADC sim; reinstalar a UART em uso, como no GPS, não.
 - **`sample_period_ms`:** com período `0`, o sensor é lido só na hora da telemetria. Valor sem amostragem há mais de 3 períodos não é enviado.
 - **Limites:** no máximo 16 sensores e 4 métricas por sensor. A telemetria leva até 16 leituras no total.
 - **Barramentos:** use os do `gov_hal` (`gov_i2c_probe`, `gov_adc_config`, `gov_adc_read_mv`). Os pinos de I2C ficam no menuconfig.

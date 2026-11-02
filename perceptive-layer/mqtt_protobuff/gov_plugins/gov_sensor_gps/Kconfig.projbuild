@@ -1,4 +1,4 @@
-menu "Governance - GPS (UART NMEA)"
+menu "Sensor: GPS"
 
     config GOV_SENSOR_GPS
         bool "GPS instalado"

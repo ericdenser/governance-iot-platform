@@ -1,5 +1,0 @@
-config GOV_SENSOR_BMP280
-    bool "Sensor BMP280/BME280 (I2C 0x76/0x77)"
-    default y
-    help
-        Code "bmp280". Metrics: temperature, pressure (hPa) and humidity (BME280 only).

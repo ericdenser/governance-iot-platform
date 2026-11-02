@@ -60,4 +60,5 @@ const gov_sensor_t gov_sensor_battery = {
     .read             = read,
     .info             = GOV_SENSOR_INFO("{\"code\":\"battery_adc\",\"pins\":{\"ADC\":" GOV_STR(CONFIG_GOV_BAT_GPIO) "},"
                                         "\"metrics\":[\"battery_mv\"]}"),
+    .hotplug          = true,
 };

@@ -1,0 +1,9 @@
+menu "Sensor: RTC DS3231"
+
+    config GOV_SENSOR_DS3231
+        bool "RTC DS3231 (I2C 0x68)"
+        default y
+        help
+            Code "ds3231". No telemetry; keeps the time between boots (time sync hooks).
+
+endmenu

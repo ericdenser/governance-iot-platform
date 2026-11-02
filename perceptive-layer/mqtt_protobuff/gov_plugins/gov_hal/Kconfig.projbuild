@@ -1,4 +1,4 @@
-menu "Governance - barramento I2C dos sensores"
+menu "Sensores: barramento I2C"
 
     config GOV_I2C_SDA_PIN
         int "GPIO SDA"

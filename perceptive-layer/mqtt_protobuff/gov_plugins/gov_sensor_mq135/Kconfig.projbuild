@@ -1,4 +1,4 @@
-menu "Governance - sensor MQ135 (qualidade do ar)"
+menu "Sensor: MQ135 (qualidade do ar)"
 
     config GOV_MQ135_ENABLED
         bool "MQ135 instalado"

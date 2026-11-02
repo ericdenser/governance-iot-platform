@@ -54,4 +54,5 @@ const gov_sensor_t gov_sensor_ds3231 = {
     .init             = nullptr,
     .read             = nullptr,
     .info             = GOV_SENSOR_INFO("{\"code\":\"ds3231\",\"pins\":{\"SDA\":" GOV_STR(CONFIG_GOV_I2C_SDA_PIN) ",\"SCL\":" GOV_STR(CONFIG_GOV_I2C_SCL_PIN) "},\"metrics\":[]}"),
+    .hotplug          = true,
 };

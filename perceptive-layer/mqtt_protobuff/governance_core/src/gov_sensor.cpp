@@ -11,6 +11,7 @@ static const char* TAG = "GovSensor";
 
 #define STALE_FACTOR      3
 #define SAMPLER_TICK_MS   100
+#define HOTPLUG_PERIOD_US (30LL * 1000000)
 
 struct Slot {
     const gov_sensor_t* sensor;
@@ -25,6 +26,7 @@ static Slot              s_slots[GOV_SENSOR_MAX];
 static int               s_count      = 0;
 static bool              s_discovered = false;
 static bool              s_sampler    = false;
+static int64_t           s_next_rescan_us = 0;
 static char              s_csv[GOV_SENSOR_MAX * 25] = "";
 static SemaphoreHandle_t s_mutex      = nullptr;
 
@@ -77,9 +79,72 @@ void gov_sensors_sample_due(int64_t now_us) {
     }
 }
 
+static void rebuild_csv() {
+    lock();
+    s_csv[0] = '\0';
+    for (int i = 0; i < s_count; i++) {
+        if (!s_slots[i].active) continue;
+        if (s_csv[0] != '\0') strlcat(s_csv, ",", sizeof(s_csv));
+        strlcat(s_csv, s_slots[i].sensor->code, sizeof(s_csv));
+    }
+    unlock();
+}
+
+// Runs init() and marks the slot active with an empty cache
+static bool activate(Slot& slot, int64_t now_us) {
+    const gov_sensor_t* s = slot.sensor;
+    if (s->init != nullptr) {
+        esp_err_t err = s->init();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "[%s] init falhou: %s", s->code, esp_err_to_name(err));
+            return false;
+        }
+    }
+    lock();
+    slot.active     = true;
+    slot.count      = 0;
+    slot.sampled_us = 0;
+    slot.next_us    = now_us;
+    unlock();
+    return true;
+}
+
+static void deactivate(Slot& slot) {
+    lock();
+    slot.active     = false;
+    slot.count      = 0;
+    slot.sampled_us = 0;
+    unlock();
+}
+
+bool gov_sensors_rescan(int64_t now_us) {
+    bool changed = false;
+    for (int i = 0; i < s_count; i++) {
+        Slot& slot = s_slots[i];
+        if (!slot.sensor->hotplug) continue;
+
+        bool present = slot.sensor->probe();
+        if (present && !slot.active && activate(slot, now_us)) {
+            ESP_LOGI(TAG, "[%s] conectado", slot.sensor->code);
+            changed = true;
+        } else if (!present && slot.active) {
+            deactivate(slot);
+            ESP_LOGW(TAG, "[%s] desconectado", slot.sensor->code);
+            changed = true;
+        }
+    }
+    if (changed) rebuild_csv();
+    return changed;
+}
+
 static void sampler_task(void*) {
     while (true) {
-        gov_sensors_sample_due(esp_timer_get_time());
+        int64_t now = esp_timer_get_time();
+        gov_sensors_sample_due(now);
+        if (now >= s_next_rescan_us) {
+            gov_sensors_rescan(now);
+            s_next_rescan_us = now + HOTPLUG_PERIOD_US;
+        }
         vTaskDelay(pdMS_TO_TICKS(SAMPLER_TICK_MS));
     }
 }
@@ -116,43 +181,37 @@ int gov_sensor_count(void) {
 }
 
 const char* gov_sensors_discover(void) {
-    // init() of a driver must not run twice
+    // runs once per boot; later changes come from gov_sensors_rescan()
     if (s_discovered) return s_csv;
     s_discovered = true;
 
+    int64_t now = esp_timer_get_time();
     bool needs_sampler = false;
-    s_csv[0] = '\0';
 
     for (int i = 0; i < s_count; i++) {
         Slot& slot = s_slots[i];
         const gov_sensor_t* s = slot.sensor;
 
-        bool present = s->probe();
-        if (present && s->init != nullptr) {
-            esp_err_t err = s->init();
-            if (err != ESP_OK) {
-                ESP_LOGE(TAG, "[%s] init falhou: %s", s->code, esp_err_to_name(err));
-                present = false;
-            }
-        }
-        slot.active = present;
+        bool present = s->probe() && activate(slot, now);
         ESP_LOGI(TAG, "[%s] %s", s->code, present ? "detectado" : "ausente");
-        if (!present) continue;
-
-        if (s_csv[0] != '\0') strlcat(s_csv, ",", sizeof(s_csv));
-        strlcat(s_csv, s->code, sizeof(s_csv));
-        if (s->sample_period_ms > 0) needs_sampler = true;
+        if (s->hotplug || (present && s->sample_period_ms > 0)) needs_sampler = true;
     }
+    rebuild_csv();
 
     if (needs_sampler && !s_sampler) {
         s_sampler = true;
+        s_next_rescan_us = now + HOTPLUG_PERIOD_US;
         xTaskCreate(sampler_task, "gov_sensors", 4096, nullptr, 2, nullptr);
     }
     return s_csv;
 }
 
-const char* gov_sensors_active_csv(void) {
-    return s_csv;
+void gov_sensors_active_csv(char* out, size_t len) {
+    if (out == nullptr || len == 0) return;
+    if (s_mutex == nullptr) { out[0] = '\0'; return; }
+    lock();
+    strlcpy(out, s_csv, len);
+    unlock();
 }
 
 int gov_sensors_collect(sensor_reading_t* out, int max) {
