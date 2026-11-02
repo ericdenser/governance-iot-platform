@@ -415,7 +415,7 @@ onMounted(async () => {
           <div v-if="detailVersion.sensorConfigs?.length" class="detail-section">
             <p class="section-title">Sensores configurados</p>
             <div class="sensor-chips">
-              <div v-for="s in detailVersion.sensorConfigs" :key="s.sensorName" class="sensor-chip">
+              <div v-for="s in detailVersion.sensorConfigs" :key="s.sensorCode" class="sensor-chip" :title="s.sensorCode">
                 <span class="chip-name">{{ s.sensorName }}</span>
                 <span class="chip-pin">pino {{ s.pin }}</span>
               </div>
@@ -495,7 +495,7 @@ onMounted(async () => {
                 <input type="checkbox"
                   :checked="selectedSensors.has(s.sensorId)"
                   @change="toggleSensor(s.sensorId)" />
-                {{ s.name }}
+                {{ s.name }} <span v-if="s.name !== s.code" class="text-muted mono">{{ s.code }}</span>
               </label>
               <div v-if="selectedSensors.has(s.sensorId)" class="pin-wrapper">
                 <span class="pin-label">Pin</span>

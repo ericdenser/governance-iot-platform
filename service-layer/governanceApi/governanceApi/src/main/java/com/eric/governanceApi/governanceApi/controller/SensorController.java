@@ -2,11 +2,14 @@ package com.eric.governanceApi.governanceApi.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.eric.governanceApi.governanceApi.model.request.RenameSensorDTO;
 import com.eric.governanceApi.governanceApi.model.request.SensorDTO;
 import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.model.response.SensorResponseDTO;
@@ -37,6 +40,13 @@ public class SensorController {
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<SensorResponseDTO>> register(@Valid @RequestBody SensorDTO sensor, HttpServletRequest httpRequest) {
         SensorResponseDTO response = sensorService.registerSensor(sensor);
+        return ResponseEntity.ok(ApiResponse.success(response, httpRequest.getRequestURI()));
+    }
+
+    @PatchMapping("/{sensorId}")
+    public ResponseEntity<ApiResponse<SensorResponseDTO>> rename(@PathVariable String sensorId,
+            @Valid @RequestBody RenameSensorDTO body, HttpServletRequest httpRequest) {
+        SensorResponseDTO response = sensorService.rename(sensorId, body.name());
         return ResponseEntity.ok(ApiResponse.success(response, httpRequest.getRequestURI()));
     }
 }

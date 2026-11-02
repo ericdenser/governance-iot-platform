@@ -1,9 +1,13 @@
 package com.eric.eventhandler.event_handler.service;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
@@ -80,9 +84,30 @@ public class TransitionDetector {
 
         if (isOperational && sensorsChanged && !emptyReports) {
             log.info("Mudança de sensores detectada: [{}] -> [{}]", previousSensors, currentSensors);
-            return buildEvent(EventType.DEVICE_SENSOR_STATUS_CHANGED, dto, dto.status(), dto.status());
+            DeviceEvent event = buildEvent(EventType.DEVICE_SENSOR_STATUS_CHANGED, dto, dto.status(), dto.status());
+            event.setDetails(sensorDiff(previousSensors, currentSensors));
+            return event;
         }
         return null;
+    }
+
+    // {"added": [...], "removed": [...]} between two activeSensors CSVs
+    static Map<String, Object> sensorDiff(String previous, String current) {
+        Set<String> before = csvToSet(previous);
+        Set<String> after = csvToSet(current);
+        List<String> added = after.stream().filter(c -> !before.contains(c)).toList();
+        List<String> removed = before.stream().filter(c -> !after.contains(c)).toList();
+        Map<String, Object> details = new HashMap<>();
+        details.put("added", added);
+        details.put("removed", removed);
+        return details;
+    }
+
+    private static Set<String> csvToSet(String csv) {
+        Set<String> out = new LinkedHashSet<>();
+        if (csv == null) return out;
+        Arrays.stream(csv.split(",")).map(String::trim).filter(c -> !c.isEmpty()).forEach(out::add);
+        return out;
     }
 
     private DeviceEvent detectTransition(StatusDTO dto, DeviceState previousState) {

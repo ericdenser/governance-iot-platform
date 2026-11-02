@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
@@ -10,29 +10,60 @@ import type { SensorResponseDTO } from '@/types/models'
 import { errorMessage } from '@/utils/errors'
 import { toast } from '@/composables/useToast'
 
+// Same rule as the govApi (ValidationPatterns.SENSOR_CODE_REGEX)
+const CODE_RE = /^[a-z0-9_]{1,24}$/
+
 const authStore = useAuthStore()
 const sensors = ref<SensorResponseDTO[]>([])
 const loading = ref(true)
-const showForm = ref(false)
-const newName = ref('')
-const saving = ref(false)
-const error = ref('')
 
 const load = async () => {
   const r = await sensorsApi.list()
-  sensors.value = Array.isArray(r.data) ? r.data : []
+  sensors.value = (Array.isArray(r.data) ? r.data : []).sort((a, b) => a.code.localeCompare(b.code))
 }
 
+// Register
+const showForm = ref(false)
+const newCode = ref('')
+const newName = ref('')
+const saving = ref(false)
+const error = ref('')
+const codeValid = computed(() => CODE_RE.test(newCode.value))
+
+const openForm = () => { newCode.value = ''; newName.value = ''; error.value = ''; showForm.value = true }
+
 const save = async () => {
-  if (!newName.value.trim()) return
+  if (!codeValid.value) { error.value = 'Código inválido.'; return }
   saving.value = true; error.value = ''
   try {
-    await sensorsApi.register(newName.value.trim())
-    showForm.value = false; newName.value = ''; await load()
+    await sensorsApi.register(newCode.value, newName.value.trim() || undefined)
+    showForm.value = false; await load()
     toast.success('Sensor cadastrado')
   } catch (e: unknown) {
     error.value = errorMessage(e, 'Erro ao cadastrar sensor.')
   } finally { saving.value = false }
+}
+
+// Rename
+const renameTarget = ref<SensorResponseDTO | null>(null)
+const renameValue = ref('')
+const renaming = ref(false)
+const renameError = ref('')
+
+const openRename = (s: SensorResponseDTO) => {
+  renameTarget.value = s; renameValue.value = s.name; renameError.value = ''
+}
+
+const doRename = async () => {
+  if (!renameTarget.value || !renameValue.value.trim()) return
+  renaming.value = true; renameError.value = ''
+  try {
+    await sensorsApi.rename(renameTarget.value.sensorId, renameValue.value.trim())
+    renameTarget.value = null; await load()
+    toast.success('Nome atualizado')
+  } catch (e: unknown) {
+    renameError.value = errorMessage(e, 'Erro ao renomear sensor.')
+  } finally { renaming.value = false }
 }
 
 onMounted(async () => { try { await load() } finally { loading.value = false } })
@@ -42,34 +73,60 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
   <AppLayout>
     <AppCard>
       <template #actions>
-        <AppButton v-if="authStore.isAdmin" size="lg" variant="primary" @click="showForm = true">
+        <AppButton v-if="authStore.isAdmin" size="lg" variant="primary" @click="openForm">
           Registrar Sensor
         </AppButton>
       </template>
 
+      <p class="hint text-sm text-muted">
+        Sensores reportados pelos dispositivos entram aqui automaticamente, com o código como nome.
+        O código precisa ser o mesmo que o firmware envia.
+      </p>
+
       <div v-if="loading" class="empty">Carregando...</div>
       <table v-else class="tbl">
-        <thead><tr><th>Nome</th><th>ID</th><th>Criado por</th></tr></thead>
+        <thead><tr><th>Código</th><th>Nome</th><th>Criado por</th><th></th></tr></thead>
         <tbody>
           <tr v-for="s in sensors" :key="s.sensorId">
+            <td class="mono text-sm">{{ s.code }}</td>
             <td class="font-medium">{{ s.name }}</td>
-            <td class="mono text-muted text-sm">{{ s.sensorId }}</td>
-            <td class="text-sm">{{ s.createdByUsername ?? '—' }}</td>
+            <td class="text-sm">{{ s.createdByUsername ?? 'Automático' }}</td>
+            <td class="col-actions">
+              <AppButton v-if="authStore.isAdmin" size="sm" variant="ghost" @click="openRename(s)">Renomear</AppButton>
+            </td>
           </tr>
-          <tr v-if="!sensors.length"><td colspan="3" class="empty">Nenhum sensor cadastrado</td></tr>
+          <tr v-if="!sensors.length"><td colspan="4" class="empty">Nenhum sensor cadastrado</td></tr>
         </tbody>
       </table>
     </AppCard>
 
     <AppModal title="Registrar Sensor" :show="showForm" @close="showForm = false">
       <div class="form-group">
-        <label>Nome do sensor</label>
-        <input v-model="newName" class="field" placeholder="ex: Temperatura, Umidade..." @keydown.enter="save" />
+        <label>Código <span class="text-muted">(igual ao do firmware)</span></label>
+        <input v-model="newCode" class="field mono" placeholder="ex: bmp280" maxlength="24" @keydown.enter="save" />
+        <small v-if="newCode && !codeValid" class="error">Use de 1 a 24 caracteres: a-z, 0-9 e _</small>
+      </div>
+      <div class="form-group">
+        <label>Nome <span class="text-muted">(opcional)</span></label>
+        <input v-model="newName" class="field" placeholder="ex: Pressão e temperatura" maxlength="60" @keydown.enter="save" />
       </div>
       <p v-if="error" class="error">{{ error }}</p>
       <template #footer>
         <AppButton variant="ghost" @click="showForm = false">Cancelar</AppButton>
-        <AppButton variant="primary" :loading="saving" @click="save">Salvar</AppButton>
+        <AppButton variant="primary" :loading="saving" :disabled="!codeValid" @click="save">Salvar</AppButton>
+      </template>
+    </AppModal>
+
+    <AppModal title="Renomear Sensor" :show="!!renameTarget" @close="renameTarget = null">
+      <p v-if="renameTarget" class="text-sm text-muted">Código: <span class="mono">{{ renameTarget.code }}</span></p>
+      <div class="form-group">
+        <label>Nome</label>
+        <input v-model="renameValue" class="field" maxlength="60" @keydown.enter="doRename" />
+      </div>
+      <p v-if="renameError" class="error">{{ renameError }}</p>
+      <template #footer>
+        <AppButton variant="ghost" @click="renameTarget = null">Cancelar</AppButton>
+        <AppButton variant="primary" :loading="renaming" :disabled="!renameValue.trim()" @click="doRename">Salvar</AppButton>
       </template>
     </AppModal>
   </AppLayout>
@@ -89,4 +146,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; width: 100%; box-sizing: border-box; }
 .field:focus { border-color: var(--primary); }
 .error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
+.hint { margin: 0 0 var(--space-4); }
+.col-actions { text-align: right; }
 </style>

@@ -304,7 +304,7 @@ onMounted(async () => {
                 <input type="checkbox"
                   :checked="selectedSensors.has(s.sensorId)"
                   @change="toggleSensor(s.sensorId)" />
-                {{ s.name }}
+                {{ s.name }} <span v-if="s.name !== s.code" class="text-muted mono">{{ s.code }}</span>
               </label>
               <div v-if="selectedSensors.has(s.sensorId)" class="pin-wrapper">
                 <span class="pin-label">Pin</span>

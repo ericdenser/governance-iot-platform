@@ -69,6 +69,7 @@ export interface FirmwareResponseDTO {
 }
 
 export interface FirmwareSensorConfigResponseDTO {
+  sensorCode: string
   sensorName: string
   pin: number
 }
@@ -300,6 +301,7 @@ export interface ErrorRecordResponseDTO {
 // ── Sensors ─────────────────────────────────────────────────────────────────
 export interface SensorResponseDTO {
   sensorId: string
+  code: string
   name: string
   createdByActorId: string | null
   createdByUsername: string | null

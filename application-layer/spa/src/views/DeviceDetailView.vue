@@ -10,6 +10,7 @@ import BatteryBar from '@/components/BatteryBar.vue'
 import EventList from '@/components/EventList.vue'
 import ErrorList from '@/components/ErrorList.vue'
 import { devicesApi } from '@/services/devices'
+import { sensorsApi } from '@/services/sensors'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
 import { confirm } from '@/composables/useConfirm'
@@ -124,9 +125,16 @@ const loadDevice = async () => {
   device.value = r.data
 }
 
+// sensorStatus is keyed by code
+const sensorNames = ref<Record<string, string>>({})
+const sensorName = (code: string) => sensorNames.value[code] ?? code
+
 onMounted(async () => {
   try { await loadDevice() } catch { router.push('/devices') }
   finally { loading.value = false }
+  sensorsApi.list()
+    .then(r => { sensorNames.value = Object.fromEntries((r.data ?? []).map(s => [s.code, s.name])) })
+    .catch(() => {})
 })
 </script>
 
@@ -195,8 +203,8 @@ onMounted(async () => {
           <div v-if="device.sensorStatus && Object.keys(device.sensorStatus).length" class="info-row info-row-sensors">
             <span class="info-label">Sensores</span>
             <div class="sensor-chips">
-              <span v-for="(active, name) in device.sensorStatus" :key="name" class="sensor-chip">
-                <span class="sensor-name">{{ name }}</span>
+              <span v-for="(active, code) in device.sensorStatus" :key="code" class="sensor-chip" :title="String(code)">
+                <span class="sensor-name">{{ sensorName(String(code)) }}</span>
                 <StatusLabel kind="sensor" :code="active ? 'ON' : 'OFF'" />
               </span>
             </div>

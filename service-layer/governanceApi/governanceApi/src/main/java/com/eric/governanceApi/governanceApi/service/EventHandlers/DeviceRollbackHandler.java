@@ -138,7 +138,7 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
             // Sensor status volta pra config da versão pra qual voltamos
             Map<String, Boolean> sensorStatus = new HashMap<>();
             for (FirmwareSensorConfig cfg : previousVersion.getSensorConfigs()) {
-                sensorStatus.put(cfg.getSensor().getName(), false);
+                sensorStatus.put(cfg.getSensor().getCode(), false);
             }
             device.setSensorStatus(sensorStatus);
 

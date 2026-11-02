@@ -35,6 +35,7 @@ public record FirmwareVersionResponseDTO (
         List<FirmwareSensorConfigResponseDTO> sensors =
             v.getSensorConfigs().stream()
                 .map(cfg -> new FirmwareSensorConfigResponseDTO(
+                    cfg.getSensor().getCode(),
                     cfg.getSensor().getName(),
                     cfg.getPin()
                 ))

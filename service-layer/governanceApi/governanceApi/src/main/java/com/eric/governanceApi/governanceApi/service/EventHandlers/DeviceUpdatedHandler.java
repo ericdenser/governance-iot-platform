@@ -126,7 +126,7 @@ public class DeviceUpdatedHandler implements DeviceEventHandler {
 
         Map<String, Boolean> sensorStatus = new HashMap<>();
         for (FirmwareSensorConfig cfg : current_firmware.getSensorConfigs()) {
-                sensorStatus.put(cfg.getSensor().getName(), false);
+                sensorStatus.put(cfg.getSensor().getCode(), false);
         }
 
         device.setSensorStatus(sensorStatus);

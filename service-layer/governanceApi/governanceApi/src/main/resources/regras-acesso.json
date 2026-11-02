@@ -55,7 +55,8 @@
   },
   "/sensors/**": {
     "GET":  ["ROLE_ADMIN", "ROLE_USER"],
-    "POST": ["ROLE_ADMIN"]
+    "POST": ["ROLE_ADMIN"],
+    "PATCH": ["ROLE_ADMIN"]
   },
 
   "/commands": {

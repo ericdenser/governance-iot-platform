@@ -25,6 +25,10 @@ public class Sensor extends AuthoredEntity {
     @Column(name = "sensor_id", unique = true, nullable = false, updatable = false)
     private String sensorId;
 
+    // Same string the firmware reports in activeSensors
+    @Column(name = "code", unique = true, nullable = false, length = 24)
+    private String code;
+
     private String name;
     
     @PrePersist
