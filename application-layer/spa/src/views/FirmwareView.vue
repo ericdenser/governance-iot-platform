@@ -84,7 +84,7 @@ const createMeta = ref({
 const creating = ref(false)
 const createError = ref('')
 const availableSensors = ref<SensorResponseDTO[]>([])
-const selectedSensors = ref<Map<string, number>>(new Map())
+const selectedSensors = ref<Set<string>>(new Set())
 
 const uploadableGroups = computed(() => {
   if (authStore.isAdmin) return groups.value
@@ -103,21 +103,15 @@ const openCreate = async (asProvisioning = false) => {
     deepSleepIntervalS: 300,
   }
   createError.value = ''
-  selectedSensors.value = new Map()
+  selectedSensors.value = new Set()
   showCreate.value = true
   const r = await sensorsApi.list()
   availableSensors.value = Array.isArray(r.data) ? r.data : []
 }
 
 const toggleSensor = (sensorId: string) => {
-  const next = new Map(selectedSensors.value)
-  if (next.has(sensorId)) next.delete(sensorId); else next.set(sensorId, 0)
-  selectedSensors.value = next
-}
-
-const setSensorPin = (sensorId: string, pin: number) => {
-  const next = new Map(selectedSensors.value)
-  next.set(sensorId, pin)
+  const next = new Set(selectedSensors.value)
+  if (next.has(sensorId)) next.delete(sensorId); else next.add(sensorId)
   selectedSensors.value = next
 }
 
@@ -137,7 +131,7 @@ const doCreate = async () => {
   }
   creating.value = true; createError.value = ''
   try {
-    const sensors = [...selectedSensors.value.entries()].map(([sensorId, pin]) => ({ sensorId, pin }))
+    const sensors = [...selectedSensors.value].map(sensorId => ({ sensorId }))
     const payload: CreateFirmwareRequest = {
       firmwareName: meta.firmwareName.trim(),
       description: meta.description.trim() || null,
@@ -297,7 +291,8 @@ onMounted(async () => {
         </div>
 
         <div v-if="availableSensors.length" class="form-group">
-          <label>Sensores <span class="text-muted">(opcional)</span></label>
+          <label>Sensores <span class="text-muted">(só para binários sem manifesto)</span></label>
+          <small class="text-muted">Firmwares com os plugins de sensor trazem os sensores e pinos no próprio binário; esta lista é ignorada.</small>
           <div class="sensor-select-list">
             <div v-for="s in availableSensors" :key="s.sensorId" class="sensor-select-row">
               <label class="checkbox-row" style="flex:1;margin:0">
@@ -306,12 +301,6 @@ onMounted(async () => {
                   @change="toggleSensor(s.sensorId)" />
                 {{ s.name }} <span v-if="s.name !== s.code" class="text-muted mono">{{ s.code }}</span>
               </label>
-              <div v-if="selectedSensors.has(s.sensorId)" class="pin-wrapper">
-                <span class="pin-label">Pin</span>
-                <input type="number" min="0" max="39" class="field pin-field"
-                  :value="selectedSensors.get(s.sensorId)"
-                  @input="e => setSensorPin(s.sensorId, Number((e.target as HTMLInputElement).value))" />
-              </div>
             </div>
           </div>
         </div>
@@ -380,8 +369,5 @@ onMounted(async () => {
 
 .sensor-select-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); }
 .sensor-select-row { display: flex; align-items: center; gap: var(--space-2); }
-.pin-wrapper { display: flex; align-items: center; gap: var(--space-1); flex-shrink: 0; }
-.pin-label { font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
-.pin-field { width: 60px; padding: 4px 8px; resize: none; }
 
 </style>

@@ -71,7 +71,9 @@ export interface FirmwareResponseDTO {
 export interface FirmwareSensorConfigResponseDTO {
   sensorCode: string
   sensorName: string
-  pin: number
+  // pin name on the sensor module -> GPIO
+  pins: Record<string, number>
+  metrics: string[]
 }
 
 export interface FirmwareVersionResponseDTO {
@@ -117,7 +119,6 @@ export interface DeployableVersionProjection {
 // ── Firmware — requests ─────────────────────────────────────────────────────
 export interface SensorConfigDTO {
   sensorId: string
-  pin: number
 }
 
 export interface CreateFirmwareRequest {

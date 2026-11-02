@@ -37,7 +37,8 @@ public record FirmwareVersionResponseDTO (
                 .map(cfg -> new FirmwareSensorConfigResponseDTO(
                     cfg.getSensor().getCode(),
                     cfg.getSensor().getName(),
-                    cfg.getPin()
+                    cfg.getPinMap(),
+                    cfg.getMetricList()
                 ))
                 .toList();
 

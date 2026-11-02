@@ -101,27 +101,21 @@ const uploadMeta = ref({ version: '', releaseNotes: '', deepSleepEnabled: false,
 const uploading = ref(false)
 const uploadError = ref('')
 const availableSensors = ref<SensorResponseDTO[]>([])
-const selectedSensors = ref<Map<string, number>>(new Map())
+const selectedSensors = ref<Set<string>>(new Set())
 
 const openUpload = async () => {
   uploadFile.value = null
   uploadMeta.value = { version: '', releaseNotes: '', deepSleepEnabled: false, deepSleepIntervalS: 300 }
   uploadError.value = ''
-  selectedSensors.value = new Map()
+  selectedSensors.value = new Set()
   showUpload.value = true
   const r = await sensorsApi.list()
   availableSensors.value = Array.isArray(r.data) ? r.data : []
 }
 
 const toggleSensor = (sensorId: string) => {
-  const next = new Map(selectedSensors.value)
-  if (next.has(sensorId)) next.delete(sensorId); else next.set(sensorId, 0)
-  selectedSensors.value = next
-}
-
-const setSensorPin = (sensorId: string, pin: number) => {
-  const next = new Map(selectedSensors.value)
-  next.set(sensorId, pin)
+  const next = new Set(selectedSensors.value)
+  if (next.has(sensorId)) next.delete(sensorId); else next.add(sensorId)
   selectedSensors.value = next
 }
 
@@ -136,7 +130,7 @@ const doUpload = async () => {
   }
   uploading.value = true; uploadError.value = ''
   try {
-    const sensors = [...selectedSensors.value.entries()].map(([sensorId, pin]) => ({ sensorId, pin }))
+    const sensors = [...selectedSensors.value].map(sensorId => ({ sensorId }))
 
     const payload: UploadVersionRequest = {
       version: uploadMeta.value.version.trim(),
@@ -413,13 +407,25 @@ onMounted(async () => {
           </div>
 
           <div v-if="detailVersion.sensorConfigs?.length" class="detail-section">
-            <p class="section-title">Sensores configurados</p>
-            <div class="sensor-chips">
-              <div v-for="s in detailVersion.sensorConfigs" :key="s.sensorCode" class="sensor-chip" :title="s.sensorCode">
-                <span class="chip-name">{{ s.sensorName }}</span>
-                <span class="chip-pin">pino {{ s.pin }}</span>
-              </div>
-            </div>
+            <p class="section-title">Sensores suportados</p>
+            <table class="sensor-tbl">
+              <thead><tr><th>Sensor</th><th>Ligação (pino do sensor → GPIO)</th><th>Métricas</th></tr></thead>
+              <tbody>
+                <tr v-for="s in detailVersion.sensorConfigs" :key="s.sensorCode">
+                  <td>
+                    <span class="chip-name">{{ s.sensorName }}</span>
+                    <span v-if="s.sensorName !== s.sensorCode" class="mono text-muted text-xs sensor-code">{{ s.sensorCode }}</span>
+                  </td>
+                  <td class="mono text-sm">
+                    <template v-if="Object.keys(s.pins).length">
+                      <span v-for="(gpio, pin) in s.pins" :key="pin" class="pin-pair">{{ pin }} → GPIO{{ gpio }}</span>
+                    </template>
+                    <span v-else class="text-muted">interno</span>
+                  </td>
+                  <td class="text-xs text-muted">{{ s.metrics.length ? s.metrics.join(', ') : '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
           <div class="detail-section">
@@ -488,7 +494,8 @@ onMounted(async () => {
         </div>
 
         <div v-if="availableSensors.length" class="form-group">
-          <label>Sensores <span class="text-muted">(opcional)</span></label>
+          <label>Sensores <span class="text-muted">(só para binários sem manifesto)</span></label>
+          <small class="text-muted">Firmwares com os plugins de sensor trazem os sensores e pinos no próprio binário; esta lista é ignorada.</small>
           <div class="sensor-select-list">
             <div v-for="s in availableSensors" :key="s.sensorId" class="sensor-select-row">
               <label class="checkbox-row" style="flex:1;margin:0">
@@ -497,12 +504,6 @@ onMounted(async () => {
                   @change="toggleSensor(s.sensorId)" />
                 {{ s.name }} <span v-if="s.name !== s.code" class="text-muted mono">{{ s.code }}</span>
               </label>
-              <div v-if="selectedSensors.has(s.sensorId)" class="pin-wrapper">
-                <span class="pin-label">Pin</span>
-                <input type="number" min="0" max="39" class="field pin-field"
-                  :value="selectedSensors.get(s.sensorId)"
-                  @input="e => setSensorPin(s.sensorId, Number((e.target as HTMLInputElement).value))" />
-              </div>
             </div>
           </div>
         </div>
@@ -599,7 +600,11 @@ onMounted(async () => {
 .section-title { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); margin: 0; }
 .sensor-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sensor-chip { display: flex; align-items: center; gap: var(--space-1); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2); font-size: var(--text-xs); }
-.chip-pin { color: var(--text-muted); }
+.sensor-tbl { width: 100%; border-collapse: collapse; }
+.sensor-tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); text-align: left; padding: 0 12px var(--space-2) 0; }
+.sensor-tbl td { padding: var(--space-2) 12px var(--space-2) 0; border-top: 1px solid var(--border); vertical-align: top; }
+.sensor-code { margin-left: 6px; }
+.pin-pair { display: inline-block; margin-right: var(--space-3); white-space: nowrap; }
 .device-pills { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .device-pill { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 2px var(--space-2); font-size: var(--text-xs); font-family: var(--font-mono); color: var(--text); }
 
@@ -613,9 +618,6 @@ onMounted(async () => {
 
 .sensor-select-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); }
 .sensor-select-row { display: flex; align-items: center; gap: var(--space-2); }
-.pin-wrapper { display: flex; align-items: center; gap: var(--space-1); flex-shrink: 0; }
-.pin-label { font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
-.pin-field { width: 60px; padding: 4px 8px; resize: none; }
 
 /* Deploy device chips */
 .device-grid { display: flex; flex-wrap: wrap; gap: var(--space-2); overflow-y: auto; max-height: 280px; align-content: flex-start; }
