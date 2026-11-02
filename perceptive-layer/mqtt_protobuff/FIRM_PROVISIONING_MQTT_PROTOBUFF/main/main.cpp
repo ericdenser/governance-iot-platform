@@ -663,12 +663,38 @@ static void handle_boot_audit() {
 
         // OTA anterior validado com sucesso — notifica MDM e segue para operação
         if (!otaNotified) {
-            SLOG_I("OTA_SUCCESSFUL detectado, postando status: [OTA_SUCCESSFUL].");
+            // lastCommand tells a commanded rollback from an OTA
+            bool wasRollback = false;
+            char lastCmdBuf[32] = {0};
+            nvs_handle_t cmdRO;
+            if (nvs_open("command_store", NVS_READONLY, &cmdRO) == ESP_OK) {
+                int8_t cmdNotified = 1;
+                size_t lc_len = sizeof(lastCmdBuf);
+                nvs_get_i8(cmdRO, "commandNotified", &cmdNotified);
+                nvs_get_str(cmdRO, "lastCommand", lastCmdBuf, &lc_len);
+                nvs_close(cmdRO);
+                wasRollback = (!cmdNotified && std::string(lastCmdBuf) == "FIRMWARE_ROLLBACK");
+            }
 
-            AppState::transition(DeviceState::OTA_SUCCESSFUL, {TAG, "handle_boot_audit"});
-            publish_proto_status(topic, g_macAddress.c_str(),
-                                 firmware_version.c_str(), ssid.c_str(),
-                                 (uint32_t)AppState::get(), nullptr, 1);
+            if (wasRollback) {
+                SLOG_I("Rollback comandado concluído — publicando COMMAND_COMPLETE.");
+                AppState::transition(DeviceState::COMMAND_COMPLETE, {TAG, "handle_boot_audit"});
+                publish_proto_status(topic, g_macAddress.c_str(),
+                                     firmware_version.c_str(), ssid.c_str(),
+                                     (uint32_t)AppState::get(), "{\"command\":\"FIRMWARE_ROLLBACK\"}", 1);
+                nvs_handle_t cmdRW;
+                if (nvs_open("command_store", NVS_READWRITE, &cmdRW) == ESP_OK) {
+                    nvs_set_i8(cmdRW, "commandNotified", 1);
+                    nvs_commit(cmdRW);
+                    nvs_close(cmdRW);
+                }
+            } else {
+                SLOG_I("OTA_SUCCESSFUL detectado, postando status: [OTA_SUCCESSFUL].");
+                AppState::transition(DeviceState::OTA_SUCCESSFUL, {TAG, "handle_boot_audit"});
+                publish_proto_status(topic, g_macAddress.c_str(),
+                                     firmware_version.c_str(), ssid.c_str(),
+                                     (uint32_t)AppState::get(), nullptr, 1);
+            }
             nvs_set_i8(otaHandler, "ota_notified", 1);
             nvs_commit(otaHandler);
             nvs_close(otaHandler);
@@ -737,11 +763,19 @@ static void handle_boot_audit() {
 
         SLOG_W("Rollback detectado. Versao invalida: %s. Notificando MDM...", invalidVer.c_str());
 
+        char fw_buf[32] = {0};
+        nvs_read_str("main_store", "fw_version", fw_buf, sizeof(fw_buf));
+        firmware_version = fw_buf;
         nvs_read_str("ota_store", "rollbackReason", reason, sizeof(reason));
 
-        char detail[64];
-        snprintf(detail, sizeof(detail), "ROLLBACK:v%s:%s", invalidVer.c_str(), reason);
+        char invalidSha[65] = {0};
+        nvs_read_str("ota_store", "invalid_sha", invalidSha, sizeof(invalidSha));
 
+        char detail[192];
+        snprintf(detail, sizeof(detail), "{\"invalid_ver\":\"%s\",\"invalid_sha\":\"%s\",\"reason\":\"%s\"}",
+                 invalidVer.c_str(), invalidSha, reason);
+
+        AppState::transition(DeviceState::FIRMWARE_ROLLBACK, {TAG, "handle_boot_audit"});
         publish_proto_status(topic, g_macAddress.c_str(),
                              firmware_version.c_str(), ssid.c_str(),
                              (uint32_t)AppState::get(), detail, 1);
@@ -750,6 +784,14 @@ static void handle_boot_audit() {
         // esp_ota_get_last_invalid_partition() retorna NULL porque a partição
         // nunca foi marcada como inválida.
         SLOG_W("OTA v%s abortado (download incompleto). Notificando MDM...", lastTarget.c_str());
+
+        char fw_buf2[32] = {0};
+        nvs_read_str("main_store", "fw_version", fw_buf2, sizeof(fw_buf2));
+        firmware_version = fw_buf2;
+
+        AppState::setError(ErrorCode::OTA_FAIL, "Error while updating to new firmware.",
+            {TAG, "handle_boot_audit"},
+            {{"attempted_version", lastTarget}, {"current_version", firmware_version}});
 
         // Limpa target_ver para não reportar novamente no próximo boot
         nvs_handle_t otaWriter;
@@ -777,7 +819,7 @@ static void handle_boot_audit() {
             ESP_LOGI(TAG, "Notificando comando concluido [%s] ao MDM", commandName);
 
             char detail[64];
-            snprintf(detail, sizeof(detail), "COMMAND_COMPLETE:%s", commandName);
+            snprintf(detail, sizeof(detail), "{\"command\":\"%s\"}", commandName);
             SLOG_I("Notificando comando concluído [%s] ao MDM.", commandName);
 
             AppState::transition(DeviceState::COMMAND_COMPLETE, {TAG, "handle_boot_audit"});
@@ -792,6 +834,10 @@ static void handle_boot_audit() {
         nvs_close(commandHandler);
     }
 
+    if (AppState::hasQueuedErrors()) {
+        AppState::transition(DeviceState::ERROR, {TAG, "handle_boot_audit"});
+        return;
+    }
     AppState::transition(DeviceState::PROVISIONING_SUCCESS, {TAG, "handle_rollback"});
 }
 
