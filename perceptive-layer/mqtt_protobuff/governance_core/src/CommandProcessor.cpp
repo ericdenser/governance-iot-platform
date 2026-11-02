@@ -56,6 +56,14 @@ static void ota_task_routine(void* pvParameters) {
     std::string msgOut;
     WatchdogManager::addToCurrentTask();
 
+    // cleared once the result is reported
+    nvs_handle_t runHandle;
+    if (nvs_open("ota_store", NVS_READWRITE, &runHandle) == ESP_OK) {
+        nvs_set_str(runHandle, "running_ver", params->newVersion.c_str());
+        nvs_commit(runHandle);
+        nvs_close(runHandle);
+    }
+
     bool success = OtaManager::verify_and_update(
         params->newVersion,
         params->url_bin,

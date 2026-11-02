@@ -95,6 +95,28 @@ static void nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
     nvs_close(h);
 }
 
+static void clear_ota_running() {
+    nvs_handle_t h;
+    if (nvs_open("ota_store", NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_erase_key(h, "running_ver");
+    nvs_commit(h);
+    nvs_close(h);
+}
+
+static const char* reset_reason_str(esp_reset_reason_t r) {
+    switch (r) {
+        case ESP_RST_TASK_WDT: return "TASK_WDT";
+        case ESP_RST_INT_WDT:  return "INT_WDT";
+        case ESP_RST_WDT:      return "WDT";
+        case ESP_RST_PANIC:    return "PANIC";
+        case ESP_RST_BROWNOUT: return "BROWNOUT";
+        case ESP_RST_POWERON:  return "POWERON";
+        case ESP_RST_SW:       return "SW";
+        case ESP_RST_DEEPSLEEP:return "DEEPSLEEP";
+        default:               return "OTHER";
+    }
+}
+
 // Grava a particao deste boot e diz se o boot anterior foi em outra.
 // Panic seguido de boot em outra particao = rollback do bootloader:
 // o crash foi da imagem anterior, nao desta.
@@ -795,6 +817,7 @@ static void handle_boot_audit() {
             nvs_set_i8(otaHandler, "ota_notified", 1);
             nvs_commit(otaHandler);
             nvs_close(otaHandler);
+            clear_ota_running();
             // Vai pra SENSORS_INIT (não OPERATIONAL direto), precisa descobrir sensores
             AppState::transition(DeviceState::SENSORS_INIT, {TAG, "handle_boot_audit"});
             return;
@@ -860,6 +883,7 @@ static void handle_boot_audit() {
         AppState::transition(DeviceState::FIRMWARE_ROLLBACK, {TAG, "verify_rollback"});
         publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(),
                              ssid.c_str(), (uint32_t)AppState::get(), detail);
+        clear_ota_running();
     } else if (!lastTarget.empty()) {
         SLOG_W("OTA v%s abortado (download incompleto)", lastTarget.c_str());
 
@@ -877,6 +901,22 @@ static void handle_boot_audit() {
             nvs_commit(otaWriter);
             nvs_close(otaWriter);
         }
+        clear_ota_running();
+    }
+
+    // OTA interrupted by a reset before reporting its result
+    char runningBuf[32] = {0};
+    nvs_read_str("ota_store", "running_ver", runningBuf, sizeof(runningBuf));
+    if (runningBuf[0] != '\0') {
+        const char* why = reset_reason_str(esp_reset_reason());
+        SLOG_W("OTA v%s interrompido por reset (%s) sem resultado reportado", runningBuf, why);
+        AppState::setError(ErrorCode::OTA_FAIL,
+            std::string("OTA interrupted by reset (") + why + ")",
+            {TAG, "handle_boot_audit"},
+            {{"attempted_version", runningBuf},
+             {"current_version", firmware_version},
+             {"reset_reason", why}});
+        clear_ota_running();
     }
 
     nvs_handle_t commandHandler;
@@ -1011,6 +1051,8 @@ static void handle_error() {
                             src_str.c_str(),
                             e.resolved,
                             e.details.empty() ? nullptr : details_str.c_str());
+
+        if (e.code == ErrorCode::OTA_FAIL && !e.resolved) clear_ota_running();
     }
 
     if (AppState::hasActiveErrors()) {
