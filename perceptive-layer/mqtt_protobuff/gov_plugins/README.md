@@ -17,26 +17,27 @@ O kernel cuida de:
 | `gov_sensor_ds3231` | `ds3231` | nenhuma (RTC; hora entre boots) |
 | `gov_sensor_battery` | `battery_adc` | battery_mv |
 | `gov_sensor_chip_temp` | `chip_temp` | temp_c |
+| `gov_sensor_aht25` | `aht25` | temperature, humidity |
 
 ## Adicionar um sensor
 
-Exemplo: um AHT25 (I2C, temperatura e umidade).
+Exemplo: um SHT31 (I2C, temperatura e umidade).
 
-### 1. Criar o componente `gov_plugins/gov_sensor_aht25/`
+### 1. Criar o componente `gov_plugins/gov_sensor_sht31/`
 
 ```
-gov_sensor_aht25/
+gov_sensor_sht31/
 ├── CMakeLists.txt
 ├── Kconfig.projbuild
 ├── idf_component.yml        (só se usar biblioteca do registry)
-├── include/gov_sensor_aht25.h
-└── src/gov_sensor_aht25.cpp
+├── include/gov_sensor_sht31.h
+└── src/gov_sensor_sht31.cpp
 ```
 
 `CMakeLists.txt`
 ```cmake
 idf_component_register(
-    SRCS "src/gov_sensor_aht25.cpp"
+    SRCS "src/gov_sensor_sht31.cpp"
     INCLUDE_DIRS "include"
     REQUIRES governance_core gov_hal
 )
@@ -44,16 +45,16 @@ idf_component_register(
 
 `Kconfig.projbuild`. Com `.projbuild`, o menu aparece no primeiro nível do `idf.py menuconfig`, junto com os outros "Sensor: …"; com `Kconfig` ele ficaria escondido em Component config:
 ```
-menu "Sensor: AHT25"
+menu "Sensor: SHT31"
 
-    config GOV_SENSOR_AHT25
-        bool "Sensor AHT25 (I2C 0x38)"
+    config GOV_SENSOR_SHT31
+        bool "Sensor SHT31 (I2C 0x44)"
         default y
 
 endmenu
 ```
 
-`include/gov_sensor_aht25.h`
+`include/gov_sensor_sht31.h`
 ```c
 #pragma once
 #include "gov_sensor.h"
@@ -62,22 +63,22 @@ endmenu
 extern "C" {
 #endif
 
-extern const gov_sensor_t gov_sensor_aht25;
+extern const gov_sensor_t gov_sensor_sht31;
 
 #ifdef __cplusplus
 }
 #endif
 ```
 
-`src/gov_sensor_aht25.cpp`
+`src/gov_sensor_sht31.cpp`
 ```cpp
-#include "gov_sensor_aht25.h"
+#include "gov_sensor_sht31.h"
 #include "gov_hal.h"
 
-#define AHT25_ADDR 0x38
+#define SHT31_ADDR 0x44
 
 static bool probe(void) {
-    return gov_i2c_probe(AHT25_ADDR);
+    return gov_i2c_probe(SHT31_ADDR);
 }
 
 static esp_err_t init(void) {
@@ -93,13 +94,13 @@ static int read(gov_reading_t* out, int max) {
     return 2;
 }
 
-const gov_sensor_t gov_sensor_aht25 = {
-    .code             = "aht25",
+const gov_sensor_t gov_sensor_sht31 = {
+    .code             = "sht31",
     .sample_period_ms = 2000,
     .probe            = probe,
     .init             = init,
     .read             = read,
-    .info             = GOV_SENSOR_INFO("{\"code\":\"aht25\",\"pins\":{\"SDA\":" GOV_STR(CONFIG_GOV_I2C_SDA_PIN)
+    .info             = GOV_SENSOR_INFO("{\"code\":\"sht31\",\"pins\":{\"SDA\":" GOV_STR(CONFIG_GOV_I2C_SDA_PIN)
                                         ",\"SCL\":" GOV_STR(CONFIG_GOV_I2C_SCL_PIN) "},"
                                         "\"metrics\":[\"temperature\",\"humidity\"]}"),
 };
@@ -113,15 +114,15 @@ Em `main/CMakeLists.txt`, adicione o componente ao `REQUIRES`. O projeto usa `MI
 ```cmake
     REQUIRES
         ...
-        gov_sensor_aht25
+        gov_sensor_sht31
 ```
 
 Em `main/main.cpp`, registre o sensor em `register_sensors()`:
 ```cpp
-#include "gov_sensor_aht25.h"
+#include "gov_sensor_sht31.h"
 ...
-#if CONFIG_GOV_SENSOR_AHT25
-    gov_sensor_register(&gov_sensor_aht25);
+#if CONFIG_GOV_SENSOR_SHT31
+    gov_sensor_register(&gov_sensor_sht31);
 #endif
 ```
 
@@ -147,6 +148,15 @@ Como os pinos são definidos na compilação, cada pinagem diferente é uma comp
 - **`sample_period_ms`:** com período `0`, o sensor é lido só na hora da telemetria. Valor sem amostragem há mais de 3 períodos não é enviado.
 - **Limites:** no máximo 16 sensores e 4 métricas por sensor. A telemetria leva até 16 leituras no total.
 - **Barramentos:** use os do `gov_hal` (`gov_i2c_probe`, `gov_adc_config`, `gov_adc_read_mv`). Os pinos de I2C ficam no menuconfig.
+
+## Opções de registro
+
+`gov_sensor_register_flags(&sensor, flags)` deixa o firmware decidir como cada sensor entra na telemetria:
+
+- **`GOV_SENSOR_NO_TELEMETRY`:** o sensor é detectado, aparece na plataforma e fica no cache (o `gov_sensor_get` funciona), mas os valores dele não vão para a telemetria.
+- **`GOV_SENSOR_DERIVED`:** sensor calculado a partir de outros. Os valores vão para a telemetria, mas ele não aparece na lista de sensores físicos. Registre depois dos sensores que ele lê.
+
+Exemplo: com BMP280 e AHT25 na mesma placa, os dois são registrados com `NO_TELEMETRY`, e um sensor derivado do próprio firmware (`DERIVED`) lê os dois do cache e envia uma `temperature` e uma `humidity` combinadas (descartando o sensor que destoar), mais a `pressure` do BMP280.
 
 ## Testar o kernel
 

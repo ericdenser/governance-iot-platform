@@ -125,6 +125,6 @@ direct_dependencies:
 - espressif/led_strip
 - espressif/mdns
 - lvgl/lvgl
-manifest_hash: 05608e1ae817e537a006eef8fadab9a7bd961909f6d1f0027493d060c5c46adf
+manifest_hash: db2dbcf7aaf037ade526871993db7d33b1c60d94c593e422fe7cff7e6189e67e
 target: esp32s3
 version: 2.0.0

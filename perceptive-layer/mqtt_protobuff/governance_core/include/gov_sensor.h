@@ -38,8 +38,13 @@ typedef struct {
 // GOV_SENSOR_INFO("{\"code\":\"x\",\"pins\":{\"SDA\":" GOV_STR(CONFIG_X_SDA) "},\"metrics\":[\"t\"]}")
 #define GOV_SENSOR_INFO(json) "GOVSENSOR:" json
 
+// Registration flags
+#define GOV_SENSOR_NO_TELEMETRY (1u << 0)  // cached and reported as present, readings not sent
+#define GOV_SENSOR_DERIVED      (1u << 1)  // computed from other sensors: readings sent, not listed as hardware
+
 // Call before governance_core_init()
 esp_err_t gov_sensor_register(const gov_sensor_t* sensor);
+esp_err_t gov_sensor_register_flags(const gov_sensor_t* sensor, uint32_t flags);
 int       gov_sensor_count(void);
 
 // Last sampled value of a metric of an active sensor

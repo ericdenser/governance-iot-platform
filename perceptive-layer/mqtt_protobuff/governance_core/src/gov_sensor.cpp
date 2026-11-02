@@ -15,6 +15,7 @@ static const char* TAG = "GovSensor";
 
 struct Slot {
     const gov_sensor_t* sensor;
+    uint32_t            flags;
     bool                active;
     int                 count;
     gov_reading_t       readings[GOV_SENSOR_MAX_READINGS];
@@ -83,7 +84,7 @@ static void rebuild_csv() {
     lock();
     s_csv[0] = '\0';
     for (int i = 0; i < s_count; i++) {
-        if (!s_slots[i].active) continue;
+        if (!s_slots[i].active || (s_slots[i].flags & GOV_SENSOR_DERIVED)) continue;
         if (s_csv[0] != '\0') strlcat(s_csv, ",", sizeof(s_csv));
         strlcat(s_csv, s_slots[i].sensor->code, sizeof(s_csv));
     }
@@ -150,6 +151,10 @@ static void sampler_task(void*) {
 }
 
 esp_err_t gov_sensor_register(const gov_sensor_t* sensor) {
+    return gov_sensor_register_flags(sensor, 0);
+}
+
+esp_err_t gov_sensor_register_flags(const gov_sensor_t* sensor, uint32_t flags) {
     if (s_mutex == nullptr) s_mutex = xSemaphoreCreateMutex();
 
     if (sensor == nullptr || sensor->probe == nullptr || !valid_code(sensor->code)) {
@@ -166,12 +171,13 @@ esp_err_t gov_sensor_register(const gov_sensor_t* sensor) {
         return ESP_ERR_NO_MEM;
     }
 
-    if (sensor->info == nullptr) {
+    if (sensor->info == nullptr && !(flags & GOV_SENSOR_DERIVED)) {
         ESP_LOGW(TAG, "[%s] sem info: a plataforma nao vai listar pinos e metricas", sensor->code);
     }
 
     s_slots[s_count] = {};
     s_slots[s_count].sensor = sensor;
+    s_slots[s_count].flags  = flags;
     s_count++;
     return ESP_OK;
 }
@@ -220,7 +226,7 @@ int gov_sensors_collect(sensor_reading_t* out, int max) {
 
     for (int i = 0; i < s_count && n < max; i++) {
         Slot& slot = s_slots[i];
-        if (!slot.active) continue;
+        if (!slot.active || (slot.flags & GOV_SENSOR_NO_TELEMETRY)) continue;
 
         if (slot.sensor->sample_period_ms == 0) sample(slot, now);
         else if (is_stale(slot, now)) continue;
