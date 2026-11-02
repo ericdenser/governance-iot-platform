@@ -9,6 +9,8 @@ import BatteryBar from '@/components/BatteryBar.vue'
 import EventActivityList from '@/components/EventActivityList.vue'
 import ErrorActivityList from '@/components/ErrorActivityList.vue'
 import TelemetryChart from '@/components/TelemetryChart.vue'
+import ShowMoreToggle from '@/components/ShowMoreToggle.vue'
+import { useFeed } from '@/composables/useFeed'
 import { devicesApi } from '@/services/devices'
 import { eventsApi } from '@/services/events'
 import { errorsApi } from '@/services/errors'
@@ -26,10 +28,23 @@ import type {
 
 const liveStore = useLiveStateStore()
 const devices = ref<DeviceSummaryDTO[]>([])
-const recentEvents = ref<EventRegistryResponseDTO[]>([])
-const recentErrors = ref<ErrorRecordResponseDTO[]>([])
-const totalEvents = ref(0)
 const loading = ref(true)
+
+const LIST_STEP = 10
+const isLast = (p: { number: number; totalPages: number } | undefined) => !p || p.number + 1 >= p.totalPages
+
+const eventsFeed = useFeed<EventRegistryResponseDTO>(async (page) => {
+  const r = await eventsApi.list(page)
+  return { items: r.data.content ?? [], last: isLast(r.data.page) }
+}, LIST_STEP)
+
+const errorsFeed = useFeed<ErrorRecordResponseDTO>(async (page) => {
+  const r = await errorsApi.list(page)
+  return { items: r.data.content ?? [], last: isLast(r.data.page) }
+}, LIST_STEP)
+
+// Devices are all loaded already; only the visible slice grows
+const devicesShown = ref(LIST_STEP)
 
 const mergedDevices = computed(() =>
   devices.value.map((d) => {
@@ -45,6 +60,9 @@ const mergedDevices = computed(() =>
     }
   }),
 )
+
+const recentDevices = computed(() =>
+  [...mergedDevices.value].sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '')))
 
 const totalDevices = computed(() => mergedDevices.value.length)
 const onlineDevices = computed(() => mergedDevices.value.filter(d => connState(d.status, d.lastSeen) === 'online').length)
@@ -85,15 +103,12 @@ const toggleMinimapStatus = (s: string) => {
 
 onMounted(async () => {
   try {
-    const [devList, evRes, errRes] = await Promise.all([
+    const [devList] = await Promise.all([
       devicesApi.listAll(),
-      eventsApi.list(0),
-      errorsApi.list(0),
+      eventsFeed.reset(),
+      errorsFeed.reset(),
     ])
     devices.value = devList
-    recentEvents.value = evRes.data.content?.slice(0, 5) ?? []
-    totalEvents.value = evRes.data.page?.totalElements ?? 0
-    recentErrors.value = errRes.data.content?.slice(0, 5) ?? []
   } finally {
     loading.value = false
   }
@@ -166,7 +181,7 @@ onMounted(async () => {
           <table class="tbl">
             <thead><tr><th>Nome</th><th>Status</th><th>Firmware</th><th>Bateria</th><th>Último sinal</th></tr></thead>
             <tbody>
-              <tr v-for="d in mergedDevices.slice(0, 8)" :key="d.deviceId" class="tbl-row"
+              <tr v-for="d in recentDevices.slice(0, devicesShown)" :key="d.deviceId" class="tbl-row"
                   @click="$router.push(`/devices/${d.deviceId}`)">
                 <td>{{ d.name }}</td>
                 <td><StatusLabel kind="conn" :code="connState(d.status, d.lastSeen)" /></td>
@@ -177,15 +192,28 @@ onMounted(async () => {
               <tr v-if="!devices.length"><td colspan="5" class="empty">Nenhum dispositivo</td></tr>
             </tbody>
           </table>
+          <ShowMoreToggle
+            :can-more="recentDevices.length > devicesShown"
+            :can-less="devicesShown > LIST_STEP"
+            @more="devicesShown += LIST_STEP"
+            @less="devicesShown = LIST_STEP" />
         </AppCard>
 
         <div class="side-panels">
           <AppCard title="Eventos recentes" class="panel">
-            <EventActivityList :events="recentEvents" />
+            <EventActivityList :events="eventsFeed.visible.value" />
+            <ShowMoreToggle
+              :can-more="eventsFeed.canMore.value" :can-less="eventsFeed.canLess.value"
+              :loading="eventsFeed.loading.value"
+              @more="eventsFeed.more" @less="eventsFeed.less" />
           </AppCard>
 
           <AppCard title="Erros recentes" class="panel">
-            <ErrorActivityList :errors="recentErrors" />
+            <ErrorActivityList :errors="errorsFeed.visible.value" />
+            <ShowMoreToggle
+              :can-more="errorsFeed.canMore.value" :can-less="errorsFeed.canLess.value"
+              :loading="errorsFeed.loading.value"
+              @more="errorsFeed.more" @less="errorsFeed.less" />
           </AppCard>
         </div>
       </div>
@@ -197,8 +225,8 @@ onMounted(async () => {
 .loading { color: var(--text-muted); padding: var(--space-8); text-align: center; }
 .dashboard { display: flex; flex-direction: column; gap: var(--space-6); }
 .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
-.panels { display: grid; grid-template-columns: 1fr 360px; gap: var(--space-4); }
-.side-panels { display: flex; flex-direction: column; gap: var(--space-4); }
+.panels { display: flex; flex-direction: column; gap: var(--space-4); }
+.side-panels { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); align-items: start; }
 .panel { height: fit-content; }
 
 .tbl { width: 100%; border-collapse: collapse; }
@@ -293,8 +321,8 @@ onMounted(async () => {
 .text-sm { font-size: var(--text-sm); }
 .text-xs { font-size: var(--text-xs); }
 
-@media (max-width: 1100px) {
-  .panels { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .side-panels { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 540px) {
