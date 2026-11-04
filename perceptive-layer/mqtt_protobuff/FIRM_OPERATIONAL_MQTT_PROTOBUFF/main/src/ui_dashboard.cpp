@@ -19,6 +19,11 @@ static Metric    s_temp, s_hum, s_press, s_air;
 static lv_obj_t* s_air_dot  = nullptr;
 static lv_obj_t* s_clock    = nullptr;
 
+// fused value when the env sensor is on, else whichever physical sensor has it
+static bool env_metric(const char* metric, float* v) {
+    return ui_metric("env", metric, v) || ui_metric("bmp280", metric, v) || ui_metric("aht25", metric, v);
+}
+
 static lv_color_t air_color(gov_air_level_t lvl) {
     switch (lvl) {
         case GOV_AIR_GOOD:     return COLOR_OK;
@@ -145,9 +150,9 @@ lv_obj_t* ui_dashboard_create(int w, int h) {
 
 void ui_dashboard_tick() {
     float temp = 0, hum = 0, press = 0, co2 = 0;
-    bool has_temp  = ui_metric("bmp280", "temperature", &temp);
-    bool has_hum   = ui_metric("bmp280", "humidity", &hum);
-    bool has_press = ui_metric("bmp280", "pressure", &press);
+    bool has_temp  = env_metric("temperature", &temp);
+    bool has_hum   = env_metric("humidity", &hum);
+    bool has_press = env_metric("pressure", &press);
     bool has_air   = ui_metric("mq135", "co2_ppm", &co2);
     int  warmup    = gov_sensor_is_active("mq135") ? gov_mq135_warmup_left_s() : 0;
 
@@ -186,8 +191,8 @@ void ui_dashboard_tick() {
 
 void ui_dashboard_sample() {
     float v = 0;
-    push_point(s_temp,  ui_metric("bmp280", "temperature", &v), v);
-    push_point(s_hum,   ui_metric("bmp280", "humidity", &v), v);
-    push_point(s_press, ui_metric("bmp280", "pressure", &v), v);
+    push_point(s_temp,  env_metric("temperature", &v), v);
+    push_point(s_hum,   env_metric("humidity", &v), v);
+    push_point(s_press, env_metric("pressure", &v), v);
     push_point(s_air,   ui_metric("mq135", "co2_ppm", &v), v);
 }

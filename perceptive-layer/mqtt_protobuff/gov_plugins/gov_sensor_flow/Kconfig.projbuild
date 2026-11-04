@@ -1,0 +1,29 @@
+menu "Sensor: fluxo de agua (pulsos)"
+
+    config GOV_SENSOR_FLOW
+        bool "Sensor de fluxo por pulsos (YF-B6 e similares)"
+        default n
+        help
+            Code "flow". Metrics: flow_lpm (vazao media desde a telemetria anterior)
+            e volume_l (total desde o boot). Nao da para detectar o sensor pelo pino:
+            habilitado, ele sempre aparece como ativo.
+
+    config GOV_SENSOR_FLOW_GPIO
+        int "GPIO do sinal (fio amarelo)"
+        range 0 48
+        default 16
+        depends on GOV_SENSOR_FLOW
+        help
+            Alimentado em 5V, o sinal sai em 5V: use conversor de nivel ou divisor
+            e confira que o pino nao passa de 3.3V. Nao use GPIO de outro sensor.
+
+    config GOV_SENSOR_FLOW_K_X100
+        int "Fator K x100 (Hz por L/min)"
+        range 1 100000
+        default 660
+        depends on GOV_SENSOR_FLOW
+        help
+            Datasheet: F(Hz) = K x Q(L/min). YF-B6: K = 6.6 -> 660 (396 pulsos por litro).
+            YF-S201: K = 7.5 -> 750.
+
+endmenu

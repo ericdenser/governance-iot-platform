@@ -17,6 +17,9 @@
 #include "gov_sensor_ds3231.h"
 #include "gov_sensor_battery.h"
 #include "gov_sensor_chip_temp.h"
+#include "gov_sensor_flow.h"
+#include "gov_sensor_aht25.h"
+#include "gov_sensor_env.h"
 
 #if CONFIG_GOV_LCD_ENABLED
 #include "src/lcd.h"
@@ -24,9 +27,19 @@
 #include "src/Button.h"
 #endif
 
+// With the fusion on, BMP280 and AHT25 only feed the cache and env sends the combined values
+#if CONFIG_GOV_SENSOR_ENV
+#define ENV_SOURCE_FLAGS GOV_SENSOR_NO_TELEMETRY
+#else
+#define ENV_SOURCE_FLAGS 0
+#endif
+
 static void register_sensors(void) {
 #if CONFIG_GOV_SENSOR_BMP280
-    gov_sensor_register(&gov_sensor_bmp280);
+    gov_sensor_register_flags(&gov_sensor_bmp280, ENV_SOURCE_FLAGS);
+#endif
+#if CONFIG_GOV_SENSOR_AHT25
+    gov_sensor_register_flags(&gov_sensor_aht25, ENV_SOURCE_FLAGS);
 #endif
 #if CONFIG_GOV_MQ135_ENABLED
     gov_sensor_register(&gov_sensor_mq135);
@@ -42,6 +55,12 @@ static void register_sensors(void) {
 #endif
 #if CONFIG_GOV_SENSOR_CHIP_TEMP
     gov_sensor_register(&gov_sensor_chip_temp);
+#endif
+#if CONFIG_GOV_SENSOR_FLOW
+    gov_sensor_register(&gov_sensor_flow);
+#endif
+#if CONFIG_GOV_SENSOR_ENV
+    gov_sensor_register_flags(&gov_sensor_env, GOV_SENSOR_DERIVED);   // after bmp280 and aht25
 #endif
 }
 

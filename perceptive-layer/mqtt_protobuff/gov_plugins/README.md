@@ -18,6 +18,8 @@ O kernel cuida de:
 | `gov_sensor_battery` | `battery_adc` | battery_mv |
 | `gov_sensor_chip_temp` | `chip_temp` | temp_c |
 | `gov_sensor_aht25` | `aht25` | temperature, humidity |
+| `gov_sensor_env` | `env` (derivado) | temperature, humidity, pressure: fusão do BMP280 com o AHT25 |
+| `gov_sensor_flow` | `flow` | flow_lpm (média do intervalo), volume_l (total desde o boot) |
 
 ## Adicionar um sensor
 
@@ -29,7 +31,7 @@ Exemplo: um SHT31 (I2C, temperatura e umidade).
 gov_sensor_sht31/
 ├── CMakeLists.txt
 ├── Kconfig.projbuild
-├── idf_component.yml        (só se usar biblioteca do registry)
+├── idf_component.yml        (só se usar biblioteca do registry; vazio quebra o build)
 ├── include/gov_sensor_sht31.h
 └── src/gov_sensor_sht31.cpp
 ```
@@ -146,6 +148,8 @@ Como os pinos são definidos na compilação, cada pinagem diferente é uma comp
 - **Pinos de ADC:** são configurados por GPIO (ADC1: GPIO1 a GPIO10), não por canal.
 - **`hotplug`:** se `true`, o kernel refaz o `probe()` a cada 30 s com o sistema rodando. O sensor ligado depois do boot entra na lista; o desligado sai, e a plataforma registra o evento. Use só quando o `probe()` for seguro de repetir enquanto o sensor está em uso: endereço I2C ou leitura de ADC sim; reinstalar a UART em uso, como no GPS, não.
 - **`sample_period_ms`:** com período `0`, o sensor é lido só na hora da telemetria. Valor sem amostragem há mais de 3 períodos não é enviado.
+- **Sensor que não dá para detectar** (pulsos, como o fluxômetro): o `probe()` só valida o pino, então use `default n` no Kconfig para ele não aparecer como ativo em placas sem o sensor.
+- **Contadores:** para volume, energia etc., envie o total acumulado em vez de um valor que zera. A telemetria é uma amostra por intervalo, e um valor que zera entre duas amostras se perde.
 - **Limites:** no máximo 16 sensores e 4 métricas por sensor. A telemetria leva até 16 leituras no total.
 - **Barramentos:** use os do `gov_hal` (`gov_i2c_probe`, `gov_adc_config`, `gov_adc_read_mv`). Os pinos de I2C ficam no menuconfig.
 
@@ -156,7 +160,7 @@ Como os pinos são definidos na compilação, cada pinagem diferente é uma comp
 - **`GOV_SENSOR_NO_TELEMETRY`:** o sensor é detectado, aparece na plataforma e fica no cache (o `gov_sensor_get` funciona), mas os valores dele não vão para a telemetria.
 - **`GOV_SENSOR_DERIVED`:** sensor calculado a partir de outros. Os valores vão para a telemetria, mas ele não aparece na lista de sensores físicos. Registre depois dos sensores que ele lê.
 
-Exemplo: com BMP280 e AHT25 na mesma placa, os dois são registrados com `NO_TELEMETRY`, e um sensor derivado do próprio firmware (`DERIVED`) lê os dois do cache e envia uma `temperature` e uma `humidity` combinadas (descartando o sensor que destoar), mais a `pressure` do BMP280.
+Exemplo: com BMP280 e AHT25 na mesma placa, os dois são registrados com `NO_TELEMETRY`, e o `gov_sensor_env` (`DERIVED`) lê os dois do cache e envia uma `temperature` e uma `humidity` combinadas (descartando o sensor que destoar), mais a `pressure` do BMP280.
 
 ## Testar o kernel
 

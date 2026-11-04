@@ -1,0 +1,25 @@
+menu "Sensor: fusao BMP280 + AHT25"
+
+    config GOV_SENSOR_ENV
+        bool "Enviar temperatura e umidade combinadas do BMP280 e do AHT25"
+        default n
+        help
+            Code "env" (derivado). BMP280 e AHT25 continuam detectados, mas a
+            telemetria leva so temperature, humidity e pressure da fusao.
+
+    config GOV_ENV_TEMP_OUTLIER_X10
+        int "Divergencia maxima de temperatura entre sensores (decimos de C)"
+        default 30
+        depends on GOV_SENSOR_ENV
+        help
+            Acima disso, o sensor mais longe da mediana recente e descartado
+            naquela amostra. 30 = 3.0 C.
+
+    config GOV_ENV_HUM_OUTLIER_X10
+        int "Divergencia maxima de umidade entre sensores (decimos de %RH)"
+        default 100
+        depends on GOV_SENSOR_ENV
+        help
+            So tem efeito com BME280 + AHT25 (BMP280 nao mede umidade).
+
+endmenu
