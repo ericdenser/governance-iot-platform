@@ -92,6 +92,25 @@ menu "Governance IoT"
         int "Telemetry publish interval (ms)"
         default 5000
 
+    config GOV_TELEMETRY_BUFFER
+        bool "Guardar telemetria quando a conexao cair (buffer circular)"
+        default n
+        depends on !GOV_FIRMWARE_DEEP_SLEEP
+        help
+            As leituras continuam sendo coletadas durante quedas de rede/MQTT,
+            com a hora da coleta, e sao enviadas em ordem quando a conexao volta
+            (QoS 1, sai do buffer so com a confirmacao do broker). Fica na PSRAM
+            quando ela existe e se perde se o ESP reiniciar.
+
+    config GOV_TELEMETRY_BUFFER_SIZE
+        int "Leituras guardadas (com telemetria a cada 10 s, 360 = 1 hora)"
+        default 360
+        range 10 20000
+        depends on GOV_TELEMETRY_BUFFER
+        help
+            Cada leitura ocupa ~520 bytes. Cheio, a mais antiga e descartada.
+            Sem PSRAM o buffer cai para 30 leituras.
+
     config GOV_STATUS_INTERVAL_MS
         int "Status publish interval (ms)"
         default 30000

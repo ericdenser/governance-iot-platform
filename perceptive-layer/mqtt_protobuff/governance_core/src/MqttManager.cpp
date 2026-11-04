@@ -10,6 +10,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include <vector>
 #include <utility>
 #include <algorithm>
@@ -42,6 +43,8 @@ static bool               s_error_reported  = false;
 static bool               s_boot_audited    = false;
 static bool               s_jwt_pending     = false;
 static int                s_low_mem_fails   = 0;
+static SemaphoreHandle_t  s_ack_sem         = NULL;
+static volatile int       s_last_acked_id   = -1;
 
 static std::vector<std::pair<std::string, int>> s_subscriptions;
 
@@ -173,6 +176,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGW(TAG, "Desconectado do Broker MQTT.");
             s_is_connected = false;
             schedule_reconnect();
+            break;
+
+        case MQTT_EVENT_PUBLISHED:
+            s_last_acked_id = event->msg_id;
+            if (s_ack_sem) xSemaphoreGive(s_ack_sem);
             break;
 
         case MQTT_EVENT_DATA: {
@@ -312,6 +320,29 @@ void MqttManager::publish(const uint8_t* data, size_t len, const char* topic, in
 
     ESP_LOGI(TAG, "Publicado (msg_id=%d, %u bytes, qos=%d) no tópico [%s]",
              msg_id, (unsigned)len, qos, topic);
+}
+
+bool MqttManager::publishConfirmed(const uint8_t* data, size_t len, const char* topic, int timeout_ms) {
+    if (mqtt_client == NULL || !s_is_connected) return false;
+    if (s_ack_sem == NULL) s_ack_sem = xSemaphoreCreateBinary();
+    xSemaphoreTake(s_ack_sem, 0);
+
+    int msg_id = esp_mqtt_client_publish(mqtt_client, topic, (const char*)data, (int)len, 1, 0);
+    if (msg_id <= 0) return false;
+
+    // the PUBACK may arrive before this point, and other QoS 1 publishes also signal
+    int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+    while (s_last_acked_id != msg_id) {
+        int64_t left_ms = (deadline - esp_timer_get_time()) / 1000;
+        if (left_ms <= 0) {
+            ESP_LOGW(TAG, "Sem PUBACK para msg_id=%d em %d ms [%s]", msg_id, timeout_ms, topic);
+            return false;
+        }
+        xSemaphoreTake(s_ack_sem, pdMS_TO_TICKS(left_ms));
+    }
+    ESP_LOGI(TAG, "Publicado e confirmado (msg_id=%d, %u bytes, qos=1) no tópico [%s]",
+             msg_id, (unsigned)len, topic);
+    return true;
 }
 
 void MqttManager::subscribe(const std::string& topic, int qos) {

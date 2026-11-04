@@ -27,6 +27,9 @@
 #include "OtaManager.h"
 #include "CommandProcessor.h"
 #include "gov_sensor.h"
+#if CONFIG_GOV_TELEMETRY_BUFFER
+#include "TelemetryBuffer.h"
+#endif
 #include "esp_wifi.h"
 
 #include "pb_encode.h"
@@ -197,7 +200,7 @@ static void publish_proto_status(const char* topic,
                                  const char* ssid,
                                  uint32_t state,
                                  const char* detail = nullptr) {
-    uint8_t proto_buf[256] = {};
+    uint8_t proto_buf[384] = {};   // rollback detail (sha + reason) plus a 32-char SSID
     DeviceStatus msg = DeviceStatus_init_zero;
 
     msg.mac.funcs.encode          = encode_string; msg.mac.arg          = (void*)mac;
@@ -348,12 +351,23 @@ static void publish_proto_status(const char* topic,
 //  Tasks operacionais
 // =============================================================================
 
+static bool telemetry_collect_now() {
+    if (AppState::is(DeviceState::OPERATIONAL)) return true;
+#if CONFIG_GOV_TELEMETRY_BUFFER
+    // keeps sampling through connection errors so the buffer can fill
+    DeviceState s = AppState::get();
+    return s != DeviceState::OTA_FOUND && s != DeviceState::OTA_DOWNLOADING && s != DeviceState::REBOOTING;
+#else
+    return false;
+#endif
+}
+
 static void telemetry_task(void* /*pvParameters*/) {
     
     WatchdogManager::addToCurrentTask();
     while (true) {
         WatchdogManager::reset();
-        if (!AppState::is(DeviceState::OPERATIONAL)) {
+        if (!telemetry_collect_now()) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
@@ -457,9 +471,16 @@ static void telemetry_task(void* /*pvParameters*/) {
         pb_ostream_t os = pb_ostream_from_buffer(msg.payload, sizeof(msg.payload));
         if (pb_encode(&os, DeviceTelemetry_fields, &proto)) {
             msg.payload_len = os.bytes_written;
+#if CONFIG_GOV_TELEMETRY_BUFFER
+            TelemetryBuffer::push(msg.payload, msg.payload_len);
+            if (!MqttManager::isConnected()) {
+                SLOG_W("MQTT fora: leitura guardada (%u no buffer)", (unsigned)TelemetryBuffer::count());
+            }
+#else
             xQueueSend(g_mqttQueue, &msg, 0);
             // NAO seta telemetryPublished, quem seta e o mqtt_publisher_task
             // apos publish real. Enfileirar != publicar.
+#endif
         } else {
             ESP_LOGE(TAG, "pb_encode DeviceTelemetry falhou: %s", PB_GET_ERROR(&os));
         }
@@ -851,6 +872,7 @@ static void handle_boot_audit() {
         g_reset_reason = esp_reset_reason();
         bool crashed = g_reset_reason == ESP_RST_WDT ||
                        g_reset_reason == ESP_RST_TASK_WDT ||
+                       g_reset_reason == ESP_RST_INT_WDT ||
                        g_reset_reason == ESP_RST_PANIC;
         if (crashed && boot_part_changed) {
             SLOG_W("Crash veio da outra particao (rollback do bootloader), nao conta pra esta imagem.");
@@ -872,7 +894,8 @@ static void handle_boot_audit() {
             SLOG_E("LIMITE DE CRASH ATINGIDO — invalidando firmware");
             nvs_set_i8(mainHandler, "crash_count", 0);
             nvs_commit(mainHandler);
-            std::string reason = "crashCount";
+            // crash type of the last reset goes with the reason (fits the 24-char buffer of older images)
+            std::string reason = std::string("crashCount:") + reset_reason_str(g_reset_reason);
             OtaManager::set_invalid_version(reason);
         }
         nvs_close(mainHandler);
@@ -881,7 +904,7 @@ static void handle_boot_audit() {
     std::string lastTarget;
     std::string invalidVer;
     std::string rollback_msg;
-    char reason[24] = {0};
+    char reason[40] = {0};
 
     char lastTargetBuf[32] = {0};
     nvs_read_str("ota_store", "target_ver", lastTargetBuf, sizeof(lastTargetBuf));
@@ -894,11 +917,15 @@ static void handle_boot_audit() {
         nvs_read_str("main_store", "fw_version", fw_buf, sizeof(fw_buf));
         firmware_version = fw_buf;
         nvs_read_str("ota_store", "rollbackReason", reason, sizeof(reason));
+        // empty = this image did not invalidate it: the bootloader reverted an image that never validated
+        if (reason[0] == '\0') {
+            snprintf(reason, sizeof(reason), "bootloader_rollback:%s", reset_reason_str(esp_reset_reason()));
+        }
 
         char invalidSha[65] = {0};
         nvs_read_str("ota_store", "invalid_sha", invalidSha, sizeof(invalidSha));
 
-        char detail[192];
+        char detail[256];
         snprintf(detail, sizeof(detail), "{\"invalid_ver\":\"%s\",\"invalid_sha\":\"%s\",\"reason\":\"%s\"}",
                  invalidVer.c_str(), invalidSha, reason);
 
@@ -906,6 +933,14 @@ static void handle_boot_audit() {
         publish_proto_status(topic, g_macAddress.c_str(), firmware_version.c_str(),
                              ssid.c_str(), (uint32_t)AppState::get(), detail);
         clear_ota_running();
+
+        // reported once; a stale reason would be sent again on the next rollback
+        nvs_handle_t rh;
+        if (nvs_open("ota_store", NVS_READWRITE, &rh) == ESP_OK) {
+            nvs_erase_key(rh, "rollbackReason");
+            nvs_commit(rh);
+            nvs_close(rh);
+        }
     } else if (!lastTarget.empty()) {
         SLOG_W("OTA v%s abortado (download incompleto)", lastTarget.c_str());
 
@@ -995,10 +1030,52 @@ static void boot_timeout_task(void* /*pv*/) {
     
 }
 
+#if CONFIG_GOV_TELEMETRY_BUFFER
+#define TELEMETRY_ACK_TIMEOUT_MS 5000
+
+// Sends the buffered telemetry oldest first; a reading leaves the buffer only after the PUBACK
+static void telemetry_sender_task(void* /*pvParameters*/) {
+    static uint8_t payload[TelemetryBuffer::SLOT_BYTES];
+    char topic[128];
+    snprintf(topic, sizeof(topic), "telemetry/%s", g_deviceId.c_str());
+    bool draining = false;
+
+    while (true) {
+        size_t pending = TelemetryBuffer::count();
+        if (pending == 0 || !MqttManager::isConnected()) {
+            if (pending == 0 && draining) {
+                SLOG_I("Leituras guardadas enviadas");
+                draining = false;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+        if (pending > 1 && !draining) {
+            SLOG_I("Conexao de volta: enviando %u leituras guardadas", (unsigned)pending);
+            draining = true;
+        }
+
+        size_t len = 0;
+        uint32_t seq = 0;
+        if (!TelemetryBuffer::peek(payload, &len, &seq)) continue;
+        if (MqttManager::publishConfirmed(payload, len, topic, TELEMETRY_ACK_TIMEOUT_MS)) {
+            TelemetryBuffer::pop(seq);
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+        }
+    }
+}
+#endif
+
 static void handle_operational() {
     static bool started = false;
     if (!started) {
         g_mqttQueue = xQueueCreate(10, sizeof(MqttMessage));
+#if CONFIG_GOV_TELEMETRY_BUFFER
+        if (TelemetryBuffer::init(CONFIG_GOV_TELEMETRY_BUFFER_SIZE)) {
+            xTaskCreate(telemetry_sender_task, "tele_send", 4096, NULL, 5, NULL);
+        }
+#endif
         xTaskCreate(telemetry_task,      "telemetry", 4096, NULL, 4, NULL);
         xTaskCreate(status_task,         "status",    4096, NULL, 4, NULL);
         xTaskCreate(mqtt_publisher_task, "mqtt_pub",  4096, NULL, 5, NULL);

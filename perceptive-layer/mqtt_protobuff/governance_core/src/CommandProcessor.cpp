@@ -21,6 +21,7 @@ struct OtaTaskParams {
     std::string newVersion;
     std::string url_bin;
     std::string newVersionSHA;
+    bool        force = false;   // platform reactivated a version this device may have banned
 };
 
 struct RebootParams { uint32_t delay_ms; };
@@ -69,7 +70,8 @@ static void ota_task_routine(void* pvParameters) {
         params->url_bin,
         params->newVersionSHA,
         msgOut,
-        []{ WatchdogManager::reset(); }
+        []{ WatchdogManager::reset(); },
+        params->force
     );
 
     WatchdogManager::removeFromCurrentTask();
@@ -226,6 +228,7 @@ bool CommandProcessor::manage(const std::string& payload) {
             params->newVersion = newVersion->valuestring;
             params->url_bin = url->valuestring;
             params->newVersionSHA = newVersionSHA->valuestring;
+            params->force = cJSON_IsTrue(cJSON_GetObjectItem(payloadJson, "force"));
 
             BaseType_t xReturned = xTaskCreate(
                 ota_task_routine,
