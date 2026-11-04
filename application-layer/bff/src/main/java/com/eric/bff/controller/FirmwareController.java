@@ -93,6 +93,14 @@ public class FirmwareController {
                 .toEntity(String.class);
     }
 
+    @PatchMapping("/versions/{versionId}/reactivate")
+    public ResponseEntity<String> reactivate(@PathVariable String versionId) {
+        return restClient.patch()
+                .uri(govApiUrl + "/firmware/versions/" + versionId + "/reactivate")
+                .retrieve()
+                .toEntity(String.class);
+    }
+
     @PutMapping(value = "/versions/{versionId}/binary", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> reuploadBinary(
             @PathVariable String versionId,

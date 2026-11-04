@@ -213,6 +213,29 @@ public class FirmwareService {
         return FirmwareVersionResponseDTO.from(v);
     }
 
+    @Auditable(action = AuditAction.FIRMWARE_REACTIVATED, targetType = "FIRMWARE", targetIdArg = 0)
+    @Transactional
+    public FirmwareVersionResponseDTO reactivateVersion(String versionId) {
+        FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
+                "Versão " + versionId + " não encontrada."));
+
+        requireFirmwareManagement(v.getFirmware());
+
+        if (v.getStatus() != FirmwareStatus.DEPRECATED) {
+            return FirmwareVersionResponseDTO.from(v);
+        }
+
+        v.setStatus(v.getDeployCount() > 0 ? FirmwareStatus.DEPLOYED : FirmwareStatus.STAGED);
+        v.setReactivated(true);
+        firmwareVersionRepository.save(v);
+
+        log.info("Versão v{} de '{}' reativada ({})",
+                 v.getVersion(), v.getFirmware().getFirmwareName(), v.getStatus());
+
+        return FirmwareVersionResponseDTO.from(v);
+    }
+
     @Auditable(action = AuditAction.FIRMWARE_DEPLOYED, targetType = "FIRMWARE", targetIdArg = 0)
     @Transactional
     public CommandResultResponseDTO deploy(String versionId, List<String> targetDevices) throws Exception {
@@ -239,7 +262,8 @@ public class FirmwareService {
         Map<String, Object> payload = Map.of(
             "version", v.getVersion(),
             "url",     signedUrl,
-            "versionSHA", v.getSha256()
+            "versionSHA", v.getSha256(),
+            "force", v.isReactivated()
         );
 
         List<String> activeDevs = new ArrayList<>();

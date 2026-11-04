@@ -201,7 +201,7 @@ const doDeprecate = async (v: FirmwareVersionSummaryDTO) => {
   showDetail.value = false
   const ok = await confirm({
     title: `Deprecar versão v${v.version}?`,
-    message: 'Esta ação é IRREVERSÍVEL. Para desfazer, será necessário subir uma nova versão com o fix.',
+    message: 'A versão não poderá mais receber deploy até ser reativada.',
     confirmText: 'Deprecar',
     danger: true,
   })
@@ -211,6 +211,23 @@ const doDeprecate = async (v: FirmwareVersionSummaryDTO) => {
     toast.success(`Versão v${v.version} deprecada`)
   } catch (e: unknown) {
     toast.error(errorMessage(e, 'Erro ao deprecar versão.'))
+  }
+}
+
+// ── Reactivate version ───────────────────────────────────────────────────────
+const doReactivate = async (v: FirmwareVersionSummaryDTO) => {
+  showDetail.value = false
+  const ok = await confirm({
+    title: `Reativar versão v${v.version}?`,
+    message: 'Ela volta a aceitar deploy, inclusive em devices que já fizeram rollback dela.',
+    confirmText: 'Reativar',
+  })
+  if (!ok) return
+  try {
+    await firmwareApi.reactivate(v.versionId); await load()
+    toast.success(`Versão v${v.version} reativada`)
+  } catch (e: unknown) {
+    toast.error(errorMessage(e, 'Erro ao reativar versão.'))
   }
 }
 
@@ -444,6 +461,8 @@ onMounted(async () => {
               :loading="reuploadingId === detailSummary.versionId" @click="openReupload(detailSummary)">Reenviar binário</AppButton>
             <AppButton v-if="detailSummary.status !== 'DEPRECATED'" variant="danger-ghost"
               @click="doDeprecate(detailSummary)">Deprecar</AppButton>
+            <AppButton v-if="detailSummary.status === 'DEPRECATED'" variant="secondary"
+              @click="doReactivate(detailSummary)">Reativar</AppButton>
             <AppButton v-if="detailSummary.status === 'DEPRECATED' && canDelete" variant="danger-ghost"
               @click="doDeleteVersion(detailSummary)">Excluir versão</AppButton>
           </div>

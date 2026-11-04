@@ -38,6 +38,9 @@
   "/firmware/versions/*/deprecate": {
     "PATCH": ["ROLE_ADMIN", "ROLE_USER"]
   },
+  "/firmware/versions/*/reactivate": {
+    "PATCH": ["ROLE_ADMIN", "ROLE_USER"]
+  },
   "/firmware/versions/*/binary": {
     "PUT": ["ROLE_ADMIN", "ROLE_USER"]
   },

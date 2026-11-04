@@ -72,6 +72,10 @@ public class FirmwareVersion extends AuthoredEntity {
 
     private int deployCount = 0; // incrementa a cada broadcast
 
+    // re-enabled after DEPRECATED: deploy asks the device to ignore its local SHA ban
+    @Column(nullable = false)
+    private boolean reactivated = false;
+
     @Column(name = "deep_sleep_enabled")
     private Boolean deepSleepEnabled;
 

@@ -42,6 +42,7 @@ public class EventRegistry {
 
     private boolean completed = false;
 
+    @Column(length = 1000)
     private String resultMessage;
 
     @Column(nullable = false)

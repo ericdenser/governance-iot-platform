@@ -77,6 +77,7 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         String reportedVersion = event.deviceInfo().firmwareVersion();
         Map<String, Object> params = event.deviceInfo().params();
         String reason = params.get("reason") != null ? params.get("reason").toString() : null;
+        String why = reasonText(reason);
         String invalidSha = params.get("invalid_sha") != null ? params.get("invalid_sha").toString() : null;
 
         // Detecta cenário
@@ -104,12 +105,11 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
                      invalidVersion.getFirmware().getFirmwareName());
 
             eventRegistry.setResultMessage(
-                "Rollback durante OTA. Device continua em v" + reportedVersion +
-                ". Versão que falhou instalar: v" + invalidVersion.getVersion() + ".");
+                "Rollback durante OTA: v" + invalidVersion.getVersion() + " " + why +
+                ". Device continua em v" + reportedVersion + ".");
 
             // O device nao confirma o UPDATE nesse caso; fecha o comando pendente como falha
-            String failedMsg = "Rollback durante OTA: v" + invalidVersion.getVersion() + " não validou"
-                    + (reason != null ? " (reason: " + reason + ")." : ".");
+            String failedMsg = "Rollback durante OTA: v" + invalidVersion.getVersion() + " " + why + ".";
             commandRecordRepository
                     .findFirstByTargetDevice_DeviceIdAndStatusAndCommandType(
                             device.getDeviceId(), CommandStatus.PENDING, DeviceCommands.UPDATE)
@@ -148,7 +148,8 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
                      previousVersion.getFirmware().getFirmwareName(), previousVersion.getVersion());
 
             eventRegistry.setResultMessage(
-                "Rollback tardio. Device revertido para v" + previousVersion.getVersion() + ".");
+                "Rollback tardio: v" + invalidVersion.getVersion() + " " + why +
+                ". Device revertido para v" + previousVersion.getVersion() + ".");
 
         } else {
             // Device reportou algo que não bate com o tracking do CMDB
@@ -159,12 +160,15 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
                      attemptedVersion != null ? attemptedVersion.getVersion() : "null");
 
             eventRegistry.setResultMessage(
-                "Rollback com estado inesperado. reportedVersion=v" + reportedVersion + ".");
+                "Rollback com estado inesperado (" + why + "). reportedVersion=v" + reportedVersion + ".");
         }
 
         // Deprecação da versão inválida se o motivo justificar
-        if (invalidVersion != null && ("crashCount".equals(reason) || "bootloader_rollback".equals(reason))) {
+        String baseReason = reason != null && reason.contains(":") ? reason.substring(0, reason.indexOf(':')) : reason;
+        if (invalidVersion != null && ("crashCount".equals(baseReason) || "bootloader_rollback".equals(baseReason))) {
             invalidVersion.setStatus(FirmwareStatus.DEPRECATED);
+            eventRegistry.setResultMessage(eventRegistry.getResultMessage()
+                + " Versão v" + invalidVersion.getVersion() + " descontinuada (pode ser reativada na tela do firmware).");
             log.info("Versão v{} de '{}' marcada como DEPRECATED (reason={}).",
                      invalidVersion.getVersion(), invalidVersion.getFirmware().getFirmwareName(), reason);
         }
@@ -172,5 +176,18 @@ public class DeviceRollbackHandler implements DeviceEventHandler {
         device.setStatus(DeviceStatus.ACTIVE);
         eventRegistry.setCompleted(scenarioA || scenarioB);
         eventRegistryRepository.save(eventRegistry);
+    }
+
+    // reason: "crashCount[:CRASH_TYPE]", "bootloader_rollback" or "unknown"
+    static String reasonText(String reason) {
+        if (reason == null || reason.isBlank() || "unknown".equals(reason)) return "falhou (motivo não informado pelo device)";
+        int i = reason.indexOf(':');
+        String base  = i > 0 ? reason.substring(0, i) : reason;
+        String crash = i > 0 ? reason.substring(i + 1) : null;
+        return switch (base) {
+            case "crashCount"          -> "reiniciou por crash várias vezes seguidas" + (crash != null ? " (" + crash + ")" : "");
+            case "bootloader_rollback" -> "não iniciou corretamente após o OTA" + (crash != null ? " (" + crash + ")" : "");
+            default                    -> "falhou (" + reason + ")";
+        };
     }
 }

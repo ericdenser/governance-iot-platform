@@ -114,6 +114,16 @@ public class FirmwareController {
         return ResponseEntity.ok(ApiResponse.success(v, httpRequest.getRequestURI()));
     }
 
+    // Desfaz a deprecação de uma versão (MEMBER/OWNER do grupo dono ou admin)
+    @PatchMapping("/versions/{versionId}/reactivate")
+    public ResponseEntity<ApiResponse<FirmwareVersionResponseDTO>> reactivate(
+            @PathVariable String versionId,
+            HttpServletRequest httpRequest) {
+
+        FirmwareVersionResponseDTO v = firmwareService.reactivateVersion(versionId);
+        return ResponseEntity.ok(ApiResponse.success(v, httpRequest.getRequestURI()));
+    }
+
     // Reenvia o binário de uma versão CORRUPTED (mesmo SHA-256 do original)
     @PutMapping(value = "/versions/{versionId}/binary", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<FirmwareVersionResponseDTO>> reuploadBinary(
