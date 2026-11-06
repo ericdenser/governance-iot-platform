@@ -15,7 +15,7 @@ services:
         PROXY_PORT: ${PROXY_PORT:-}
         PROXY_USER: ${PROXY_USER:-}
         PROXY_PASSWORD: ${PROXY_PASSWORD:-}
-    container_name: ${DATALOGGER_CONTAINER_NAME:-datalogger}
+    container_name: ${DATALOGGER_CONTAINER_NAME:-iot-datalogger}
     environment:
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
       INFLUX_URL: ${INFLUX_URL:-http://influxdb:8086}

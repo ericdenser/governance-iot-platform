@@ -18,7 +18,7 @@ public class TelemetryController {
     @Value("${app.gov-api-url}")
     private String govApiUrl;
 
-    @Value("${app.datalogger-url:http://datalogger:8081}")
+    @Value("${app.datalogger-url:http://iot-datalogger:8081}")
     private String dataloggerUrl;
 
     public TelemetryController(RestClient restClient) {

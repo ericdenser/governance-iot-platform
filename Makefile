@@ -174,7 +174,8 @@ status:  ## Status detalhado (health + restarts) de todos containers do stack
 	@printf "$(CYAN)Health + restart count por container:$(RESET)\n"
 	@# Aceita tanto `govapi` quanto `iot-govapi` (varia por CONTAINER_NAME no .env).
 	@for base in postgres keycloak redis redis-streams broker minio influxdb govapi agent-mqtt event-handler datalogger bff spa; do \
-		c=$$(docker ps -a --format '{{.Names}}' | grep -E "^(iot-)?$$base$$" | head -1); \
+		c=$$(docker ps -a --format '{{.Names}}' | grep -x "iot-$$base" | head -1); \
+		[ -z "$$c" ] && c=$$(docker ps -a --format '{{.Names}}' | grep -x "$$base" | head -1); \
 		if [ -n "$$c" ]; then \
 			state=$$(docker inspect --format '{{.State.Status}}' $$c); \
 			health=$$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' $$c); \
