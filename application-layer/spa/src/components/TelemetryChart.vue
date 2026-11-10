@@ -129,6 +129,7 @@ const datasets = computed(() =>
     const data = (series.value.get(d.deviceId) ?? [])
       .filter(p => p.readings[config.value.metric] != null)
       .map(p => ({ x: new Date(p.timestamp).getTime(), y: p.readings[config.value.metric] }))
+      .sort((a, b) => a.x - b.x)
     return {
       label: d.name,
       data,

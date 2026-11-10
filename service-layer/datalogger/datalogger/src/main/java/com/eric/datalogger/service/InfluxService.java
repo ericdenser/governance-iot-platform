@@ -21,6 +21,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -151,6 +152,8 @@ public class InfluxService {
             }
         }
 
+        // pivot appends rows of fields missing from earlier windows at the end, and the chart draws in list order
+        result.sort(Comparator.comparing(TelemetryPointDTO::timestamp));
         return result;
     }
 
