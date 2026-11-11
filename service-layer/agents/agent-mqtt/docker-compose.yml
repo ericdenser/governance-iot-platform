@@ -4,6 +4,12 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   agent-mqtt:
     build:
@@ -17,7 +23,7 @@ services:
         PROXY_PASSWORD: ${PROXY_PASSWORD:-}
     container_name: ${AGENT_MQTT_CONTAINER_NAME:-agent-mqtt}
     environment:
-      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError}
       MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mosquitto}
       MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
       MQTT_JWT_REFRESH_MARGIN_S: ${MQTT_JWT_REFRESH_MARGIN_S:-90}
@@ -44,7 +50,9 @@ services:
         limits:
           memory: ${AGENT_MQTT_MEMORY_LIMIT:-512M}
           cpus: '0.5'
-    restart: on-failure:5
+          pids: 512
+    restart: unless-stopped
+    <<: *default-security
     logging: *default-logging
     networks:
       - app-net

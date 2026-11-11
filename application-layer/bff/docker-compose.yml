@@ -4,6 +4,12 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   bff:
     build:
@@ -19,7 +25,7 @@ services:
     ports:
       - "${BFF_HOST_BIND:-0.0.0.0}:${BFF_HOST_PORT:-8083}:8083"
     environment:
-      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError}
       REDIS_SESSION_HOST: ${REDIS_SESSION_HOST:-redis}
       REDIS_SESSION_PORT: ${REDIS_SESSION_PORT:-6379}
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
@@ -46,7 +52,9 @@ services:
         limits:
           memory: ${BFF_MEMORY_LIMIT:-512M}
           cpus: '0.5'
-    restart: on-failure:5
+          pids: 512
+    restart: unless-stopped
+    <<: *default-security
     logging: *default-logging
     networks:
       - app-net

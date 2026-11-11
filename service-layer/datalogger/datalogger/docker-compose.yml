@@ -4,6 +4,12 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   datalogger:
     build:
@@ -17,7 +23,7 @@ services:
         PROXY_PASSWORD: ${PROXY_PASSWORD:-}
     container_name: ${DATALOGGER_CONTAINER_NAME:-iot-datalogger}
     environment:
-      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError}
       INFLUX_URL: ${INFLUX_URL:-http://influxdb:8086}
       INFLUX_TOKEN: ${INFLUX_TOKEN}
       INFLUX_ORG: ${INFLUX_ORG:-mackenzie}
@@ -35,7 +41,9 @@ services:
         limits:
           memory: ${DATALOGGER_MEMORY_LIMIT:-448M}
           cpus: '0.5'
-    restart: on-failure:5
+          pids: 512
+    restart: unless-stopped
+    <<: *default-security
     logging: *default-logging
     networks:
       - app-net

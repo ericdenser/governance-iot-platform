@@ -1,12 +1,12 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 ARG PROXY_URL=
 ARG NPM_NO_PROXY=localhost,127.0.0.1
-ENV HTTP_PROXY=${PROXY_URL} HTTPS_PROXY=${PROXY_URL} NO_PROXY=${NPM_NO_PROXY}
 
 COPY package*.json ./
-RUN npm ci --maxsockets 1
+# proxy only for this step, so it is not stored in the image config
+RUN HTTP_PROXY="$PROXY_URL" HTTPS_PROXY="$PROXY_URL" NO_PROXY="$NPM_NO_PROXY" npm ci --maxsockets 1
 
 COPY . .
 

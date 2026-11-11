@@ -1,0 +1,15 @@
+target/
+.git/
+.gitignore
+.idea/
+.vscode/
+.mvn/
+*.iml
+.DS_Store
+.env
+.env.*
+*.md
+docker-compose*.yml
+Dockerfile
+.dockerignore
+provisioning-bins/

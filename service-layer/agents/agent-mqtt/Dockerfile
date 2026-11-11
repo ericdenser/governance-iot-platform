@@ -24,12 +24,14 @@ RUN if [ "$PROXY_ACTIVE" = "true" ]; then \
 COPY pom.xml .
 COPY src src
 
-RUN mvn clean package -DskipTests -B -Dmaven.artifact.threads=1
+# Maven repository kept between builds (BuildKit cache, not part of the image)
+RUN --mount=type=cache,target=/root/.m2/repository \
+    mvn clean package -DskipTests -B -Dmaven.artifact.threads=1
 
 FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S app -G app
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 USER app
 WORKDIR /app
-COPY --from=builder --chown=app:app /build/target/*.jar app.jar
+COPY --from=builder /build/target/*.jar app.jar
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

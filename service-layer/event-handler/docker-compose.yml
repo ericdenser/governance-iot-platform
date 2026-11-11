@@ -4,6 +4,12 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   event-handler:
     build:
@@ -17,7 +23,7 @@ services:
         PROXY_PASSWORD: ${PROXY_PASSWORD:-}
     container_name: ${EVENT_HANDLER_CONTAINER_NAME:-event-handler}
     environment:
-      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError}
       SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${EVENT_HANDLER_DB:-event_handler}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -35,7 +41,9 @@ services:
         limits:
           memory: ${EVENT_HANDLER_MEMORY_LIMIT:-512M}
           cpus: '0.5'
-    restart: on-failure:5
+          pids: 512
+    restart: unless-stopped
+    <<: *default-security
     logging: *default-logging
     networks:
       - app-net

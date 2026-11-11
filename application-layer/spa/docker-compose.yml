@@ -4,6 +4,18 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+# nginx master runs as root on port 80: keeps only what it needs to bind and drop to the worker user
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  cap_add:
+    - CHOWN
+    - SETGID
+    - SETUID
+    - NET_BIND_SERVICE
+
 services:
   spa:
     build:
@@ -29,7 +41,9 @@ services:
         limits:
           memory: ${SPA_MEMORY_LIMIT:-64M}
           cpus: '0.25'
-    restart: on-failure:5
+          pids: 64
+    restart: unless-stopped
+    <<: *default-security
     logging: *default-logging
     networks:
       - app-net
