@@ -430,12 +430,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
     <AppModal title="Novo Grupo" :show="showCreate" @close="showCreate = false">
       <div class="form-group">
-        <label>Nome</label>
-        <input v-model="createForm.name" class="field" placeholder="ex: Armazém Norte" @keydown.enter="doCreate" />
+        <label for="groups-f1">Nome</label>
+        <input id="groups-f1" v-model="createForm.name" class="field" placeholder="ex: Armazém Norte" @keydown.enter="doCreate" />
       </div>
       <div class="form-group">
-        <label>Descrição <span class="text-muted">(opcional)</span></label>
-        <input v-model="createForm.description" class="field" placeholder="Descrição do grupo..." />
+        <label for="groups-f2">Descrição <span class="text-muted">(opcional)</span></label>
+        <input id="groups-f2" v-model="createForm.description" class="field" placeholder="Descrição do grupo..." />
       </div>
       <p v-if="createError" class="error">{{ createError }}</p>
       <template #footer>
@@ -485,8 +485,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         </button>
       </div>
       <div class="form-group">
-        <label>Papel</label>
-        <select v-model="selectedRole" class="field">
+        <label for="groups-f3">Papel</label>
+        <select id="groups-f3" v-model="selectedRole" class="field">
           <option v-for="r in assignableRoles" :key="r" :value="r">{{ r }}</option>
         </select>
       </div>
@@ -502,8 +502,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         Usuário: <strong>{{ usernameFor(updateRoleTarget.keycloakUserId) ?? updateRoleTarget.keycloakUserId }}</strong>
       </p>
       <div class="form-group">
-        <label>Novo Papel</label>
-        <select v-model="newRole" class="field">
+        <label for="groups-f4">Novo Papel</label>
+        <select id="groups-f4" v-model="newRole" class="field">
           <option v-for="r in updateRoleOptions" :key="r" :value="r">{{ r }}</option>
         </select>
       </div>
@@ -566,8 +566,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; width: 100%; box-sizing: border-box; }
-.field:focus { border-color: var(--primary); }
 .error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 
 .device-picker { display: flex; flex-direction: column; gap: var(--space-1); max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1); }

@@ -5,11 +5,11 @@ defineProps<{
   wide?: boolean
 }>()
 
-defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{ (e: 'close'): void }>()
 </script>
 
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
+  <div v-if="show" v-modal-dialog="() => emit('close')" class="modal-overlay" @click.self="emit('close')">
     <div class="modal" :class="{ 'modal-wide': wide }">
       <h3 class="modal-title">{{ title }}</h3>
       <slot />

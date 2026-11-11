@@ -350,7 +350,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="v in versions" :key="v.versionId" class="tbl-row" @click="openVersionDetail(v)">
+              <tr v-for="v in versions" :key="v.versionId" class="tbl-row" tabindex="0" role="button" @click="openVersionDetail(v)" @keydown.enter.self="openVersionDetail(v)">
                 <td class="mono font-medium">v{{ v.version }}</td>
                 <td><StatusLabel kind="firmware" :code="v.status" no-icon /></td>
                 <td>{{ v.deployCount }}</td>
@@ -374,7 +374,7 @@ onMounted(async () => {
     </div>
 
     <!-- ── Version detail modal (nível 3) ──────────────────────────────────── -->
-    <div v-if="showDetail" class="modal-overlay" @click.self="showDetail = false">
+    <div v-if="showDetail" v-modal-dialog="() => { showDetail = false }" class="modal-overlay" @click.self="showDetail = false">
       <div class="modal modal-wide">
         <div v-if="!detailVersion" class="empty">Carregando...</div>
         <template v-else>
@@ -474,23 +474,23 @@ onMounted(async () => {
     </div>
 
     <!-- ── Upload New Version modal ─────────────────────────────────────────── -->
-    <div v-if="showUpload" class="modal-overlay" @click.self="showUpload = false">
+    <div v-if="showUpload" v-modal-dialog="() => { showUpload = false }" class="modal-overlay" @click.self="showUpload = false">
       <div class="modal">
         <h3 class="modal-title">Nova Versão de {{ firmware?.firmwareName }}</h3>
 
         <div class="form-group">
-          <label>Arquivo .bin</label>
-          <input type="file" accept=".bin" @change="e => uploadFile = (e.target as HTMLInputElement).files?.[0] ?? null" />
+          <label for="firmwaredetail-f1">Arquivo .bin</label>
+          <input id="firmwaredetail-f1" type="file" accept=".bin" @change="e => uploadFile = (e.target as HTMLInputElement).files?.[0] ?? null" />
         </div>
 
         <div class="form-group">
-          <label>Versão</label>
-          <input v-model="uploadMeta.version" class="field" placeholder="ex: 1.0.3" />
+          <label for="firmwaredetail-f2">Versão</label>
+          <input id="firmwaredetail-f2" v-model="uploadMeta.version" class="field" placeholder="ex: 1.0.3" />
         </div>
 
         <div class="form-group">
-          <label>Release Notes</label>
-          <textarea v-model="uploadMeta.releaseNotes" class="field" rows="3" placeholder="Descreva as mudanças..." />
+          <label for="firmwaredetail-f3">Release Notes</label>
+          <textarea id="firmwaredetail-f3" v-model="uploadMeta.releaseNotes" class="field" rows="3" placeholder="Descreva as mudanças..." />
         </div>
 
         <label class="checkbox-row">
@@ -499,8 +499,8 @@ onMounted(async () => {
         </label>
 
         <div v-if="uploadMeta.deepSleepEnabled" class="form-group">
-          <label>Intervalo de deep sleep (segundos)</label>
-          <input
+          <label for="firmwaredetail-f4">Intervalo de deep sleep (segundos)</label>
+          <input id="firmwaredetail-f4"
             type="number"
             min="30"
             v-model.number="uploadMeta.deepSleepIntervalS"
@@ -536,7 +536,7 @@ onMounted(async () => {
     </div>
 
     <!-- ── Deploy modal ─────────────────────────────────────────────────────── -->
-    <div v-if="showDeploy" class="modal-overlay" @click.self="showDeploy = false">
+    <div v-if="showDeploy" v-modal-dialog="() => { showDeploy = false }" class="modal-overlay" @click.self="showDeploy = false">
       <div class="modal">
         <h3 class="modal-title">Deploy — <span class="mono">v{{ deployVersionString }}</span></h3>
         <p class="modal-desc">Selecione os dispositivos que receberão o update via OTA.</p>
@@ -630,10 +630,7 @@ onMounted(async () => {
 /* Form fields */
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; resize: vertical; width: 100%; box-sizing: border-box; }
-.field:focus { border-color: var(--primary); }
 .checkbox-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text); cursor: pointer; }
-.field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 
 .sensor-select-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); }
 .sensor-select-row { display: flex; align-items: center; gap: var(--space-2); }

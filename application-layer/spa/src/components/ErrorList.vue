@@ -33,7 +33,12 @@ const toggle = (id: string) => {
     </thead>
     <tbody>
       <template v-for="e in errors" :key="e.errorId">
-        <tr class="row" :class="{ clickable: e.details || e.message }" @click="(e.details || e.message) && toggle(e.errorId)">
+        <tr class="row" :class="{ clickable: e.details || e.message }"
+            :tabindex="e.details || e.message ? 0 : undefined"
+            :role="e.details || e.message ? 'button' : undefined"
+            :aria-expanded="e.details || e.message ? expanded.has(e.errorId) : undefined"
+            @click="(e.details || e.message) && toggle(e.errorId)"
+            @keydown.enter.self="(e.details || e.message) && toggle(e.errorId)">
           <td><span class="code-tag">{{ e.error }}</span></td>
           <td><StatusLabel kind="error" :code="e.status" /></td>
           <td v-if="showDevice">{{ e.deviceName ?? e.deviceId ?? '—' }}</td>

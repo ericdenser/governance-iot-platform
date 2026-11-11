@@ -1,36 +1,23 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import { Bar } from 'vue-chartjs'
-import {
-  Chart as ChartJS,
-  Title,
-  Tooltip,
-  Legend,
-  BarElement,
-  CategoryScale,
-  LinearScale,
-} from 'chart.js'
 import { devicesApi } from '@/services/devices'
 import { useLiveStateStore } from '@/stores/liveState'
-import { cssVar } from '@/utils/cssVar'
+import { relativeTime } from '@/utils/format'
 import type { DeviceSummaryDTO } from '@/types/models'
 
-ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 
 type Metric = 'battery' | 'rssi' | 'tempC'
-type SortKey = 'name' | 'value-asc' | 'value-desc' | 'lastSeen'
+type SortKey = 'worst' | 'name' | 'value-asc' | 'value-desc' | 'lastSeen'
 type Extended = DeviceSummaryDTO & { rssi?: number | null; tempC?: number | null }
 
-const router = useRouter()
 const liveStore = useLiveStateStore()
 
 const devices = ref<Extended[]>([])
 const loading = ref(true)
 const metric = ref<Metric>('battery')
-const sort = ref<SortKey>('name')
+const sort = ref<SortKey>('worst')
 const onlyActive = ref(true)
 const topN = ref<number>(50)
 
@@ -90,10 +77,32 @@ const levelOf = (d: Extended, m: Metric): Level | null => {
   return raw > 70 ? 'bad' : raw > 60 ? 'warn' : 'good'
 }
 
-const LEVEL_TOKEN: Record<Level, string> = { good: '--chart-good', warn: '--chart-warn', bad: '--chart-bad' }
-const colorFor = (d: Extended, m: Metric): string => {
-  const lvl = levelOf(d, m)
-  return cssVar(lvl ? LEVEL_TOKEN[lvl] : '--chart-empty')
+const LEVEL_LABEL: Record<Level, string> = { good: 'ok', warn: 'atenção', bad: 'crítico' }
+const LEVEL_RANK: Record<Level, number> = { bad: 0, warn: 1, good: 2 }
+
+// Scale of the track and where the warn/bad limits fall on it
+const SCALE: Record<Metric, { min: number; max: number; marks: number[]; ends: [string, string] }> = {
+  battery: { min: 0,    max: 100, marks: [(3500 - 3000) / 12, (3700 - 3000) / 12], ends: ['0%', '100%'] },
+  rssi:    { min: -100, max: -30, marks: [-85, -70],                               ends: ['-100 dBm', '-30 dBm'] },
+  tempC:   { min: 0,    max: 80,  marks: [60, 70],                                 ends: ['0°C', '80°C'] },
+}
+const toPct = (v: number, m: Metric): number => {
+  const { min, max } = SCALE[m]
+  return Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100))
+}
+
+const STALE_MS = 10 * 60 * 1000
+const isStale = (d: Extended, m: Metric): boolean => {
+  const ts = metricTs(d, m)
+  return !ts || Date.now() - new Date(ts).getTime() > STALE_MS
+}
+
+const valueText = (d: Extended, m: Metric): string => {
+  const raw = rawValue(d, m)
+  if (raw == null) return '—'
+  if (m === 'battery') return `${chartValue(d, m)}%`
+  if (m === 'rssi') return `${Math.round(raw)} dBm`
+  return `${raw.toFixed(1)}°C`
 }
 
 const scopedDevices = computed<Extended[]>(() => {
@@ -103,6 +112,14 @@ const scopedDevices = computed<Extended[]>(() => {
 
   const cmp = (a: Extended, b: Extended) => {
     if (sort.value === 'name') return a.name.localeCompare(b.name)
+    if (sort.value === 'worst') {
+      const la = levelOf(a, metric.value), lb = levelOf(b, metric.value)
+      if (la == null || lb == null) return la == null ? (lb == null ? 0 : 1) : -1
+      if (la !== lb) return LEVEL_RANK[la] - LEVEL_RANK[lb]
+      // inside a level, closest to the bad side first (high is bad only for temperature)
+      const va = chartValue(a, metric.value) ?? 0, vb = chartValue(b, metric.value) ?? 0
+      return metric.value === 'tempC' ? vb - va : va - vb
+    }
     if (sort.value === 'lastSeen') {
       const ta = a.lastSeen ? new Date(a.lastSeen).getTime() : 0
       const tb = b.lastSeen ? new Date(b.lastSeen).getTime() : 0
@@ -120,78 +137,28 @@ const scopedDevices = computed<Extended[]>(() => {
   return topN.value > 0 ? list.slice(0, topN.value) : list
 })
 
-const chartData = computed(() => {
-  const items = scopedDevices.value
-  return {
-    labels: items.map(d => d.name),
-    datasets: [{
-      label: METRIC_LABEL[metric.value],
-      data: items.map(d => chartValue(d, metric.value) ?? 0),
-      backgroundColor: items.map(d => colorFor(d, metric.value)),
-      borderColor: items.map(d => colorFor(d, metric.value)),
-      borderWidth: 1,
-      borderRadius: 3,
-    }],
-  }
+const rows = computed(() => {
+  const m = metric.value
+  return scopedDevices.value.map((d) => {
+    const v = chartValue(d, m)
+    const level = levelOf(d, m)
+    return {
+      id: d.deviceId,
+      name: d.name,
+      has: v != null,
+      pct: v == null ? 0 : toPct(v, m),
+      level,
+      levelLabel: level ? LEVEL_LABEL[level] : 'sem leitura',
+      value: valueText(d, m),
+      detail: m === 'battery' && d.batteryMv != null ? `${d.batteryMv} mV` : '',
+      stale: v != null && isStale(d, m),
+      age: v == null ? '' : relativeTime(metricTs(d, m)),
+    }
+  })
 })
 
-const chartOptions = computed(() => {
-  const m = metric.value
-  const items = scopedDevices.value
-  const yMin = m === 'rssi' ? -100 : m === 'tempC' ? 0 : 0
-  const yMax = m === 'rssi' ? -30 : m === 'tempC' ? 80 : 100
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 250 },
-    onClick: (_evt: unknown, elements: { index: number }[]) => {
-      if (!elements.length) return
-      const d = items[elements[0].index]
-      if (d) router.push(`/devices/${d.deviceId}`)
-    },
-    scales: {
-      x: {
-        ticks: { color: cssVar('--text-muted'), maxRotation: 60, minRotation: 45, autoSkip: false, font: { size: 10 } },
-        grid: { display: false },
-      },
-      y: {
-        min: yMin,
-        max: yMax,
-        ticks: { color: cssVar('--text-muted'), font: { size: 11 } },
-        grid: { color: cssVar('--border') },
-        title: { display: true, text: METRIC_LABEL[m], color: cssVar('--text-muted'), font: { size: 11 } },
-      },
-    },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        callbacks: {
-          label: (ctx: { dataIndex: number }) => {
-            const d = items[ctx.dataIndex]
-            const raw = rawValue(d, m)
-            const shown = chartValue(d, m)
-            const ts = metricTs(d, m)
-            const tsFmt = ts ? new Date(ts).toLocaleString('pt-BR') : '—'
-            const lines: string[] = []
-            if (raw == null) {
-              lines.push('sem leitura')
-            } else if (m === 'battery') {
-              lines.push(`${shown}% (${raw} mV)`)
-            } else if (m === 'rssi') {
-              lines.push(`${raw} dBm`)
-            } else {
-              lines.push(`${raw}°C`)
-            }
-            lines.push(`status: ${d.status}`)
-            lines.push(`ts: ${tsFmt}`)
-            return lines
-          },
-          title: (ctx: { label: string }[]) => ctx[0]?.label ?? '',
-        },
-      },
-    },
-  }
-})
+const marks = computed(() => SCALE[metric.value].marks.map(v => toPct(v, metric.value)))
+const scaleEnds = computed(() => SCALE[metric.value].ends)
 
 const stats = computed(() => {
   const items = scopedDevices.value
@@ -243,6 +210,7 @@ onMounted(load)
         <label class="ctl">
           <span class="ctl-label">Ordenação</span>
           <select v-model="sort" class="field">
+            <option value="worst">Pior primeiro</option>
             <option value="name">Nome (A→Z)</option>
             <option value="value-desc">Valor (maior → menor)</option>
             <option value="value-asc">Valor (menor → maior)</option>
@@ -251,7 +219,7 @@ onMounted(load)
         </label>
 
         <label class="ctl">
-          <span class="ctl-label">Top N</span>
+          <span class="ctl-label">Mostrar</span>
           <select v-model.number="topN" class="field">
             <option :value="20">20</option>
             <option :value="50">50</option>
@@ -262,18 +230,36 @@ onMounted(load)
 
         <label class="ctl checkbox">
           <input type="checkbox" v-model="onlyActive" />
-          <span>Só ACTIVE</span>
+          <span>Só ativos</span>
         </label>
       </div>
 
       <div v-if="loading" class="empty">Carregando...</div>
-      <div v-else-if="!scopedDevices.length" class="empty">Nenhum device no escopo</div>
-      <div v-else class="chart-wrap">
-        <Bar :data="chartData" :options="chartOptions" />
+      <div v-else-if="!scopedDevices.length" class="empty">Nenhum dispositivo com esses filtros</div>
+      <div v-else class="rank" role="list" :aria-label="METRIC_LABEL[metric]">
+        <div class="rank-scale" aria-hidden="true">
+          <span class="rank-scale-track">
+            <span>{{ scaleEnds[0] }}</span>
+            <span>{{ scaleEnds[1] }}</span>
+          </span>
+        </div>
+        <router-link
+          v-for="r in rows" :key="r.id" :to="`/devices/${r.id}`"
+          class="rank-row" :class="[r.level ?? 'none', { stale: r.stale }]" role="listitem"
+        >
+          <span class="rank-name" :title="r.name">{{ r.name }}</span>
+          <span class="rank-track">
+            <span v-for="(mk, i) in marks" :key="i" class="rank-mark" :style="{ left: mk + '%' }" />
+            <span v-if="r.has" class="rank-bar" :style="{ width: r.pct + '%' }" />
+          </span>
+          <span class="rank-value num">{{ r.value }}</span>
+          <span class="rank-level">{{ r.levelLabel }}</span>
+          <span class="rank-age">{{ r.detail }}<template v-if="r.detail && r.age"> · </template>{{ r.age }}</span>
+        </router-link>
       </div>
 
       <div v-if="!loading && scopedDevices.length" class="stats mono">
-        <span><strong>{{ stats.count }}</strong> device(s)</span>
+        <span><strong>{{ stats.count }}</strong> dispositivo(s)</span>
         <span class="sep">·</span>
         <span>média <strong>{{ fmtStat(stats.avg) }}</strong></span>
         <span class="sep">·</span>
@@ -292,10 +278,43 @@ onMounted(load)
 .ctl { display: flex; flex-direction: column; gap: 4px; }
 .ctl-label { font-size: var(--text-xs); color: var(--text-muted); }
 .ctl.checkbox { flex-direction: row; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-mono); min-width: 160px; }
-.field:focus { border-color: var(--primary); }
+.field { width: auto; min-width: 160px; padding: 7px 12px; font-family: var(--font-mono); }
 
-.chart-wrap { height: 420px; }
+/* Ranked horizontal bars: name | track | value | level | age */
+.rank { display: flex; flex-direction: column; }
+.rank-row, .rank-scale {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) minmax(120px, 1fr) 76px 76px minmax(90px, 150px);
+  align-items: center;
+  gap: var(--space-3);
+}
+.rank-scale { padding: 0 var(--space-2) var(--space-1); }
+.rank-scale-track { grid-column: 2; display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono); }
+
+.rank-row { padding: 7px var(--space-2); border-radius: var(--radius-md); color: var(--text); text-decoration: none; transition: background var(--transition); }
+.rank-row:hover { background: var(--panel); color: var(--text); }
+.rank-name { font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rank-track { position: relative; height: 10px; background: var(--muted); border-radius: var(--radius-pill); }
+.rank-bar { position: absolute; inset: 0 auto 0 0; min-width: 4px; border-radius: var(--radius-pill); background: var(--bar-color); transition: width 250ms ease; }
+.rank-mark { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--border-strong); z-index: 1; }
+
+.rank-row.good { --bar-color: var(--chart-good); }
+.rank-row.warn { --bar-color: var(--chart-warn); }
+.rank-row.bad  { --bar-color: var(--chart-bad); }
+.rank-row.stale .rank-bar { opacity: 0.4; }
+
+.rank-value { font-family: var(--font-mono); font-size: var(--text-sm); text-align: right; }
+.rank-level { font-size: var(--text-xs); color: var(--text-muted); }
+.rank-row.warn .rank-level { color: var(--warning); }
+.rank-row.bad  .rank-level { color: var(--danger); font-weight: 500; }
+.rank-age { font-size: var(--text-xs); color: var(--text-muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 767px) {
+  .rank-row, .rank-scale { grid-template-columns: minmax(90px, 1fr) minmax(80px, 1.2fr) 68px; }
+  .rank-level, .rank-age { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .rank-bar { transition: none; } }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; font-size: var(--text-sm); }
 
 .stats { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--text-xs); color: var(--text-secondary); }

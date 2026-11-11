@@ -126,7 +126,7 @@ const fazerLogout = async () => {
             <span class="user-username">@{{ authStore.user?.username }}</span>
           </div>
         </router-link>
-        <button class="logout-btn" @click="fazerLogout" title="Sair">
+        <button class="logout-btn" @click="fazerLogout" title="Sair" aria-label="Sair">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/>
@@ -140,7 +140,7 @@ const fazerLogout = async () => {
     <div class="main-wrapper" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="menu-btn" @click="toggleSidebar" title="Alternar menu">
+          <button class="menu-btn" @click="toggleSidebar" title="Alternar menu" aria-label="Alternar menu">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="3" y1="6" x2="21" y2="6"/>
               <line x1="3" y1="12" x2="21" y2="12"/>

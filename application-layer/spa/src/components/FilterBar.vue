@@ -51,18 +51,7 @@ defineExpose({ clear })
 
 <style scoped>
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.field, :slotted(.field) {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 7px 10px;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  color: var(--text);
-  outline: none;
-  color-scheme: dark;
-}
-.field:focus, :slotted(.field:focus) { border-color: var(--primary); }
+.field, :slotted(.field) { width: auto; padding: 7px 10px; }
 .search { flex: 1 1 240px; min-width: 200px; }
 .date { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-muted); }
 :slotted(select.field) { min-width: 160px; }

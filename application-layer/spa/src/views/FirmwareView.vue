@@ -207,7 +207,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="fw in operationalFirmwares" :key="fw.firmwareId" class="tbl-row" @click="goToDetail(fw.firmwareId)">
+              <tr v-for="fw in operationalFirmwares" :key="fw.firmwareId" class="tbl-row" tabindex="0" role="link" @click="goToDetail(fw.firmwareId)" @keydown.enter.self="goToDetail(fw.firmwareId)">
                 <td class="font-medium">{{ fw.firmwareName }}</td>
                 <td>
                   <template v-if="fw.latestVersion">
@@ -233,33 +233,33 @@ onMounted(async () => {
     </template>
 
     <!-- ── Create Firmware modal ────────────────────────────────────────────── -->
-    <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
+    <div v-if="showCreate" v-modal-dialog="() => { showCreate = false }" class="modal-overlay" @click.self="showCreate = false">
       <div class="modal">
         <h3 class="modal-title">Novo Firmware <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></h3>
 
         <div class="form-group">
-          <label>Arquivo .bin</label>
-          <input type="file" accept=".bin" @change="e => createFile = (e.target as HTMLInputElement).files?.[0] ?? null" />
+          <label for="firmware-f1">Arquivo .bin</label>
+          <input id="firmware-f1" type="file" accept=".bin" @change="e => createFile = (e.target as HTMLInputElement).files?.[0] ?? null" />
         </div>
 
         <div class="form-group">
-          <label>Nome do firmware</label>
-          <input v-model="createMeta.firmwareName" class="field" placeholder="ex: sensor-armazem-frio" />
+          <label for="firmware-f2">Nome do firmware</label>
+          <input id="firmware-f2" v-model="createMeta.firmwareName" class="field" placeholder="ex: sensor-armazem-frio" />
         </div>
 
         <div class="form-group">
-          <label>Descrição <span class="text-muted">(opcional)</span></label>
-          <input v-model="createMeta.description" class="field" placeholder="Breve descrição do firmware" />
+          <label for="firmware-f3">Descrição <span class="text-muted">(opcional)</span></label>
+          <input id="firmware-f3" v-model="createMeta.description" class="field" placeholder="Breve descrição do firmware" />
         </div>
 
         <div class="form-group">
-          <label>Versão inicial</label>
-          <input v-model="createMeta.initialVersion" class="field" placeholder="ex: 1.0.0" />
+          <label for="firmware-f4">Versão inicial</label>
+          <input id="firmware-f4" v-model="createMeta.initialVersion" class="field" placeholder="ex: 1.0.0" />
         </div>
 
         <div v-if="!createMeta.isProvisioning" class="form-group">
-          <label>Grupo <span v-if="!authStore.isAdmin" class="text-danger">*</span><span v-else class="text-muted"> (opcional — vazio = plataforma)</span></label>
-          <select v-model="createMeta.ownerGroupId" class="field">
+          <label for="firmware-f5">Grupo <span v-if="!authStore.isAdmin" class="text-danger">*</span><span v-else class="text-muted"> (opcional — vazio = plataforma)</span></label>
+          <select id="firmware-f5" v-model="createMeta.ownerGroupId" class="field">
             <option v-if="authStore.isAdmin" value="">Plataforma (sem grupo)</option>
             <option v-else value="" disabled>Selecione um grupo</option>
             <option v-for="g in uploadableGroups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
@@ -277,8 +277,8 @@ onMounted(async () => {
         </label>
 
         <div v-if="createMeta.deepSleepEnabled" class="form-group">
-          <label>Intervalo de deep sleep (segundos)</label>
-          <input
+          <label for="firmware-f6">Intervalo de deep sleep (segundos)</label>
+          <input id="firmware-f6"
             type="number"
             min="30"
             v-model.number="createMeta.deepSleepIntervalS"
@@ -362,10 +362,7 @@ onMounted(async () => {
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; resize: vertical; width: 100%; box-sizing: border-box; }
-.field:focus { border-color: var(--primary); }
 .checkbox-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text); cursor: pointer; }
-.field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 
 .sensor-select-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); }
 .sensor-select-row { display: flex; align-items: center; gap: var(--space-2); }

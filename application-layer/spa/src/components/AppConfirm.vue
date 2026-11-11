@@ -1,17 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
 import { useConfirm } from '@/composables/useConfirm'
 import AppModal from './AppModal.vue'
 import AppButton from './AppButton.vue'
 
 const { active, respond } = useConfirm()
-
-const onKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && active.value) respond(false)
-}
-
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>

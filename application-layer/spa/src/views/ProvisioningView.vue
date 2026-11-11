@@ -353,13 +353,9 @@ onUnmounted(stopPolling)
 .form { display: flex; flex-direction: column; gap: var(--space-4); }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .field-label { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; width: 100%; box-sizing: border-box; }
-.field:focus { border-color: var(--primary); }
-.field:disabled { opacity: 0.5; }
 .pass-row { display: flex; gap: var(--space-2); }
 .pass-toggle { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0 var(--space-3); font-size: var(--text-xs); color: var(--text-muted); cursor: pointer; }
 .pass-toggle:hover { color: var(--text); }
-.field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 .form-actions { display: flex; justify-content: flex-end; margin-top: var(--space-4); }
 
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }

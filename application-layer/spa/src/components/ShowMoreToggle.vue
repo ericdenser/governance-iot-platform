@@ -5,11 +5,11 @@ defineEmits<{ (e: 'more'): void; (e: 'less'): void }>()
 
 <template>
   <div v-if="canMore || canLess" class="toggle-row">
-    <button v-if="canLess" type="button" class="toggle" title="Mostrar menos" @click="$emit('less')">
+    <button v-if="canLess" type="button" class="toggle" title="Mostrar menos" aria-label="Mostrar menos" @click="$emit('less')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
       Menos
     </button>
-    <button v-if="canMore" type="button" class="toggle" title="Mostrar mais antigos" :disabled="loading" @click="$emit('more')">
+    <button v-if="canMore" type="button" class="toggle" title="Mostrar mais antigos" aria-label="Mostrar mais antigos" :disabled="loading" @click="$emit('more')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       {{ loading ? 'Carregando...' : 'Mais' }}
     </button>

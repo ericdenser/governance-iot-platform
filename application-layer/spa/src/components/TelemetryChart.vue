@@ -195,7 +195,7 @@ const chartOptions = computed(() => {
         <select v-model="config.window" class="field" aria-label="Janela">
           <option v-for="(w, key) in WINDOWS" :key="key" :value="key">{{ w.label }}</option>
         </select>
-        <button class="icon-btn" :class="{ active: showConfig }" title="Escolher dispositivos" @click="showConfig = !showConfig">
+        <button class="icon-btn" :class="{ active: showConfig }" title="Escolher dispositivos" aria-label="Escolher dispositivos" :aria-expanded="showConfig" @click="showConfig = !showConfig">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
           </svg>
@@ -240,18 +240,7 @@ const chartOptions = computed(() => {
 <style scoped>
 .actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
-.field {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 4px 8px;
-  font-size: var(--text-xs);
-  color: var(--text);
-  font-family: var(--font-sans);
-  outline: none;
-  max-width: 200px;
-}
-.field:focus { border-color: var(--primary); }
+.field { width: auto; max-width: 200px; padding: 4px 8px; font-size: var(--text-xs); }
 
 .icon-btn {
   width: 26px;

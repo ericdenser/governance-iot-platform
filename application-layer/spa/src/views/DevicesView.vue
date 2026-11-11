@@ -304,8 +304,7 @@ onMounted(load)
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .search-wrap { position: relative; flex: 1; max-width: 320px; min-width: 200px; }
 .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
-.search { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px 7px 32px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-sans); box-sizing: border-box; }
-.search:focus { border-color: var(--primary); }
+.search { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px 7px 32px; font-size: var(--text-sm); color: var(--text); font-family: var(--font-sans); box-sizing: border-box; }
 
 .filter-group { display: flex; gap: var(--space-1); }
 .filter-btn { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; transition: border-color var(--transition), color var(--transition); }

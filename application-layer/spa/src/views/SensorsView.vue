@@ -102,13 +102,13 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
     <AppModal title="Registrar Sensor" :show="showForm" @close="showForm = false">
       <div class="form-group">
-        <label>Código <span class="text-muted">(igual ao do firmware)</span></label>
-        <input v-model="newCode" class="field mono" placeholder="ex: bmp280" maxlength="24" @keydown.enter="save" />
+        <label for="sensors-f1">Código <span class="text-muted">(igual ao do firmware)</span></label>
+        <input id="sensors-f1" v-model="newCode" class="field mono" placeholder="ex: bmp280" maxlength="24" @keydown.enter="save" />
         <small v-if="newCode && !codeValid" class="error">Use de 1 a 24 caracteres: a-z, 0-9 e _</small>
       </div>
       <div class="form-group">
-        <label>Nome <span class="text-muted">(opcional)</span></label>
-        <input v-model="newName" class="field" placeholder="ex: Pressão e temperatura" maxlength="60" @keydown.enter="save" />
+        <label for="sensors-f2">Nome <span class="text-muted">(opcional)</span></label>
+        <input id="sensors-f2" v-model="newName" class="field" placeholder="ex: Pressão e temperatura" maxlength="60" @keydown.enter="save" />
       </div>
       <p v-if="error" class="error">{{ error }}</p>
       <template #footer>
@@ -120,8 +120,8 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
     <AppModal title="Renomear Sensor" :show="!!renameTarget" @close="renameTarget = null">
       <p v-if="renameTarget" class="text-sm text-muted">Código: <span class="mono">{{ renameTarget.code }}</span></p>
       <div class="form-group">
-        <label>Nome</label>
-        <input v-model="renameValue" class="field" maxlength="60" @keydown.enter="doRename" />
+        <label for="sensors-f3">Nome</label>
+        <input id="sensors-f3" v-model="renameValue" class="field" maxlength="60" @keydown.enter="doRename" />
       </div>
       <p v-if="renameError" class="error">{{ renameError }}</p>
       <template #footer>
@@ -143,8 +143,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; width: 100%; box-sizing: border-box; }
-.field:focus { border-color: var(--primary); }
 .error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 .hint { margin: 0 0 var(--space-4); }
 .col-actions { text-align: right; }

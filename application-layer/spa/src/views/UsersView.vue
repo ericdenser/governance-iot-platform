@@ -248,26 +248,26 @@ onMounted(load)
     <!-- Criar -->
     <AppModal title="Novo Usuário" :show="showCreate" @close="showCreate = false">
       <div class="form-group">
-        <label>Username <span class="req">*</span></label>
-        <input v-model="createForm.username" class="field" placeholder="ex: joao.silva" />
+        <label for="users-f1">Username <span class="req">*</span></label>
+        <input id="users-f1" v-model="createForm.username" class="field" placeholder="ex: joao.silva" />
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Nome</label>
-          <input v-model="createForm.firstName" class="field" placeholder="João" />
+          <label for="users-f2">Nome</label>
+          <input id="users-f2" v-model="createForm.firstName" class="field" placeholder="João" />
         </div>
         <div class="form-group">
-          <label>Sobrenome</label>
-          <input v-model="createForm.lastName" class="field" placeholder="Silva" />
+          <label for="users-f3">Sobrenome</label>
+          <input id="users-f3" v-model="createForm.lastName" class="field" placeholder="Silva" />
         </div>
       </div>
       <div class="form-group">
-        <label>E-mail</label>
-        <input v-model="createForm.email" class="field" type="email" placeholder="joao@exemplo.com" />
+        <label for="users-f4">E-mail</label>
+        <input id="users-f4" v-model="createForm.email" class="field" type="email" placeholder="joao@exemplo.com" />
       </div>
       <div class="form-group">
-        <label>Senha temporária</label>
-        <input v-model="createForm.temporaryPassword" class="field" type="text" placeholder="Mínimo 8 caracteres" />
+        <label for="users-f5">Senha temporária</label>
+        <input id="users-f5" v-model="createForm.temporaryPassword" class="field" type="text" placeholder="Mínimo 8 caracteres" />
         <p class="hint">
           O usuário será obrigado a trocar no primeiro login. Se deixar vazio, será necessário definir senha manualmente depois.
         </p>
@@ -287,17 +287,17 @@ onMounted(load)
       </p>
       <div class="form-row">
         <div class="form-group">
-          <label>Nome</label>
-          <input v-model="editForm.firstName" class="field" />
+          <label for="users-f6">Nome</label>
+          <input id="users-f6" v-model="editForm.firstName" class="field" />
         </div>
         <div class="form-group">
-          <label>Sobrenome</label>
-          <input v-model="editForm.lastName" class="field" />
+          <label for="users-f7">Sobrenome</label>
+          <input id="users-f7" v-model="editForm.lastName" class="field" />
         </div>
       </div>
       <div class="form-group">
-        <label>E-mail</label>
-        <input v-model="editForm.email" class="field" type="email" />
+        <label for="users-f8">E-mail</label>
+        <input id="users-f8" v-model="editForm.email" class="field" type="email" />
       </div>
       <p v-if="editError" class="error">{{ editError }}</p>
       <template #footer>
@@ -312,8 +312,8 @@ onMounted(load)
         Usuário: <strong>{{ resetTarget.username }}</strong>
       </p>
       <div class="form-group">
-        <label>Nova senha</label>
-        <input v-model="resetForm.newPassword" class="field" type="text" placeholder="Mínimo 8 caracteres" />
+        <label for="users-f9">Nova senha</label>
+        <input id="users-f9" v-model="resetForm.newPassword" class="field" type="text" placeholder="Mínimo 8 caracteres" />
       </div>
       <label class="checkbox">
         <input v-model="resetForm.temporary" type="checkbox" />
@@ -347,8 +347,6 @@ onMounted(load)
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; width: 100%; box-sizing: border-box; }
-.field:focus { border-color: var(--primary); }
 .hint { font-size: var(--text-xs); color: var(--text-muted); margin: var(--space-1) 0 0 0; }
 .req { color: var(--danger); }
 .error { color: var(--danger); font-size: var(--text-sm); margin: var(--space-2) 0 0 0; }

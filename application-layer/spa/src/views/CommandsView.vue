@@ -458,7 +458,7 @@ onUnmounted(() => {
     </div>
 
     <!-- ── UPDATE: firmware picker modal ────────────────────────────────── -->
-    <div v-if="showFirmwareModal" class="modal-overlay" @click.self="showFirmwareModal = false">
+    <div v-if="showFirmwareModal" v-modal-dialog="() => { showFirmwareModal = false }" class="modal-overlay" @click.self="showFirmwareModal = false">
       <div class="modal">
         <h3 class="modal-title">Escolher Firmware — UPDATE <span class="text-muted mono">{{ chipLabel(selectedChip) }}</span></h3>
         <p class="modal-hint mono">{{ selectedCount }} device(s) alvo</p>
@@ -494,14 +494,14 @@ onUnmounted(() => {
     </div>
 
     <!-- ── DEEP_SLEEP: duration modal ───────────────────────────────────── -->
-    <div v-if="showDeepSleepModal" class="modal-overlay" @click.self="showDeepSleepModal = false">
+    <div v-if="showDeepSleepModal" v-modal-dialog="() => { showDeepSleepModal = false }" class="modal-overlay" @click.self="showDeepSleepModal = false">
       <div class="modal">
         <h3 class="modal-title">Duração — DEEP_SLEEP</h3>
         <p class="modal-hint mono">{{ selectedCount }} device(s) alvo</p>
 
         <div class="form-group">
-          <label>Duração <span class="text-muted">(segundos)</span></label>
-          <input type="number" min="10" max="259200" class="field" v-model.number="durationS" placeholder="ex: 300" />
+          <label for="commands-f1">Duração <span class="text-muted">(segundos)</span></label>
+          <input id="commands-f1" type="number" min="10" max="259200" class="field" v-model.number="durationS" placeholder="ex: 300" />
           <span class="field-hint mono">Mínimo 10s · Máximo 259200s (3 dias)</span>
         </div>
         <p v-if="durationError" class="field-error">{{ durationError }}</p>
@@ -628,8 +628,6 @@ onUnmounted(() => {
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-mono); }
-.field:focus { border-color: var(--primary); }
+.field { width: auto; font-family: var(--font-mono); }
 .field-hint { font-size: var(--text-xs); color: var(--text-muted); }
-.field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 </style>
