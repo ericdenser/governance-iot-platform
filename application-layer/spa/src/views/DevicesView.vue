@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppButton from '@/components/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -10,6 +12,7 @@ import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import StatusLabel from '@/components/StatusLabel.vue'
 import { connState, type ConnState } from '@/utils/connection'
 import { absoluteTime, relativeTime } from '@/utils/format'
+import { chipLabel } from '@/utils/chips'
 import type { DeviceHealth, DeviceSummaryDTO } from '@/types/models'
 
 // ── Connection state (client-side, so pelo lastSeen) ─────────────────────
@@ -145,6 +148,17 @@ const counts = computed(() => {
   return c
 })
 
+const emptyTitle = computed(() => {
+  if (search.value) return `Nenhum dispositivo para "${search.value}"`
+  if (connFilter.value !== 'all') return `Nenhum dispositivo em "${FILTER_LABEL[connFilter.value].toLowerCase()}"`
+  return 'Nenhum dispositivo registrado'
+})
+const emptyHint = computed(() => {
+  if (search.value) return 'A busca olha nome, ID e MAC.'
+  if (connFilter.value !== 'all') return 'O filtro vale só para a página atual da lista.'
+  return 'Você vê os dispositivos dos grupos de que faz parte.'
+})
+
 // ── Loader ────────────────────────────────────────────────────────────────
 const load = async (silent = false) => {
   if (!silent) loading.value = true
@@ -224,7 +238,7 @@ onMounted(load)
     <div class="toolbar">
       <div class="search-wrap">
         <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input v-model="search" class="search" placeholder="Buscar por nome, ID ou MAC..." />
+        <input v-model="search" class="search" placeholder="Buscar por nome, ID ou MAC..." aria-label="Buscar dispositivo" />
       </div>
       <div class="filter-group">
         <button v-for="f in (['all','online','warning','offline'] as const)" :key="f"
@@ -236,10 +250,12 @@ onMounted(load)
       </div>
     </div>
 
-    <div v-if="loading" class="empty">Carregando...</div>
-    <div v-else-if="!visibleDevices.length" class="empty">
-      {{ connFilter === 'all' ? 'Nenhum dispositivo encontrado' : `Nenhum dispositivo em "${FILTER_LABEL[connFilter].toLowerCase()}"` }}
-    </div>
+    <AppSkeleton v-if="loading" variant="cards" :rows="6" />
+    <EmptyState v-else-if="!visibleDevices.length" :title="emptyTitle" :hint="emptyHint">
+      <AppButton v-if="search" variant="secondary" @click="search = ''">Limpar busca</AppButton>
+      <AppButton v-else-if="connFilter !== 'all'" variant="secondary" @click="connFilter = 'all'">Ver todos</AppButton>
+      <AppButton v-else-if="authStore.canProvision" variant="primary" @click="router.push('/provisioning')">Provisionar dispositivo</AppButton>
+    </EmptyState>
     <div v-else class="dev-grid">
       <div v-for="d in visibleDevices" :key="d.deviceId"
         class="dev-card"
@@ -250,7 +266,7 @@ onMounted(load)
           <div class="card-title-block">
             <h3 class="card-title">{{ d.name }}</h3>
             <p class="card-sub mono">
-              {{ d.deviceId.slice(0, 8) }}<span v-if="d.firmwareName"> · {{ d.firmwareName }}</span>
+              {{ chipLabel(d.chip) }} · {{ d.deviceId.slice(0, 8) }}<span v-if="d.firmwareName"> · {{ d.firmwareName }}</span>
             </p>
           </div>
           <StatusLabel kind="conn" :code="connStateOf(d)" class="conn" />

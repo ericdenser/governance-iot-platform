@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import AppModal from '@/components/AppModal.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
@@ -175,7 +178,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-if="loading" class="empty">Carregando...</div>
+    <AppSkeleton v-if="loading" variant="table" />
     <template v-else>
       <!-- Only one provisioning firmware per chip: a single line instead of a table -->
       <section class="block">
@@ -224,7 +227,12 @@ onMounted(async () => {
                 <td class="text-muted" :title="absoluteTime(updatedAt(fw))">{{ fmtDate(updatedAt(fw)) }}</td>
               </tr>
               <tr v-if="!operationalFirmwares.length">
-                <td colspan="5" class="empty-row">Nenhum firmware operational para {{ chipLabel(selectedChip) }}</td>
+                <td colspan="5">
+                  <EmptyState :title="`Nenhum firmware operational para ${chipLabel(selectedChip)}`"
+                              :hint="canCreate ? 'Cadastre o firmware com o primeiro binário; as próximas versões entram dentro dele.' : 'Só administradores e membros de grupo cadastram firmware.'">
+                    <AppButton v-if="canCreate" variant="primary" @click="openCreate(false)">Novo firmware</AppButton>
+                  </EmptyState>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -233,85 +241,83 @@ onMounted(async () => {
     </template>
 
     <!-- ── Create Firmware modal ────────────────────────────────────────────── -->
-    <div v-if="showCreate" v-modal-dialog="() => { showCreate = false }" class="modal-overlay" @click.self="showCreate = false">
-      <div class="modal">
-        <h3 class="modal-title">Novo Firmware <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></h3>
+    <AppModal v-if="showCreate" size="md" @close="showCreate = false">
+      <template #title>Novo Firmware <span class="title-chip mono">{{ chipLabel(selectedChip) }}</span></template>
 
-        <div class="form-group">
-          <label for="firmware-f1">Arquivo .bin</label>
-          <input id="firmware-f1" type="file" accept=".bin" @change="e => createFile = (e.target as HTMLInputElement).files?.[0] ?? null" />
-        </div>
+      <div class="form-group">
+        <label for="firmware-f1">Arquivo .bin</label>
+        <input id="firmware-f1" type="file" accept=".bin" @change="e => createFile = (e.target as HTMLInputElement).files?.[0] ?? null" />
+      </div>
 
-        <div class="form-group">
-          <label for="firmware-f2">Nome do firmware</label>
-          <input id="firmware-f2" v-model="createMeta.firmwareName" class="field" placeholder="ex: sensor-armazem-frio" />
-        </div>
+      <div class="form-group">
+        <label for="firmware-f2">Nome do firmware</label>
+        <input id="firmware-f2" v-model="createMeta.firmwareName" class="field" placeholder="ex: sensor-armazem-frio" />
+      </div>
 
-        <div class="form-group">
-          <label for="firmware-f3">Descrição <span class="text-muted">(opcional)</span></label>
-          <input id="firmware-f3" v-model="createMeta.description" class="field" placeholder="Breve descrição do firmware" />
-        </div>
+      <div class="form-group">
+        <label for="firmware-f3">Descrição <span class="text-muted">(opcional)</span></label>
+        <input id="firmware-f3" v-model="createMeta.description" class="field" placeholder="Breve descrição do firmware" />
+      </div>
 
-        <div class="form-group">
-          <label for="firmware-f4">Versão inicial</label>
-          <input id="firmware-f4" v-model="createMeta.initialVersion" class="field" placeholder="ex: 1.0.0" />
-        </div>
+      <div class="form-group">
+        <label for="firmware-f4">Versão inicial</label>
+        <input id="firmware-f4" v-model="createMeta.initialVersion" class="field" placeholder="ex: 1.0.0" />
+      </div>
 
-        <div v-if="!createMeta.isProvisioning" class="form-group">
-          <label for="firmware-f5">Grupo <span v-if="!authStore.isAdmin" class="text-danger">*</span><span v-else class="text-muted"> (opcional — vazio = plataforma)</span></label>
-          <select id="firmware-f5" v-model="createMeta.ownerGroupId" class="field">
-            <option v-if="authStore.isAdmin" value="">Plataforma (sem grupo)</option>
-            <option v-else value="" disabled>Selecione um grupo</option>
-            <option v-for="g in uploadableGroups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
-          </select>
-        </div>
+      <div v-if="!createMeta.isProvisioning" class="form-group">
+        <label for="firmware-f5">Grupo <span v-if="!authStore.isAdmin" class="text-danger">*</span><span v-else class="text-muted"> (opcional — vazio = plataforma)</span></label>
+        <select id="firmware-f5" v-model="createMeta.ownerGroupId" class="field">
+          <option v-if="authStore.isAdmin" value="">Plataforma (sem grupo)</option>
+          <option v-else value="" disabled>Selecione um grupo</option>
+          <option v-for="g in uploadableGroups" :key="g.groupId" :value="g.groupId">{{ g.name }}</option>
+        </select>
+      </div>
 
-        <label v-if="authStore.isAdmin" class="checkbox-row">
-          <input type="checkbox" v-model="createMeta.isProvisioning" />
-          Firmware de provisionamento (usado no flash inicial dos devices)
-        </label>
+      <label v-if="authStore.isAdmin" class="checkbox-row">
+        <input type="checkbox" v-model="createMeta.isProvisioning" />
+        Firmware de provisionamento (usado no flash inicial dos devices)
+      </label>
 
-        <label class="checkbox-row">
-          <input type="checkbox" v-model="createMeta.deepSleepEnabled" />
-          Firmware usa deep sleep
-        </label>
+      <label class="checkbox-row">
+        <input type="checkbox" v-model="createMeta.deepSleepEnabled" />
+        Firmware usa deep sleep
+      </label>
 
-        <div v-if="createMeta.deepSleepEnabled" class="form-group">
-          <label for="firmware-f6">Intervalo de deep sleep (segundos)</label>
-          <input id="firmware-f6"
-            type="number"
-            min="30"
-            v-model.number="createMeta.deepSleepIntervalS"
-            class="field"
-            placeholder="ex: 300"
-          />
-          <small class="text-muted">
-            Usado pra calcular timeout de comandos (default: intervalo × 2 + 60s de margem).
-          </small>
-        </div>
+      <div v-if="createMeta.deepSleepEnabled" class="form-group">
+        <label for="firmware-f6">Intervalo de deep sleep (segundos)</label>
+        <input id="firmware-f6"
+          type="number"
+          min="30"
+          v-model.number="createMeta.deepSleepIntervalS"
+          class="field"
+          placeholder="ex: 300"
+        />
+        <small class="text-muted">
+          Usado pra calcular timeout de comandos (default: intervalo × 2 + 60s de margem).
+        </small>
+      </div>
 
-        <div v-if="availableSensors.length" class="form-group">
-          <label>Sensores <span class="text-muted">(só para binários sem manifesto)</span></label>
-          <small class="text-muted">Firmwares com os plugins de sensor trazem os sensores e pinos no próprio binário; esta lista é ignorada.</small>
-          <div class="sensor-select-list">
-            <div v-for="s in availableSensors" :key="s.sensorId" class="sensor-select-row">
-              <label class="checkbox-row" style="flex:1;margin:0">
-                <input type="checkbox"
-                  :checked="selectedSensors.has(s.sensorId)"
-                  @change="toggleSensor(s.sensorId)" />
-                {{ s.name }} <span v-if="s.name !== s.code" class="text-muted mono">{{ s.code }}</span>
-              </label>
-            </div>
+      <div v-if="availableSensors.length" class="form-group">
+        <label>Sensores <span class="text-muted">(só para binários sem manifesto)</span></label>
+        <small class="text-muted">Firmwares com os plugins de sensor trazem os sensores e pinos no próprio binário; esta lista é ignorada.</small>
+        <div class="sensor-select-list">
+          <div v-for="s in availableSensors" :key="s.sensorId" class="sensor-select-row">
+            <label class="checkbox-row" style="flex:1;margin:0">
+              <input type="checkbox"
+                :checked="selectedSensors.has(s.sensorId)"
+                @change="toggleSensor(s.sensorId)" />
+              {{ s.name }} <span v-if="s.name !== s.code" class="text-muted mono">{{ s.code }}</span>
+            </label>
           </div>
         </div>
-
-        <p v-if="createError" class="field-error">{{ createError }}</p>
-        <div class="modal-footer">
-          <AppButton variant="ghost" @click="showCreate = false">Cancelar</AppButton>
-          <AppButton variant="primary" :loading="creating" @click="doCreate">Criar</AppButton>
-        </div>
       </div>
-    </div>
+
+      <p v-if="createError" class="field-error">{{ createError }}</p>
+      <template #footer>
+        <AppButton variant="ghost" @click="showCreate = false">Cancelar</AppButton>
+        <AppButton variant="primary" :loading="creating" @click="doCreate">Criar</AppButton>
+      </template>
+    </AppModal>
 
   </AppLayout>
 </template>
@@ -344,21 +350,11 @@ onMounted(async () => {
 .tbl-row { cursor: pointer; transition: background var(--transition); }
 .tbl-row:hover td { background: var(--panel); }
 .ver-status { margin-left: var(--space-2); font-size: var(--text-xs); }
-.empty-row { color: var(--text-muted); }
 
-.mono { font-family: var(--font-mono); }
 .font-medium { font-weight: 500; color: var(--text); }
-.text-sm { font-size: var(--text-sm); }
-.text-muted { color: var(--text-muted); }
-.text-danger { color: var(--danger); }
-.empty { text-align: center; color: var(--text-muted); padding: var(--space-8) 0; }
 
 
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
-.modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); width: 520px; max-width: 94vw; max-height: 85vh; display: flex; flex-direction: column; gap: var(--space-4); overflow-y: auto; }
-.modal-title { font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0; }
 .title-chip { margin-left: var(--space-2); font-size: var(--text-sm); font-weight: 500; color: var(--text-muted); }
-.modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); margin-top: auto; }
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
@@ -83,7 +85,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         O código precisa ser o mesmo que o firmware envia.
       </p>
 
-      <div v-if="loading" class="empty">Carregando...</div>
+      <AppSkeleton v-if="loading" variant="table" />
       <table v-else class="tbl">
         <thead><tr><th>Código</th><th>Nome</th><th>Criado por</th><th></th></tr></thead>
         <tbody>
@@ -95,7 +97,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
               <AppButton v-if="authStore.isAdmin" size="sm" variant="ghost" @click="openRename(s)">Renomear</AppButton>
             </td>
           </tr>
-          <tr v-if="!sensors.length"><td colspan="4" class="empty">Nenhum sensor cadastrado</td></tr>
+          <tr v-if="!sensors.length"><td colspan="4">
+              <EmptyState title="Nenhum sensor cadastrado"
+                          hint="Eles aparecem sozinhos quando um dispositivo reporta um sensor ou quando um firmware com manifesto é enviado.">
+                <AppButton v-if="authStore.isAdmin" variant="secondary" @click="openForm">Registrar Sensor</AppButton>
+              </EmptyState>
+            </td></tr>
         </tbody>
       </table>
     </AppCard>

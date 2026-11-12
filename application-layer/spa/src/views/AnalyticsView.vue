@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import { devicesApi } from '@/services/devices'
@@ -234,8 +236,8 @@ onMounted(load)
         </label>
       </div>
 
-      <div v-if="loading" class="empty">Carregando...</div>
-      <div v-else-if="!scopedDevices.length" class="empty">Nenhum dispositivo com esses filtros</div>
+      <AppSkeleton v-if="loading" variant="list" :rows="8" />
+      <EmptyState v-else-if="!scopedDevices.length" title="Nenhum dispositivo com esses filtros" hint="Desmarque “Só ativos” ou troque o grupo para ver mais dispositivos." />
       <div v-else class="rank" role="list" :aria-label="METRIC_LABEL[metric]">
         <div class="rank-scale" aria-hidden="true">
           <span class="rank-scale-track">

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import StatusLabel from '@/components/StatusLabel.vue'
@@ -49,7 +51,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         </select>
       </FilterBar>
 
-      <div v-if="loading" class="empty">Carregando...</div>
+      <AppSkeleton v-if="loading" variant="table" />
       <table v-else class="tbl">
         <thead>
           <tr>
@@ -73,7 +75,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             </td>
             <td class="text-muted text-sm">{{ fmt(e.performedAt) }}</td>
           </tr>
-          <tr v-if="!entries.length"><td colspan="6" class="empty">Nenhum registro encontrado</td></tr>
+          <tr v-if="!entries.length"><td colspan="6"><EmptyState compact title="Nenhum registro encontrado" hint="Ajuste os filtros ou o período da busca." /></td></tr>
         </tbody>
       </table>
 

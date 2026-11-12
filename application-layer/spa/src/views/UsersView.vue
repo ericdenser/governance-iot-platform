@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
@@ -200,10 +202,12 @@ onMounted(load)
         </div>
       </template>
 
-      <div v-if="loading" class="empty">Carregando...</div>
-      <div v-else-if="!filtered.length" class="empty">
-        {{ users.length ? 'Nenhum usuário encontrado com esse filtro.' : 'Nenhum usuário cadastrado.' }}
-      </div>
+      <AppSkeleton v-if="loading" variant="table" />
+      <EmptyState v-else-if="!filtered.length"
+        :title="users.length ? 'Nenhum usuário encontrado com esse filtro' : 'Nenhum usuário cadastrado'">
+        <AppButton v-if="users.length" variant="secondary" @click="search = ''">Limpar busca</AppButton>
+        <AppButton v-else variant="primary" @click="openCreate">Novo Usuário</AppButton>
+      </EmptyState>
       <table v-else class="tbl">
         <thead>
           <tr>

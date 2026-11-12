@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppButton from '@/components/AppButton.vue'
@@ -218,7 +220,7 @@ onUnmounted(stopPolling)
       <ChipSelector v-model="chip" />
     </div>
 
-    <div v-if="loading" class="empty">Carregando...</div>
+    <AppSkeleton v-if="loading" variant="detail" />
 
     <div v-else class="grid">
       <!-- ── New device / follow-up ───────────────────────────────────── -->
@@ -329,7 +331,7 @@ onUnmounted(stopPolling)
                 </td>
               </tr>
               <tr v-if="!pending.length">
-                <td colspan="7" class="empty-row">Nenhum dispositivo aguardando ativação</td>
+                <td colspan="7"><EmptyState compact title="Nenhum dispositivo aguardando ativação" hint="Depois de gerar o pacote e gravar o ESP, ele aparece aqui até ligar e se ativar." /></td>
               </tr>
             </tbody>
           </table>

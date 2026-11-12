@@ -166,6 +166,7 @@ const fazerLogout = async () => {
 .layout {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ─── Mobile backdrop ───────────────────────────────── */
@@ -173,7 +174,7 @@ const fazerLogout = async () => {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  z-index: 99;
+  z-index: var(--z-backdrop);
 }
 
 /* ─── Sidebar ───────────────────────────────────────── */
@@ -187,7 +188,8 @@ const fazerLogout = async () => {
   top: 0;
   left: 0;
   height: 100vh;
-  z-index: 100;
+  height: 100dvh;
+  z-index: var(--z-sidebar);
   overflow: hidden;
   transition: width 220ms ease;
 }
@@ -442,6 +444,7 @@ const fazerLogout = async () => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   transition: margin-left 220ms ease;
 }
 
@@ -459,7 +462,7 @@ const fazerLogout = async () => {
   padding: 0 var(--space-6);
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: var(--z-sticky);
   gap: var(--space-4);
 }
 

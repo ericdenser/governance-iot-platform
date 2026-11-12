@@ -87,6 +87,7 @@ const clearFilter = () => { config.value.statusFilter = [] }
   flex-direction: column;
   gap: var(--space-4);
   height: calc(100vh - var(--header-height) - var(--space-6) * 2);
+  height: calc(100dvh - var(--header-height) - var(--space-6) * 2);
   min-height: 400px;
 }
 

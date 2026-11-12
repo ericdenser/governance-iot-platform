@@ -2,18 +2,19 @@
 import { ref, computed, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import StatusLabel from '@/components/StatusLabel.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppModal from '@/components/AppModal.vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import AddDeviceModal from '@/components/groups/AddDeviceModal.vue'
+import AssignUserModal from '@/components/groups/AssignUserModal.vue'
 import { groupsApi } from '@/services/groups'
-import { devicesApi } from '@/services/devices'
 import { usersApi } from '@/services/users'
 import { useAuthStore } from '@/stores/auth'
 import type {
   DeviceGroupResponseDTO,
   GroupMemberResponseDTO,
   GroupDeviceMemberDTO,
-  DeviceSummaryDTO,
   KeycloakUserDTO,
   GroupRole,
 } from '@/types/models'
@@ -39,67 +40,19 @@ const creating = ref(false)
 const createForm = ref({ name: '', description: '' })
 const createError = ref('')
 
-// Add device modal
 const showAddDevice = ref(false)
-const addingDevice = ref(false)
-const addDeviceError = ref('')
-const allDevices = ref<DeviceSummaryDTO[]>([])
-const loadingAllDevices = ref(false)
-const deviceSearch = ref('')
-const selectedDeviceId = ref('')
-
-
 const alreadyInGroup = computed(() => new Set(groupDevices.value.map(d => d.deviceId)))
-
-const pickableDevices = computed(() => {
-  const inGroup = alreadyInGroup.value
-  const q = deviceSearch.value.toLowerCase()
-  return allDevices.value
-    .filter(d => d.status !== 'REVOKED' && !inGroup.has(d.deviceId))
-    .filter(d => !q || d.name?.toLowerCase().includes(q) || d.deviceId?.toLowerCase().includes(q))
-})
-
-const openAddDevice = async () => {
-  selectedDeviceId.value = ''
-  deviceSearch.value = ''
-  addDeviceError.value = ''
-  showAddDevice.value = true
-  if (!allDevices.value.length) {
-    loadingAllDevices.value = true
-    try {
-      allDevices.value = await devicesApi.listAll()
-    } finally { loadingAllDevices.value = false }
-  }
-}
 
 // Assign user modal
 const showAssignUser = ref(false)
-const assigningUser = ref(false)
-const assignError = ref('')
 const allUsers = ref<KeycloakUserDTO[]>([])
 const loadingAllUsers = ref(false)
-const userSearch = ref('')
-const selectedUserId = ref('')
-const selectedRole = ref<GroupRole>('MEMBER')
-
 const alreadyAssigned = computed(() => new Set(groupUsers.value.map(u => u.keycloakUserId)))
-
-const pickableUsers = computed(() => {
-  const assigned = alreadyAssigned.value
-  const q = userSearch.value.toLowerCase()
-  return allUsers.value
-    .filter(u => !assigned.has(u.keycloakUserId))
-    .filter(u => !q || u.username?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))
-})
 
 const usernameFor = (id: string) =>
   allUsers.value.find(u => u.keycloakUserId === id)?.username ?? null
 
 const openAssignUser = async () => {
-  selectedUserId.value = ''
-  userSearch.value = ''
-  selectedRole.value = 'MEMBER'
-  assignError.value = ''
   showAssignUser.value = true
   if (!allUsers.value.length) {
     loadingAllUsers.value = true
@@ -222,17 +175,10 @@ const doDelete = async (g: DeviceGroupResponseDTO) => {
   }
 }
 
-const doAddDevice = async () => {
-  if (!selectedGroup.value || !selectedDeviceId.value) { addDeviceError.value = 'Selecione um dispositivo.'; return }
-  addingDevice.value = true; addDeviceError.value = ''
-  try {
-    await groupsApi.addDevice(selectedGroup.value.groupId, selectedDeviceId.value)
-    showAddDevice.value = false; selectedDeviceId.value = ''
-    await selectGroup(selectedGroup.value)
-    toast.success('Dispositivo adicionado ao grupo')
-  } catch (e: unknown) {
-    addDeviceError.value = errorMessage(e, 'Erro ao adicionar dispositivo.')
-  } finally { addingDevice.value = false }
+const onDeviceAdded = async () => {
+  showAddDevice.value = false
+  if (selectedGroup.value) await selectGroup(selectedGroup.value)
+  toast.success('Dispositivo adicionado ao grupo')
 }
 
 const doRemoveDevice = async (deviceId: string) => {
@@ -253,20 +199,10 @@ const doRemoveDevice = async (deviceId: string) => {
   }
 }
 
-const doAssignUser = async () => {
-  if (!selectedGroup.value || !selectedUserId.value) { assignError.value = 'Selecione um usuário.'; return }
-  assigningUser.value = true; assignError.value = ''
-  try {
-    await groupsApi.assignUser(selectedGroup.value.groupId, {
-      keycloakUserId: selectedUserId.value,
-      role: selectedRole.value,
-    })
-    showAssignUser.value = false; selectedUserId.value = ''
-    await selectGroup(selectedGroup.value)
-    toast.success('Usuário atribuído ao grupo')
-  } catch (e: unknown) {
-    assignError.value = errorMessage(e, 'Erro ao atribuir usuário.')
-  } finally { assigningUser.value = false }
+const onUserAssigned = async () => {
+  showAssignUser.value = false
+  if (selectedGroup.value) await selectGroup(selectedGroup.value)
+  toast.success('Usuário atribuído ao grupo')
 }
 
 const doRemoveUser = async (userId: string) => {
@@ -299,7 +235,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
           <AppButton v-if="authStore.isAdmin" size="md" variant="primary" @click="showCreate = true">Novo Grupo</AppButton>
         </template>
 
-        <div v-if="loading" class="empty">Carregando...</div>
+        <AppSkeleton v-if="loading" variant="list" :rows="4" />
         <ul v-else class="group-list">
           <li
             v-for="g in groups" :key="g.groupId"
@@ -320,7 +256,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
               @click.stop="doDelete(g)"
             >Excluir</AppButton>
           </li>
-          <li v-if="!groups.length" class="empty">Nenhum grupo cadastrado</li>
+          <li v-if="!groups.length">
+            <EmptyState compact title="Nenhum grupo cadastrado"
+              :hint="authStore.isAdmin ? 'Grupos definem quem vê e gerencia cada dispositivo e firmware.' : 'Peça a um administrador para criar um grupo e incluir você.'">
+              <AppButton v-if="authStore.isAdmin" variant="primary" @click="showCreate = true">Novo Grupo</AppButton>
+            </EmptyState>
+          </li>
         </ul>
       </AppCard>
 
@@ -329,7 +270,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         <AppCard :title="selectedGroup.name">
           <template v-if="canOpen(selectedGroup)" #actions>
             <div style="display: flex; gap: var(--space-2);">
-              <AppButton v-if="canManageDevices" size="md" variant="secondary" @click="openAddDevice">Adicionar Dispositivo</AppButton>
+              <AppButton v-if="canManageDevices" size="md" variant="secondary" @click="showAddDevice = true">Adicionar Dispositivo</AppButton>
               <AppButton v-if="canManageUsers" size="md" variant="secondary" @click="openAssignUser">Adicionar Usuário</AppButton>
             </div>
           </template>
@@ -340,12 +281,15 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
               <p>Você não faz parte deste grupo. Peça a um OWNER do grupo ou a um administrador para ser incluído.</p>
             </div>
           </div>
-          <div v-else-if="loadingDetail" class="empty">Carregando...</div>
+          <AppSkeleton v-else-if="loadingDetail" variant="table" :rows="4" />
           <div v-else class="detail-sections">
             <!-- Devices -->
             <div class="section">
               <h4 class="section-title">Dispositivos ({{ groupDevices.length }})</h4>
-              <table class="tbl aligned">
+              <EmptyState v-if="!groupDevices.length" compact title="Nenhum dispositivo neste grupo">
+                <AppButton v-if="canManageDevices" size="sm" variant="secondary" @click="showAddDevice = true">Adicionar Dispositivo</AppButton>
+              </EmptyState>
+              <table v-else class="tbl aligned">
                 <colgroup>
                   <col class="col-name" />
                   <col class="col-role" />
@@ -372,9 +316,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
                       <AppButton v-if="canManageDevices" size="sm" variant="ghost" @click="doRemoveDevice(d.deviceId)">Remover</AppButton>
                     </td>
                   </tr>
-                  <tr v-if="!groupDevices.length">
-                    <td colspan="4" class="empty">Nenhum dispositivo</td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -382,7 +323,10 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
             <!-- Users -->
             <div class="section">
               <h4 class="section-title">Usuários ({{ groupUsers.length }})</h4>
-              <table class="tbl aligned">
+              <EmptyState v-if="!groupUsers.length" compact title="Nenhum usuário neste grupo">
+                <AppButton v-if="canManageUsers" size="sm" variant="secondary" @click="openAssignUser">Adicionar Usuário</AppButton>
+              </EmptyState>
+              <table v-else class="tbl aligned">
                 <colgroup>
                   <col class="col-name" />
                   <col class="col-role" />
@@ -412,7 +356,6 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
                       </div>
                     </td>
                   </tr>
-                  <tr v-if="!groupUsers.length"><td colspan="4" class="empty">Nenhum usuário</td></tr>
                 </tbody>
               </table>
             </div>
@@ -444,58 +387,14 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
       </template>
     </AppModal>
 
-    <AppModal title="Adicionar Dispositivo" :show="showAddDevice" @close="showAddDevice = false">
-      <input v-model="deviceSearch" class="field" placeholder="Buscar por nome ou ID..." />
-      <div v-if="loadingAllDevices" class="picker-empty">Carregando dispositivos...</div>
-      <div v-else-if="!pickableDevices.length" class="picker-empty text-muted">
-        {{ allDevices.length ? 'Nenhum dispositivo disponível para adicionar.' : 'Nenhum dispositivo cadastrado.' }}
-      </div>
-      <div v-else class="device-picker">
-        <button
-          v-for="d in pickableDevices" :key="d.deviceId"
-          class="picker-chip" :class="{ selected: selectedDeviceId === d.deviceId }"
-          @click="selectedDeviceId = d.deviceId"
-        >
-          <span class="picker-name">{{ d.name }}</span>
-          <span class="picker-id">{{ d.deviceId.slice(0, 8) }}…</span>
-          <StatusLabel kind="device" :code="d.status" label="" />
-        </button>
-      </div>
-      <p v-if="addDeviceError" class="error">{{ addDeviceError }}</p>
-      <template #footer>
-        <AppButton variant="ghost" @click="showAddDevice = false">Cancelar</AppButton>
-        <AppButton variant="primary" :loading="addingDevice" :disabled="!selectedDeviceId" @click="doAddDevice">Adicionar</AppButton>
-      </template>
-    </AppModal>
+    <AddDeviceModal v-if="showAddDevice && selectedGroup"
+      :group-id="selectedGroup.groupId" :exclude-ids="alreadyInGroup"
+      @close="showAddDevice = false" @added="onDeviceAdded" />
 
-    <AppModal title="Atribuir Usuário" :show="showAssignUser" @close="showAssignUser = false">
-      <input v-model="userSearch" class="field" placeholder="Buscar por nome ou e-mail..." />
-      <div v-if="loadingAllUsers" class="picker-empty">Carregando usuários...</div>
-      <div v-else-if="!pickableUsers.length" class="picker-empty text-muted">
-        {{ allUsers.length ? 'Todos os usuários já estão no grupo.' : 'Nenhum usuário encontrado.' }}
-      </div>
-      <div v-else class="device-picker">
-        <button
-          v-for="u in pickableUsers" :key="u.keycloakUserId"
-          class="picker-chip" :class="{ selected: selectedUserId === u.keycloakUserId }"
-          @click="selectedUserId = u.keycloakUserId"
-        >
-          <span class="picker-name">{{ u.username }}</span>
-          <span class="picker-id">{{ u.email }}</span>
-        </button>
-      </div>
-      <div class="form-group">
-        <label for="groups-f3">Papel</label>
-        <select id="groups-f3" v-model="selectedRole" class="field">
-          <option v-for="r in assignableRoles" :key="r" :value="r">{{ r }}</option>
-        </select>
-      </div>
-      <p v-if="assignError" class="error">{{ assignError }}</p>
-      <template #footer>
-        <AppButton variant="ghost" @click="showAssignUser = false">Cancelar</AppButton>
-        <AppButton variant="primary" :loading="assigningUser" :disabled="!selectedUserId" @click="doAssignUser">Atribuir</AppButton>
-      </template>
-    </AppModal>
+    <AssignUserModal v-if="showAssignUser && selectedGroup"
+      :group-id="selectedGroup.groupId" :users="allUsers" :loading="loadingAllUsers"
+      :exclude-ids="alreadyAssigned" :roles="assignableRoles"
+      @close="showAssignUser = false" @assigned="onUserAssigned" />
 
     <AppModal title="Atualizar Papel" :show="showUpdateRole" @close="showUpdateRole = false">
       <p class="text-sm text-muted" v-if="updateRoleTarget">
@@ -539,7 +438,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 
 .detail-sections { display: flex; flex-direction: column; gap: var(--space-10); }
 .section {}
-.section-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0 0 var(--space-10); }
+.section-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0 0 var(--space-4); }
 
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl th { font-size: var(--text-xs); font-weight: 500; color: var(--text-muted); padding: 0 12px var(--space-3) 0; text-align: left; }
@@ -556,23 +455,12 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
 .tbl.aligned td { overflow-wrap: anywhere; }
 /* Buttons stack instead of spilling over Papel / Atribuido por on narrow widths */
 .row-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; }
-.mono { font-family: var(--font-mono); }
 .cell-main { font-size: var(--text-sm); font-weight: 500; color: var(--text); }
 .font-medium { font-weight: 500; }
-.text-sm { font-size: var(--text-sm); }
-.text-xs { font-size: var(--text-xs); }
-.text-muted { color: var(--text-muted); }
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; font-size: var(--text-sm); }
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-group label { font-size: var(--text-sm); color: var(--text-muted); }
 .error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 
-.device-picker { display: flex; flex-direction: column; gap: var(--space-1); max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1); }
-.picker-chip { display: flex; align-items: center; gap: var(--space-2); background: none; border: none; border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); cursor: pointer; text-align: left; transition: background var(--transition); width: 100%; }
-.picker-chip:hover { background: var(--panel); }
-.picker-chip.selected { background: var(--primary-dim); outline: 1px solid var(--primary); outline-offset: -1px; }
-.picker-name { font-size: var(--text-sm); font-weight: 500; color: var(--text); flex: 1; }
-.picker-id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); flex-shrink: 0; }
-.picker-empty { font-size: var(--text-sm); color: var(--text-muted); padding: var(--space-4); text-align: center; }
 </style>

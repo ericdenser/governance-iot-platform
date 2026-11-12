@@ -58,7 +58,7 @@ const toggle = (id: string) => {
         </tr>
       </template>
       <tr v-if="!errors.length">
-        <td :colspan="showDevice ? 6 : 5" class="empty">Nenhum erro encontrado</td>
+        <td :colspan="showDevice ? 6 : 5" class="empty">Nenhum erro encontrado. Ajuste o filtro ou a busca.</td>
       </tr>
     </tbody>
   </table>

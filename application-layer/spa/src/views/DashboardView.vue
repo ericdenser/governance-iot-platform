@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import DeviceMap from '@/components/DeviceMap.vue'
 import StatCard from '@/components/StatCard.vue'
@@ -117,7 +119,7 @@ onMounted(async () => {
 
 <template>
   <AppLayout>
-    <div v-if="loading" class="loading">Carregando...</div>
+    <AppSkeleton v-if="loading" variant="cards" :rows="4" />
     <div v-else class="dashboard">
 
       <div class="stat-grid">
@@ -189,7 +191,7 @@ onMounted(async () => {
                 <td><BatteryBar :mv="d.batteryMv" :ts="d.batteryTs" :device-status="d.status" /></td>
                 <td class="muted" :title="absoluteTime(d.lastSeen)">{{ relativeTime(d.lastSeen) }}</td>
               </tr>
-              <tr v-if="!devices.length"><td colspan="5" class="empty">Nenhum dispositivo</td></tr>
+              <tr v-if="!devices.length"><td colspan="5"><EmptyState compact title="Nenhum dispositivo" hint="Provisione o primeiro na tela de Provisionamento." /></td></tr>
             </tbody>
           </table>
           <ShowMoreToggle
@@ -222,7 +224,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.loading { color: var(--text-muted); padding: var(--space-8); text-align: center; }
 .dashboard { display: flex; flex-direction: column; gap: var(--space-6); }
 .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
 .panels { display: flex; flex-direction: column; gap: var(--space-4); }

@@ -22,6 +22,7 @@ const router = createRouter({
     { path: '/users',    name: 'users',      meta: { title: 'Usuários', requiresAdmin: true },  component: () => import('../views/UsersView.vue') },
     { path: '/groups',   name: 'groups',     meta: { title: 'Grupos' },                         component: () => import('../views/GroupsView.vue') },
     { path: '/profile',  name: 'profile',    meta: { title: 'Perfil' },       component: () => import('../views/ProfileView.vue') },
+    { path: '/:pathMatch(.*)*', name: 'not-found', meta: { title: 'Página não encontrada' }, component: () => import('../views/NotFoundView.vue') },
   ],
 })
 

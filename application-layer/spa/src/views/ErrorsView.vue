@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
 import AppPagination from '@/components/AppPagination.vue'
@@ -56,7 +57,7 @@ onMounted(async () => { try { await load() } finally { loading.value = false } }
         </select>
       </FilterBar>
 
-      <div v-if="loading" class="empty">Carregando...</div>
+      <AppSkeleton v-if="loading" variant="table" />
       <ErrorList v-else :errors="errors" />
       <AppPagination :page="page" :total-pages="totalPages" @change="changePage" />
     </AppCard>

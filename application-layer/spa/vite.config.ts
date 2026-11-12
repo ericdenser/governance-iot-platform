@@ -23,8 +23,8 @@ export default defineConfig({
       'Content-Security-Policy':
         "default-src 'self'; " +
         "script-src 'self'; " +
-        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; " +
-        "font-src 'self' https://fonts.gstatic.com; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "font-src 'self'; " +
         "img-src 'self' data: https://*.basemaps.cartocdn.com; " +
         "connect-src 'self' ws: wss:; " +
         "object-src 'none'; " +

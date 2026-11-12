@@ -229,7 +229,7 @@ const chartOptions = computed(() => {
 
     <div class="chart-wrap">
       <div v-if="!selectedDevices.length" class="empty">Escolha dispositivos no filtro acima</div>
-      <div v-else-if="loading" class="empty">Carregando...</div>
+      <div v-else-if="loading" class="empty" role="status">Carregando leituras…</div>
       <div v-else-if="failed" class="empty">Histórico indisponível</div>
       <div v-else-if="!hasData" class="empty">Sem leituras de {{ metricLabel(config.metric) }} nessa janela</div>
       <Line v-else :data="{ datasets }" :options="chartOptions" />

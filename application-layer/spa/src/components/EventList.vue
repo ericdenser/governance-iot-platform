@@ -49,7 +49,7 @@ const toggle = (id: string) => {
           <td class="cell-date text-muted text-sm">{{ absoluteTime(e.occurredAt) }}</td>
         </tr>
         <tr v-if="!events.length">
-          <td :colspan="showDevice ? 5 : 4" class="empty">Nenhum evento encontrado</td>
+          <td :colspan="showDevice ? 5 : 4" class="empty">Nenhum evento encontrado. Ajuste o filtro ou a busca.</td>
         </tr>
       </tbody>
     </table>
