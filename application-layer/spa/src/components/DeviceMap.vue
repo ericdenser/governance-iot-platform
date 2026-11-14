@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withBase } from '@/utils/basePath'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import L from 'leaflet'
@@ -9,6 +10,8 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { devicesApi } from '@/services/devices'
 import { useLiveStateStore } from '@/stores/liveState'
 import type { DeviceMapPositionDTO } from '@/types/models'
+import { connState } from '@/utils/connection'
+import { statusText } from '@/utils/statusLabels'
 
 const props = withDefaults(defineProps<{
   statusFilter?: string[]
@@ -24,13 +27,11 @@ const CLUSTER_THRESHOLD = 200
 
 // Markers são SVG desenhado pelo Leaflet: precisa da cor resolvida, não de
 // var() — então os tokens do design system são lidos via getComputedStyle.
+// Keyed by connection state (online/offline/pending), not by the DB status
 const STATUS_TOKENS: Record<string, string> = {
-  ACTIVE: '--status-active',
-  PENDING: '--status-pending',
-  PROVISIONING: '--status-provisioning',
-  COMMAND_PENDING: '--status-command-pending',
-  REVOKED: '--status-revoked',
-  ERROR: '--status-error',
+  online: '--status-active',
+  offline: '--status-unknown',
+  pending: '--status-pending',
 }
 const statusColors: Record<string, string> = {}
 let unknownColor = '#6b7e9a'
@@ -71,10 +72,12 @@ const merged = computed<DeviceMapPositionDTO[]>(() => {
   return [...byId.values()]
 })
 
+const connOf = (p: DeviceMapPositionDTO) => connState(p.status, p.lastSeen)
+
 const filtered = computed(() => {
   if (!props.statusFilter.length) return merged.value
   const set = new Set(props.statusFilter)
-  return merged.value.filter((p) => set.has(p.status ?? ''))
+  return merged.value.filter((p) => set.has(connOf(p)))
 })
 
 // ── Leaflet 
@@ -99,10 +102,10 @@ const popupContent = (deviceId: string): HTMLElement => {
   el.innerHTML =
     `<div class="dmp-title">${esc(p.name ?? p.deviceId)}</div>` +
     (p.name ? `<div class="dmp-row dmp-mono">${esc(p.deviceId)}</div>` : '') +
-    `<div class="dmp-row"><span class="dmp-dot" style="background:${statusColor(p.status)}"></span>${esc(p.status)}</div>` +
+    `<div class="dmp-row"><span class="dmp-dot" style="background:${statusColor(connOf(p))}"></span>${esc(statusText('conn', connOf(p)))}</div>` +
     `<div class="dmp-row dmp-mono">${p.latitude.toFixed(6)}, ${p.longitude.toFixed(6)}</div>` +
     `<div class="dmp-row">Visto: ${esc(fmtSeen(p.lastSeen))}</div>` +
-    `<a class="dmp-link" href="/devices/${encodeURIComponent(p.deviceId)}">Ver dispositivo →</a>`
+    `<a class="dmp-link" href="${withBase(`devices/${encodeURIComponent(p.deviceId)}`)}">Ver dispositivo →</a>`
   el.querySelector('a')?.addEventListener('click', (e) => {
     e.preventDefault()
     router.push(`/devices/${p.deviceId}`)
@@ -143,9 +146,9 @@ const syncMarkers = () => {
     const existing = markers.get(p.deviceId)
     if (existing) {
       existing.setLatLng([p.latitude, p.longitude])
-      existing.setStyle(markerStyle(p.status))
+      existing.setStyle(markerStyle(connOf(p)))
     } else {
-      const m = L.circleMarker([p.latitude, p.longitude], markerStyle(p.status))
+      const m = L.circleMarker([p.latitude, p.longitude], markerStyle(connOf(p)))
       m.bindPopup(() => popupContent(p.deviceId))
       markers.set(p.deviceId, m)
       markerLayer!.addLayer(m)
@@ -197,6 +200,8 @@ const fetchBaseline = async () => {
 }
 
 watch(filtered, scheduleSync, { deep: true })
+// Marker colour also changes when a device just goes quiet (no new position)
+watch(() => merged.value.map((p) => p.deviceId + connOf(p)).join(), scheduleSync)
 watch(() => props.autoFit, () => {
   lastIdsKey = ''
   scheduleSync()
@@ -213,10 +218,11 @@ onMounted(() => {
     zoom: 4,
     scrollWheelZoom: props.scrollWheelZoom,
   })
-  // Basemap CARTO dark matter (mesmo estilo do geomap do Grafana)
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // Basemap CARTO dark matter (mesmo estilo do geomap do Grafana).
+  // Sem chave a CARTO devolve o tile com marca d'agua "API KEY REQUIRED".
+  const cartoKey = import.meta.env.VITE_CARTO_API_KEY
+  L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png${cartoKey ? `?key=${encodeURIComponent(cartoKey)}` : ''}`, {
     maxZoom: 20,
-    subdomains: 'abcd',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(map)
   markerLayer = L.layerGroup().addTo(map)

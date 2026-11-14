@@ -24,7 +24,7 @@ PARTITION="$HOST_BINS_DIR/partition-table.bin"
 docker run --rm --network "${DOCKER_NETWORK:-app-net}" \
   -v "$BOOTLOADER:/bins/bootloader.bin:ro" \
   -v "$PARTITION:/bins/partition-table.bin:ro" \
-  --entrypoint /bin/sh minio/mc:RELEASE.2025-04-16T18-13-26Z -c "
+  --entrypoint /bin/sh "${MC_IMAGE:-minio/mc:RELEASE.2025-04-16T18-13-26Z}" -c "
   mc alias set gov ${MINIO_ENDPOINT} '$MINIO_ACCESS_KEY' '$MINIO_SECRET_KEY' &&
   mc cp /bins/bootloader.bin gov/$MINIO_BUCKET/platform/bootloader.bin &&
   mc cp /bins/partition-table.bin gov/$MINIO_BUCKET/platform/partition-table.bin &&

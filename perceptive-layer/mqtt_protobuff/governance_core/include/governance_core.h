@@ -10,9 +10,8 @@
 extern "C" {
 #endif
 
-// Max sensor readings per telemetry publish
-// Adjust based on your device sensor limit
-#define GOVERNANCE_MAX_READINGS 8
+// Max sensor readings per telemetry publish (TELEMETRY_MAX_READINGS in the proto is 16)
+#define GOVERNANCE_MAX_READINGS 16
 
 
 // One sensor reading: key (channel name) + float value
@@ -28,6 +27,7 @@ typedef struct {
 typedef struct {
 
 
+    // Legacy: ignored when sensor plugins are registered (gov_sensor.h)
     // Called once after connecting to MQTT (SENSOR_INIT state)
     // Must probe avaiable sensors and return CSV with name of detected ones
     // If returns NULL or empty string -> no sensor detected
@@ -35,7 +35,7 @@ typedef struct {
 
     // Called each TELEMETRY_INTERVAL_MS (config Kconfig).
     // Fills 'out[]' with up to 'max' readings. Return the number of readings filled
-    // If NULL, telemetry_task publish nothing.
+    // With plugins registered, these readings are appended after theirs
     int (*read_telemetry)(sensor_reading_t* out, int max);
 
     // Time sync (optional)

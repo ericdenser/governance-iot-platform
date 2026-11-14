@@ -1,6 +1,8 @@
 package com.eric.governanceApi.governanceApi.service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -60,13 +62,20 @@ public class GroupService {
     }
 
     @Transactional(readOnly = true)
-    public List<DeviceGroupResponseDTO> listGroups() {
+    public List<DeviceGroupResponseDTO> listGroups(boolean all) {
         String actorId = currentActorId();
         if (actorId == null || isAdmin()) {
             return groupRepository.findAll().stream().map(DeviceGroupResponseDTO::from).toList();
         }
-        return assignmentRepository.findByIdKeycloakUserId(actorId).stream()
-                .map(a -> DeviceGroupResponseDTO.from(a.getGroup(), a.getRole()))
+        List<UserGroupAssignment> mine = assignmentRepository.findByIdKeycloakUserId(actorId);
+        if (!all) {
+            return mine.stream().map(a -> DeviceGroupResponseDTO.from(a.getGroup(), a.getRole())).toList();
+        }
+        // Everyone can see that a group exists; devices/users stay restricted to members
+        Map<String, GroupRole> roleByGroup = mine.stream()
+                .collect(Collectors.toMap(a -> a.getGroup().getGroupId(), UserGroupAssignment::getRole));
+        return groupRepository.findAll().stream()
+                .map(g -> DeviceGroupResponseDTO.from(g, roleByGroup.get(g.getGroupId())))
                 .toList();
     }
 

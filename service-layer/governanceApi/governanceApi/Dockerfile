@@ -24,29 +24,26 @@ RUN if [ "$PROXY_ACTIVE" = "true" ]; then \
 COPY pom.xml .
 COPY src src
 
-RUN mvn clean package -DskipTests -B -Dmaven.artifact.threads=1
+# Maven repository kept between builds (BuildKit cache, not part of the image)
+RUN --mount=type=cache,target=/root/.m2/repository \
+    mvn clean package -DskipTests -B -Dmaven.artifact.threads=1
 
 FROM eclipse-temurin:21-jre-alpine
 
-ARG HTTP_PROXY=
-ARG HTTPS_PROXY=
-ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY} NO_PROXY=localhost,127.0.0.1
-
+# HTTP_PROXY/HTTPS_PROXY are predefined build args: visible to RUN, not saved in the image
 # Python venv isolado pros geradores do pacote de flash: NVS (ESP32) e LittleFS (ESP8266)
 RUN apk add --no-cache python3 py3-pip py3-cryptography && \
     python3 -m venv --system-site-packages /opt/nvs-venv && \
-    /opt/nvs-venv/bin/pip install --no-cache-dir esp-idf-nvs-partition-gen littlefs-python
+    /opt/nvs-venv/bin/pip install --no-cache-dir esp-idf-nvs-partition-gen==0.3.0 littlefs-python==0.19.0
 
 # Default do binário Python usado pelo FlashPackageService (sobrescrevível
 # via env NVS_PYTHON_PATH). Aponta pro venv, não pro python3 do sistema.
 ENV NVS_PYTHON_PATH=/opt/nvs-venv/bin/python3
 
-ENV HTTP_PROXY= HTTPS_PROXY=
-
-RUN addgroup -S app && adduser -S app -G app
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 USER app
 WORKDIR /app
 
-COPY --from=builder --chown=app:app /build/target/*.jar app.jar
+COPY --from=builder /build/target/*.jar app.jar
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

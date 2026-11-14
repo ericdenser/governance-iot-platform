@@ -3,12 +3,14 @@ package com.eric.governanceApi.governanceApi.controller;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.eric.governanceApi.governanceApi.model.request.DeviceEventWebhookDTO;
@@ -16,6 +18,8 @@ import com.eric.governanceApi.governanceApi.model.response.ApiResponse;
 import com.eric.governanceApi.governanceApi.model.response.EventRegistryResponseDTO;
 import com.eric.governanceApi.governanceApi.service.DeviceService;
 import com.eric.governanceApi.governanceApi.service.EventDispatcherService;
+
+import java.time.Instant;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -44,9 +48,13 @@ public class EventController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<Page<EventRegistryResponseDTO>>> listAll(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @PageableDefault(size = 50) Pageable pageable,
             HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(ApiResponse.success(deviceService.listAllEvents(pageable), httpRequest.getRequestURI()));
+        return ResponseEntity.ok(ApiResponse.success(deviceService.listAllEvents(q, type, from, to, pageable), httpRequest.getRequestURI()));
     }
 
 

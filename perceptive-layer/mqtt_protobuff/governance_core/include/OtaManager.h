@@ -11,7 +11,7 @@ class OtaManager {
   public:
 
   //Verifica se há atualizacão no servidor e inicia o download se necessário.
-  static bool verify_and_update(const std::string& newVersion, std::string &urlCheck, std::string &newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback = nullptr);
+  static bool verify_and_update(const std::string& newVersion, std::string &urlCheck, std::string &newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback = nullptr, bool force = false);
 
   //Marca o firmware atual como válido.
   static void set_valid_version();

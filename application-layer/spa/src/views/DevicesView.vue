@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppButton from '@/components/AppButton.vue'
-import { devicesApi } from '@/services/devices'
 import { useAuthStore } from '@/stores/auth'
+import { devicesApi } from '@/services/devices'
 import { useLiveStateStore } from '@/stores/liveState'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import StatusLabel from '@/components/StatusLabel.vue'
-import { isOnline } from '@/utils/connection'
+import { connState, type ConnState } from '@/utils/connection'
 import { absoluteTime, relativeTime } from '@/utils/format'
+import { chipLabel } from '@/utils/chips'
 import type { DeviceHealth, DeviceSummaryDTO } from '@/types/models'
 
 // ── Connection state (client-side, so pelo lastSeen) ─────────────────────
-type ConnState = 'online' | 'offline' | 'pending'
 type DeviceFilter = 'all' | 'online' | 'offline' | 'warning'
 const FILTER_LABEL: Record<DeviceFilter, string> = { all: 'Todos', online: 'Online', offline: 'Offline', warning: 'Com alerta' }
 
@@ -27,8 +29,8 @@ type MergedDevice = DeviceSummaryDTO & {
 }
 
 // ── State ────────────────────────────────────────────────────────────────
-const authStore = useAuthStore()
 const liveStore = useLiveStateStore()
+const authStore = useAuthStore()
 const router = useRouter()
 
 const devices = ref<DeviceSummaryDTO[]>([])
@@ -71,12 +73,7 @@ const mergedDevices = computed<MergedDevice[]>(() =>
 )
 
 // ── Helpers de connection state ──────────────────────────────────────────
-const connStateOf = (d: MergedDevice): ConnState => {
-  if (d.status === 'PENDING' || d.status === 'PROVISIONING') return 'pending'
-  if (d.status === 'REVOKED') return 'offline'
-
-  return isOnline(d.lastSeen) ? 'online' : 'offline'
-}
+const connStateOf = (d: MergedDevice): ConnState => connState(d.status, d.lastSeen)
 
 const isWarning = (d: MergedDevice): boolean => d.health === 'WARNING'
 
@@ -151,6 +148,17 @@ const counts = computed(() => {
   return c
 })
 
+const emptyTitle = computed(() => {
+  if (search.value) return `Nenhum dispositivo para "${search.value}"`
+  if (connFilter.value !== 'all') return `Nenhum dispositivo em "${FILTER_LABEL[connFilter.value].toLowerCase()}"`
+  return 'Nenhum dispositivo registrado'
+})
+const emptyHint = computed(() => {
+  if (search.value) return 'A busca olha nome, ID e MAC.'
+  if (connFilter.value !== 'all') return 'O filtro vale só para a página atual da lista.'
+  return 'Você vê os dispositivos dos grupos de que faz parte.'
+})
+
 // ── Loader ────────────────────────────────────────────────────────────────
 const load = async (silent = false) => {
   if (!silent) loading.value = true
@@ -189,7 +197,20 @@ watch(liveDivergence, (sig) => {
   reloadTimer = setTimeout(() => { reloadTimer = null; load(true) }, RELOAD_DELAY_MS)
 })
 
-onUnmounted(() => { if (reloadTimer) clearTimeout(reloadTimer) })
+// The SSE status of a device running a plain command stays ACTIVE the whole time,
+// so the divergence above never fires when the DB closes it (webhook or timeout).
+// Poll while some card still shows a pending command.
+const PENDING_POLL_MS = 5000
+const hasPendingCommand = computed(() =>
+  devices.value.some(d => d.status === 'COMMAND_PENDING' || d.status === 'OTA_PENDING'))
+const pendingPoll = setInterval(() => {
+  if (document.visibilityState === 'visible' && hasPendingCommand.value) load(true)
+}, PENDING_POLL_MS)
+
+onUnmounted(() => {
+  if (reloadTimer) clearTimeout(reloadTimer)
+  clearInterval(pendingPoll)
+})
 
 const goToPage = (n: number) => {
   if (n < 0 || n >= totalPages.value) return
@@ -208,9 +229,8 @@ onMounted(load)
         <p class="page-sub">{{ totalElements }} registrados · {{ counts.online }} online · {{ counts.warning }} com alerta</p>
       </div>
       <div class="header-right">
-        <AppButton v-if="authStore.isAdmin" variant="primary" size="md"
-                   @click="router.push('/firmware')">
-          Provisionar
+        <AppButton v-if="authStore.canProvision" variant="primary" size="md" @click="router.push('/provisioning')">
+          Provisionar dispositivo
         </AppButton>
       </div>
     </div>
@@ -218,7 +238,7 @@ onMounted(load)
     <div class="toolbar">
       <div class="search-wrap">
         <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input v-model="search" class="search" placeholder="Buscar por nome, ID ou MAC..." />
+        <input v-model="search" class="search" placeholder="Buscar por nome, ID ou MAC..." aria-label="Buscar dispositivo" />
       </div>
       <div class="filter-group">
         <button v-for="f in (['all','online','warning','offline'] as const)" :key="f"
@@ -230,10 +250,12 @@ onMounted(load)
       </div>
     </div>
 
-    <div v-if="loading" class="empty">Carregando...</div>
-    <div v-else-if="!visibleDevices.length" class="empty">
-      {{ connFilter === 'all' ? 'Nenhum dispositivo encontrado' : `Nenhum dispositivo em "${FILTER_LABEL[connFilter].toLowerCase()}"` }}
-    </div>
+    <AppSkeleton v-if="loading" variant="cards" :rows="6" />
+    <EmptyState v-else-if="!visibleDevices.length" :title="emptyTitle" :hint="emptyHint">
+      <AppButton v-if="search" variant="secondary" @click="search = ''">Limpar busca</AppButton>
+      <AppButton v-else-if="connFilter !== 'all'" variant="secondary" @click="connFilter = 'all'">Ver todos</AppButton>
+      <AppButton v-else-if="authStore.canProvision" variant="primary" @click="router.push('/provisioning')">Provisionar dispositivo</AppButton>
+    </EmptyState>
     <div v-else class="dev-grid">
       <div v-for="d in visibleDevices" :key="d.deviceId"
         class="dev-card"
@@ -244,7 +266,7 @@ onMounted(load)
           <div class="card-title-block">
             <h3 class="card-title">{{ d.name }}</h3>
             <p class="card-sub mono">
-              {{ d.deviceId.slice(0, 8) }}<span v-if="d.firmwareName"> · {{ d.firmwareName }}</span>
+              {{ chipLabel(d.chip) }} · {{ d.deviceId.slice(0, 8) }}<span v-if="d.firmwareName"> · {{ d.firmwareName }}</span>
             </p>
           </div>
           <StatusLabel kind="conn" :code="connStateOf(d)" class="conn" />
@@ -298,8 +320,7 @@ onMounted(load)
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .search-wrap { position: relative; flex: 1; max-width: 320px; min-width: 200px; }
 .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
-.search { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px 7px 32px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-sans); box-sizing: border-box; }
-.search:focus { border-color: var(--primary); }
+.search { width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 7px 12px 7px 32px; font-size: var(--text-sm); color: var(--text); font-family: var(--font-sans); box-sizing: border-box; }
 
 .filter-group { display: flex; gap: var(--space-1); }
 .filter-btn { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 12px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; transition: border-color var(--transition), color var(--transition); }

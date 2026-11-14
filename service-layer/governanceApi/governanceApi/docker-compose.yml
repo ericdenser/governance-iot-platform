@@ -4,6 +4,12 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   govapi:
     build:
@@ -21,13 +27,14 @@ services:
     ports:
       - "${GOVAPI_HOST_BIND:-0.0.0.0}:${GOVAPI_HOST_PORT:-8082}:8082"
     environment:
-      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError}
       SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${GOVAPI_DB:-cmdb_iot}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
       REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      KEYCLOAK_INTERNAL_ISSUER_URI: ${KEYCLOAK_INTERNAL_ISSUER_URI:-${KEYCLOAK_ISSUER_URI}}
       KEYCLOAK_ADMIN_URL: ${KEYCLOAK_ADMIN_URL}
       # mTLS-only (main branch): senha do rootCA.p12 que assina certs de device
       CA_PASSWORD: ${CA_PASSWORD}
@@ -47,7 +54,7 @@ services:
       NVS_SCRIPT_PATH: ${NVS_SCRIPT_PATH:-}
       PROVISIONING_BOOTLOADER_BIN_PATH: ${PROVISIONING_BOOTLOADER_BIN_PATH:-/opt/provisioning-bins/bootloader.bin}
       PROVISIONING_PARTITION_TABLE_BIN_PATH: ${PROVISIONING_PARTITION_TABLE_BIN_PATH:-/opt/provisioning-bins/partition-table.bin}
-      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-validate}
       CRYPTO_CA_PATH: file:/opt/certs/rootCA.p12
       MQTT_CRL_PATH: /opt/certs/mosquitto/revoked.crl
       INFRA_EXECUTOR_URL: ${INFRA_EXECUTOR_URL:-http://infra-executor:8089}
@@ -68,7 +75,9 @@ services:
         limits:
           memory: ${GOVAPI_MEMORY_LIMIT:-640M}
           cpus: '1.0'
-    restart: on-failure:5
+          pids: 512
+    restart: unless-stopped
+    <<: *default-security
     logging: *default-logging
     networks:
       - app-net

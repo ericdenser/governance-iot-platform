@@ -27,7 +27,7 @@ static bool nvs_read_str(const char* ns, const char* key, char* buf, size_t len)
 }
 
 
-bool OtaManager::verify_and_update(const std::string& newVersion, std::string &url_bin, std::string &newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback) {
+bool OtaManager::verify_and_update(const std::string& newVersion, std::string &url_bin, std::string &newVersionSHA, std::string &msgOut, std::function<void()> onProgressCallback, bool force) {
 
     char fw_buf[32]  = {0};
     char fwSHA_buf[65] = {0};
@@ -60,7 +60,12 @@ bool OtaManager::verify_and_update(const std::string& newVersion, std::string &u
              current_version_sha.c_str(),
              invalid_sha.c_str());
 
-    if (invalid_sha_exists && newVersionSHA == invalid_sha) {
+    if (invalid_sha_exists && newVersionSHA == invalid_sha && force) {
+        ESP_LOGW(TAG, "SHA banido localmente, mas a plataforma reativou a versao. Liberando.");
+        nvs_erase_key(nvsHandle, "invalid_sha");
+        nvs_erase_key(nvsHandle, "invalid_ver");
+        nvs_commit(nvsHandle);
+    } else if (invalid_sha_exists && newVersionSHA == invalid_sha) {
         msgOut = "Firmware v" + newVersion + " marcado como invalido (SHA banido). Update abortado.";
         ESP_LOGI(TAG, "%s", msgOut.c_str());
         nvs_close(nvsHandle);

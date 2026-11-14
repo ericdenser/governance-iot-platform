@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
 import AppLayout from '@/components/AppLayout.vue'
 import AppCard from '@/components/AppCard.vue'
-import AppBadge from '@/components/AppBadge.vue'
 import StatusLabel from '@/components/StatusLabel.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import BatteryBar from '@/components/BatteryBar.vue'
 import EventList from '@/components/EventList.vue'
+import ErrorList from '@/components/ErrorList.vue'
 import { devicesApi } from '@/services/devices'
+import { sensorsApi } from '@/services/sensors'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
 import { confirm } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
 import { errorMessage } from '@/utils/errors'
+import { chipLabel } from '@/utils/chips'
 import type {
   DeviceDetailDTO,
   DeviceStatus,
@@ -58,13 +62,6 @@ const deleting = ref(false)
 const liveBatteryMv = computed(() => liveState.value?.batteryMv ?? device.value?.batteryMv ?? null)
 const liveBatteryTs = computed(() => liveState.value?.batteryTs ?? device.value?.batteryTs ?? null)
 const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
-
-const errExpanded = ref<Set<string>>(new Set())
-const toggleErrExpand = (id: string) => {
-  const next = new Set(errExpanded.value)
-  if (next.has(id)) next.delete(id); else next.add(id)
-  errExpanded.value = next
-}
 
 const loadCommands = async () => {
   const r = await devicesApi.getCommands(deviceId, cmdPage.value)
@@ -131,15 +128,22 @@ const loadDevice = async () => {
   device.value = r.data
 }
 
+// sensorStatus is keyed by code
+const sensorNames = ref<Record<string, string>>({})
+const sensorName = (code: string) => sensorNames.value[code] ?? code
+
 onMounted(async () => {
   try { await loadDevice() } catch { router.push('/devices') }
   finally { loading.value = false }
+  sensorsApi.list()
+    .then(r => { sensorNames.value = Object.fromEntries((r.data ?? []).map(s => [s.code, s.name])) })
+    .catch(() => {})
 })
 </script>
 
 <template>
   <AppLayout>
-    <div v-if="loading" class="loading">Carregando...</div>
+    <AppSkeleton v-if="loading" variant="detail" :rows="6" />
     <div v-else-if="device" class="detail">
 
       <div class="detail-header">
@@ -150,6 +154,7 @@ onMounted(async () => {
             <StatusLabel v-if="liveStatus" kind="device" :code="liveStatus" />
             <StatusLabel v-if="liveHealth === 'WARNING'" kind="health" code="WARNING"
                          :label="liveHealthReason ? `Alerta: ${liveHealthReason}` : undefined" />
+            <span class="hw-tag mono" title="Hardware">{{ chipLabel(device.chip) }}</span>
             <span class="mono text-muted text-sm">{{ device.deviceId }}</span>
           </div>
         </div>
@@ -171,13 +176,14 @@ onMounted(async () => {
       <!-- INFO -->
       <AppCard v-if="tab === 'info'">
         <div class="info-grid">
+          <div class="info-row"><span class="info-label">Hardware</span><span class="mono">{{ chipLabel(device.chip) }}</span></div>
           <div class="info-row"><span class="info-label">MAC Address</span><span class="mono">{{ device.macAddress ?? '—' }}</span></div>
           <div class="info-row">
             <span class="info-label">Firmware</span>
             <span v-if="device.firmware && device.firmwareVersion">
               {{ device.firmware.firmwareName }}
               <span class="mono text-muted"> v{{ device.firmwareVersion.version }}</span>
-              <AppBadge v-if="device.firmware.isProvisioning" variant="primary" class="badge-inline">Provisioning</AppBadge>
+              <span v-if="device.firmware.isProvisioning" class="text-muted"> · provisioning</span>
             </span>
             <span v-else class="text-muted">—</span>
           </div>
@@ -202,8 +208,8 @@ onMounted(async () => {
           <div v-if="device.sensorStatus && Object.keys(device.sensorStatus).length" class="info-row info-row-sensors">
             <span class="info-label">Sensores</span>
             <div class="sensor-chips">
-              <span v-for="(active, name) in device.sensorStatus" :key="name" class="sensor-chip">
-                <span class="sensor-name">{{ name }}</span>
+              <span v-for="(active, code) in device.sensorStatus" :key="code" class="sensor-chip" :title="String(code)">
+                <span class="sensor-name">{{ sensorName(String(code)) }}</span>
                 <StatusLabel kind="sensor" :code="active ? 'ON' : 'OFF'" />
               </span>
             </div>
@@ -211,59 +217,30 @@ onMounted(async () => {
         </div>
       </AppCard>
 
-      <!-- COMMANDS -->
-      <AppCard v-if="tab === 'commands'" title="Histórico de Comandos">
+      <!-- Same lists as the Commands/Events/Errors pages, filtered to this device -->
+      <AppCard v-if="tab === 'commands'">
         <table class="tbl">
-          <thead><tr><th>Tipo</th><th>Status</th><th>Enviado em</th><th>Concluído em</th></tr></thead>
+          <thead><tr><th>Comando</th><th>Status</th><th>Enviado em</th><th>Concluído em</th></tr></thead>
           <tbody>
             <tr v-for="c in commands" :key="c.commandId">
-              <td class="mono text-sm">{{ c.commandType }}</td>
+              <td><span class="code-tag">{{ c.commandType }}</span></td>
               <td><StatusLabel kind="command" :code="c.status" /></td>
               <td class="text-muted text-sm">{{ fmt(c.sentAt) }}</td>
               <td class="text-muted text-sm">{{ fmt(c.completedAt) }}</td>
             </tr>
-            <tr v-if="!commands.length"><td colspan="4" class="empty">Nenhum comando</td></tr>
+            <tr v-if="!commands.length"><td colspan="4"><EmptyState compact title="Nenhum comando enviado" hint="Comandos saem da tela de Comandos ou de um deploy de firmware." /></td></tr>
           </tbody>
         </table>
         <AppPagination :page="cmdPage" :total-pages="cmdTotal" @change="changeCmdPage" />
       </AppCard>
 
-      <!-- EVENTS -->
-      <AppCard v-if="tab === 'events'" title="Eventos">
+      <AppCard v-if="tab === 'events'">
         <EventList :events="events" :show-device="false" />
         <AppPagination :page="evPage" :total-pages="evTotal" @change="changeEvPage" />
       </AppCard>
 
-      <!-- ERRORS -->
-      <AppCard v-if="tab === 'errors'" title="Erros">
-        <table class="tbl">
-          <thead><tr><th>Código</th><th>Status</th><th>Reportado em</th><th>Fixado em</th><th>Detalhes</th></tr></thead>
-          <tbody>
-            <template v-for="e in errors" :key="e.errorId">
-              <tr>
-                <td><span class="code-tag">{{ e.error }}</span></td>
-                <td><StatusLabel kind="error" :code="e.status" /></td>
-                <td class="text-muted text-sm">{{ fmt(e.reportedAt) }}</td>
-                <td class="text-muted text-sm">{{ fmt(e.fixedAt) }}</td>
-                <td>
-                  <button v-if="e.details || e.message" class="expand-btn" :class="{ open: errExpanded.has(e.errorId) }" @click="toggleErrExpand(e.errorId)">
-                    <span>{{ errExpanded.has(e.errorId) ? '▴' : '▾' }}</span>
-                  </button>
-                  <span v-else class="text-muted text-sm">—</span>
-                </td>
-              </tr>
-              <tr v-if="errExpanded.has(e.errorId)" class="detail-row">
-                <td colspan="5">
-                  <div class="detail-box">
-                    <p v-if="e.message" class="detail-message">{{ e.message }}</p>
-                    <pre v-if="e.details" class="detail-pre">{{ e.details }}</pre>
-                  </div>
-                </td>
-              </tr>
-            </template>
-            <tr v-if="!errors.length"><td colspan="5" class="empty">Nenhum erro</td></tr>
-          </tbody>
-        </table>
+      <AppCard v-if="tab === 'errors'">
+        <ErrorList :errors="errors" :show-device="false" />
         <AppPagination :page="errPage" :total-pages="errTotal" @change="changeErrPage" />
       </AppCard>
     </div>
@@ -271,13 +248,13 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.loading { color: var(--text-muted); padding: var(--space-8); text-align: center; }
 .detail { display: flex; flex-direction: column; gap: var(--space-4); }
-.detail-header { display: flex; align-items: flex-start; justify-content: space-between; }
+.detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .back-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: var(--text-sm); margin-bottom: var(--space-2); padding: 0; }
 .back-btn:hover { color: var(--text); }
 .device-name { font-size: var(--text-2xl); font-weight: 700; color: var(--text); margin: 0 0 var(--space-2); }
-.device-meta { display: flex; align-items: center; gap: var(--space-3); }
+.device-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.hw-tag { font-size: var(--text-xs); color: var(--text-secondary); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 1px 6px; }
 
 .tabs { display: flex; flex-wrap: wrap; gap: var(--space-1); border-bottom: 1px solid var(--border); padding-bottom: 0; overflow-x: auto; }
 .tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer; font-size: var(--text-sm); font-weight: 500; padding: var(--space-2) var(--space-4); margin-bottom: -1px; transition: all var(--transition); }
@@ -289,7 +266,7 @@ onMounted(async () => {
 .info-row:last-child { border-bottom: none; }
 .info-label { width: 160px; min-width: 90px; font-size: var(--text-sm); color: var(--text-muted); flex-shrink: 0; }
 .info-row-sensors { align-items: flex-start; }
-.battery-info { display: inline-flex; align-items: center; gap: var(--space-3); }
+.battery-info { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
 .sensor-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .sensor-chip { display: flex; align-items: center; gap: var(--space-2); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 3px var(--space-2); font-size: var(--text-xs); }
 .sensor-name { color: var(--text); font-weight: 500; }
@@ -301,12 +278,10 @@ onMounted(async () => {
 .text-sm { font-size: var(--text-sm); }
 .text-xs { font-size: var(--text-xs); }
 .text-muted { color: var(--text-muted); }
-.empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; }
 
-.expand-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 6px; cursor: pointer; color: var(--text-muted); font-size: var(--text-xs); transition: border-color var(--transition), color var(--transition); }
-.expand-btn:hover, .expand-btn.open { border-color: var(--primary); color: var(--primary); }
-.detail-row td { background: var(--panel); border-top: none; padding: 0; }
-.detail-box { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border-left: 2px solid var(--danger); margin: var(--space-1) 0 var(--space-2); }
-.detail-message { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
-.detail-pre { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); white-space: pre-wrap; word-break: break-all; margin: 0; line-height: 1.5; }
+@media (max-width: 540px) {
+  .info-row { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+  .info-label { width: auto; }
+}
+
 </style>

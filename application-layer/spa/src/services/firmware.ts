@@ -30,6 +30,7 @@ export const firmwareApi = {
   uploadVersion: (firmwareId: string, file: File, metadata: Record<string, unknown>) =>
     upload<FirmwareVersionResponseDTO>(`/firmware/${firmwareId}/upload`, file, metadata),
   deprecate: (versionId: string) => api.patch<FirmwareVersionResponseDTO>(`/firmware/versions/${versionId}/deprecate`),
+  reactivate: (versionId: string) => api.patch<FirmwareVersionResponseDTO>(`/firmware/versions/${versionId}/reactivate`),
   deleteVersion: (versionId: string) => api.delete<void>(`/firmware/versions/${versionId}`),
   reuploadBinary: (versionId: string, file: File) => {
     const form = new FormData()

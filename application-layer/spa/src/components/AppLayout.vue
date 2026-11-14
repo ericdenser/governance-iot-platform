@@ -3,6 +3,8 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLiveStateStore } from '@/stores/liveState'
+import BrandMark from '@/components/BrandMark.vue'
+import { BASE, withBase } from '@/utils/basePath'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -26,7 +28,10 @@ const handleResize = () => {
   if (!isMobile()) mobileOpen.value = false
 }
 
-onMounted(() => window.addEventListener('resize', handleResize))
+onMounted(() => {
+  window.addEventListener('resize', handleResize)
+  authStore.loadManagedGroups()
+})
 onUnmounted(() => window.removeEventListener('resize', handleResize))
 
 const liveStore = useLiveStateStore()
@@ -44,6 +49,10 @@ const navItems = computed(() => {
     { to: '/errors',   icon: 'alert-triangle', label: 'Erros' },
     { to: '/groups',   icon: 'users',          label: 'Grupos' },
   ]
+  // Provisioning only for admins and group MEMBER/OWNER
+  if (authStore.canProvision) {
+    items.splice(2, 0, { to: '/provisioning', icon: 'plus-square', label: 'Provisionamento' })
+  }
   if (authStore.isAdmin) {
     items.push({ to: '/users', icon: 'user-plus', label: 'Usuários' })
     items.push({ to: '/audit', icon: 'file-text', label: 'Auditoria' })
@@ -57,7 +66,7 @@ const fazerLogout = async () => {
   const match = document.cookie.match(new RegExp('(^| )XSRF-TOKEN=([^;]+)'))
   const csrfToken = match ? decodeURIComponent(match[2]) : ''
   try {
-    const res = await fetch('/api/logout', {
+    const res = await fetch(withBase('api/logout'), {
       method: 'POST',
       headers: {
         'X-XSRF-TOKEN': csrfToken,
@@ -66,13 +75,13 @@ const fazerLogout = async () => {
       credentials: 'include',
     })
     if (!res.ok) {
-      window.location.href = '/'
+      window.location.href = BASE
       return
     }
     const { logoutUrl } = await res.json()
-    window.location.href = logoutUrl || '/'
+    window.location.href = logoutUrl || BASE
   } catch {
-    window.location.href = '/'
+    window.location.href = BASE
   }
 }
 </script>
@@ -83,20 +92,9 @@ const fazerLogout = async () => {
   <div class="layout">
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileOpen }">
-      <div class="sidebar-brand">
-        <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-            <line x1="12" y1="20" x2="12.01" y2="20"/>
-          </svg>
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">Governance IoT</span>
-          <span class="brand-sub">Dashboard</span>
-        </div>
-      </div>
+      <router-link to="/home" class="sidebar-brand">
+        <BrandMark :compact="sidebarCollapsed" />
+      </router-link>
 
       <nav class="sidebar-nav">
         <router-link
@@ -128,7 +126,7 @@ const fazerLogout = async () => {
             <span class="user-username">@{{ authStore.user?.username }}</span>
           </div>
         </router-link>
-        <button class="logout-btn" @click="fazerLogout" title="Sair">
+        <button class="logout-btn" @click="fazerLogout" title="Sair" aria-label="Sair">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/>
@@ -142,7 +140,7 @@ const fazerLogout = async () => {
     <div class="main-wrapper" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="menu-btn" @click="toggleSidebar" title="Alternar menu">
+          <button class="menu-btn" @click="toggleSidebar" title="Alternar menu" aria-label="Alternar menu">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="3" y1="6" x2="21" y2="6"/>
               <line x1="3" y1="12" x2="21" y2="12"/>
@@ -168,6 +166,7 @@ const fazerLogout = async () => {
 .layout {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ─── Mobile backdrop ───────────────────────────────── */
@@ -175,7 +174,7 @@ const fazerLogout = async () => {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  z-index: 99;
+  z-index: var(--z-backdrop);
 }
 
 /* ─── Sidebar ───────────────────────────────────────── */
@@ -189,7 +188,8 @@ const fazerLogout = async () => {
   top: 0;
   left: 0;
   height: 100vh;
-  z-index: 100;
+  height: 100dvh;
+  z-index: var(--z-sidebar);
   overflow: hidden;
   transition: width 220ms ease;
 }
@@ -203,55 +203,15 @@ const fazerLogout = async () => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  font-size: var(--text-md);
+  text-decoration: none;
   padding: var(--space-5) var(--space-4);
   border-bottom: 1px solid var(--border);
   min-height: 77px;
   flex-shrink: 0;
 }
+.sidebar.collapsed .sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
 
-.brand-icon {
-  width: 36px;
-  height: 36px;
-  background: var(--primary-dim);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary);
-  flex-shrink: 0;
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: opacity 180ms ease, max-width 220ms ease;
-  max-width: 160px;
-  opacity: 1;
-}
-
-.sidebar.collapsed .brand-text {
-  max-width: 0;
-  opacity: 0;
-}
-
-.brand-name {
-  display: block;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.brand-sub {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
 
 /* ─── Nav ───────────────────────────────────────────── */
 .sidebar-nav {
@@ -325,6 +285,10 @@ const fazerLogout = async () => {
 .nav-icon[data-icon="cpu"] {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Crect x='9' y='9' width='6' height='6'/%3E%3Cline x1='9' y1='1' x2='9' y2='4'/%3E%3Cline x1='15' y1='1' x2='15' y2='4'/%3E%3Cline x1='9' y1='20' x2='9' y2='23'/%3E%3Cline x1='15' y1='20' x2='15' y2='23'/%3E%3Cline x1='20' y1='9' x2='23' y2='9'/%3E%3Cline x1='20' y1='14' x2='23' y2='14'/%3E%3Cline x1='1' y1='9' x2='4' y2='9'/%3E%3Cline x1='1' y1='14' x2='4' y2='14'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Crect x='9' y='9' width='6' height='6'/%3E%3Cline x1='9' y1='1' x2='9' y2='4'/%3E%3Cline x1='15' y1='1' x2='15' y2='4'/%3E%3Cline x1='9' y1='20' x2='9' y2='23'/%3E%3Cline x1='15' y1='20' x2='15' y2='23'/%3E%3Cline x1='20' y1='9' x2='23' y2='9'/%3E%3Cline x1='20' y1='14' x2='23' y2='14'/%3E%3Cline x1='1' y1='9' x2='4' y2='9'/%3E%3Cline x1='1' y1='14' x2='4' y2='14'/%3E%3C/svg%3E");
+}
+.nav-icon[data-icon="plus-square"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cline x1='12' y1='8' x2='12' y2='16'/%3E%3Cline x1='8' y1='12' x2='16' y2='12'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cline x1='12' y1='8' x2='12' y2='16'/%3E%3Cline x1='8' y1='12' x2='16' y2='12'/%3E%3C/svg%3E");
 }
 .nav-icon[data-icon="map"] {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpolygon points='1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6'/%3E%3Cline x1='8' y1='2' x2='8' y2='18'/%3E%3Cline x1='16' y1='6' x2='16' y2='22'/%3E%3C/svg%3E");
@@ -480,6 +444,7 @@ const fazerLogout = async () => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   transition: margin-left 220ms ease;
 }
 
@@ -497,7 +462,7 @@ const fazerLogout = async () => {
   padding: 0 var(--space-6);
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: var(--z-sticky);
   gap: var(--space-4);
 }
 

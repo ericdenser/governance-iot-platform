@@ -47,6 +47,7 @@ bool HttpService::perform_request(const std::string &url, esp_http_client_method
     config.buffer_size = 4096;
     config.buffer_size_tx = 4096;
     config.timeout_ms = 10000;
+    if (url.rfind("https://", 0) == 0) config.crt_bundle_attach = esp_crt_bundle_attach;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {

@@ -4,6 +4,12 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   agent-mqtt:
     build:
@@ -17,7 +23,7 @@ services:
         PROXY_PASSWORD: ${PROXY_PASSWORD:-}
     container_name: ${AGENT_MQTT_CONTAINER_NAME:-agent-mqtt}
     environment:
-      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError}
       MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mosquitto}
       MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-8883}
       AGENT_KEYSTORE_PASS: ${AGENT_KEYSTORE_PASS}
@@ -27,11 +33,12 @@ services:
       REDIS_STREAMS_HOST: ${REDIS_STREAMS_HOST:-redis-streams}
       REDIS_STREAMS_PORT: ${REDIS_STREAMS_PORT:-6379}
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      KEYCLOAK_INTERNAL_ISSUER_URI: ${KEYCLOAK_INTERNAL_ISSUER_URI:-${KEYCLOAK_ISSUER_URI}}
       AGENT_MQTT_CLIENT_ID: ${AGENT_MQTT_CLIENT_ID:-agent-mqtt}
       AGENT_MQTT_CLIENT_SECRET: ${AGENT_MQTT_CLIENT_SECRET}
       GOVAPI_URL: ${GOVAPI_URL:-http://govapi:8082}
       EVENT_HANDLER_URL: ${EVENT_HANDLER_URL:-http://event-handler:8085}
-      DATALOGGER_URL: ${DATALOGGER_URL:-http://datalogger:8081}
+      DATALOGGER_URL: ${DATALOGGER_URL:-http://iot-datalogger:8081}
       BROADCAST_WAVE_THRESHOLD: ${BROADCAST_WAVE_THRESHOLD:-100}
       BROADCAST_WAVE_SIZE: ${BROADCAST_WAVE_SIZE:-50}
       BROADCAST_WAVE_INTERVAL_MS: ${BROADCAST_WAVE_INTERVAL_MS:-10000}
@@ -49,7 +56,9 @@ services:
         limits:
           memory: ${AGENT_MQTT_MEMORY_LIMIT:-512M}
           cpus: '0.5'
-    restart: on-failure:5
+          pids: 512
+    restart: unless-stopped
+    <<: *default-security
     logging: *default-logging
     networks:
       - app-net

@@ -35,4 +35,14 @@ public class SensorController {
                 .retrieve()
                 .toEntity(String.class);
     }
+
+    @PatchMapping("/{sensorId}")
+    public ResponseEntity<String> rename(@PathVariable String sensorId, @RequestBody String body) {
+        return restClient.patch()
+                .uri(govApiUrl + "/sensors/{sensorId}", sensorId)
+                .header("Content-Type", "application/json")
+                .body(body)
+                .retrieve()
+                .toEntity(String.class);
+    }
 }

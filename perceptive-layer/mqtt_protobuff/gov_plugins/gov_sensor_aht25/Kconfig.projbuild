@@ -1,0 +1,9 @@
+menu "Sensor: AHT25"
+
+    config GOV_SENSOR_AHT25
+        bool "Sensor AHT25 (I2C 0x38)"
+        default y
+        help
+            Code "aht25". Metrics: temperature and humidity (%RH).
+
+endmenu

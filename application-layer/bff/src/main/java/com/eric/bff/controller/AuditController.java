@@ -1,6 +1,8 @@
 package com.eric.bff.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.URI;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +26,7 @@ public class AuditController {
     @GetMapping
     public ResponseEntity<String> list(HttpServletRequest request) {
         return restClient.get()
-                .uri(govApiUrl + "/audit" + queryString(request))
+                .uri(URI.create(govApiUrl + "/audit" + queryString(request))) // already encoded by the browser, no re-encoding
                 .retrieve()
                 .toEntity(String.class);
     }

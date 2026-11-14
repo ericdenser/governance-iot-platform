@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
 /* ─── Tokens ────────────────────────────────────────────────────────────────
    Para mudar a cara do SPA, mexa so aqui:
    - Destaque: --accent (botoes, links, item ativo, foco). Hover/fundo/borda derivam dele.
@@ -27,7 +25,7 @@
 
   --text:            #e4e5e7;
   --text-secondary:  #a6a9ae;
-  --text-muted:      #7a7e85;
+  --text-muted:      #8b8f96;
   --text-inverse:    #111214;
 
   /* ── Derivados (nao precisa editar) ── */
@@ -60,6 +58,12 @@
   --chart-warn:      var(--warning);
   --chart-bad:       var(--danger);
   --chart-empty:     var(--border-strong);
+  /* Series de linha (um device por cor) */
+  --chart-series-1:  var(--accent);
+  --chart-series-2:  #c9a24a;
+  --chart-series-3:  #4fb3a9;
+  --chart-series-4:  #b07fd6;
+  --chart-series-5:  #d9826b;
 
   /* Tipografia: uma sans pra tudo, mono so pra ID/MAC/versao/horario */
   --font-sans:  'IBM Plex Sans', system-ui, sans-serif;
@@ -102,6 +106,13 @@
   --header-height: 77px;
 
   --transition: 150ms ease;
+
+  /* Layers, lowest to highest */
+  --z-sticky:   50;
+  --z-backdrop: 99;
+  --z-sidebar:  100;
+  --z-modal:    200;
+  --z-toast:    300;
 }
 
 /* ─── Reset ─────────────────────────────────────────────────────────────── */
@@ -113,6 +124,8 @@
 
 html {
   font-size: var(--text-base);
+  color-scheme: dark;
+  scrollbar-color: var(--border-strong) transparent;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -123,6 +136,7 @@ body {
   color: var(--text);
   line-height: 1.5;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ─── Typography ─────────────────────────────────────────────────────────── */
@@ -218,6 +232,32 @@ input[type="checkbox"]:checked::before { transform: rotate(45deg) scale(1); }
 input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 2px; }
 input[type="checkbox"]:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Form field (input, select, textarea). Views only override what differs. */
+.field {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text);
+  color-scheme: dark;
+}
+textarea.field { resize: vertical; }
+.field:disabled { opacity: 0.5; }
+.field:focus-visible,
+.search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+  border-radius: var(--radius-md);
+}
+.field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
+
+/* Table row that opens something: reachable and visible with the keyboard */
+tr[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 /* Identificador tecnico (nome de erro, comando) */
 .code-tag {
   font-family: var(--font-mono);
@@ -230,4 +270,19 @@ input[type="checkbox"]:disabled { opacity: 0.45; cursor: not-allowed; }
   height: 1px;
   background: var(--border);
   margin: var(--space-4) 0;
+}
+
+/* Wide tables scroll inside their card instead of squeezing the columns */
+@media (max-width: 767px) {
+  .tbl { min-width: 560px; }
+  .tbl.tbl-narrow { min-width: 0; }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

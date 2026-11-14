@@ -36,6 +36,7 @@ import com.eric.governanceApi.governanceApi.model.entity.CommandRecord;
 import com.eric.governanceApi.governanceApi.model.entity.Device;
 import com.eric.governanceApi.governanceApi.model.entity.Firmware;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareSensorConfig;
+import com.eric.governanceApi.governanceApi.model.entity.Sensor;
 import com.eric.governanceApi.governanceApi.model.entity.FirmwareVersion;
 import com.eric.governanceApi.governanceApi.model.projection.DeployableVersionProjection;
 import com.eric.governanceApi.governanceApi.model.projection.FirmwareListProjection;
@@ -70,6 +71,7 @@ public class FirmwareService {
     private final UserGroupAssignmentRepository assignmentRepository;
     private final FirmwareStorageService storageService;
     private final CommandBatchRepository commandBatchRepository;
+    private final SensorService sensorService;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -93,7 +95,9 @@ public class FirmwareService {
                            AgentClient agentClient,
                            SensorRepository sensorRepository,
                            UserGroupAssignmentRepository assignmentRepository, FirmwareStorageService storageService,
-                           CommandBatchRepository commandBatchRepository) {
+                           CommandBatchRepository commandBatchRepository,
+                           SensorService sensorService) {
+        this.sensorService = sensorService;
         this.firmwareRepository = firmwareRepository;
         this.firmwareVersionRepository = firmwareVersionRepository;
         this.deviceRepository = deviceRepository;
@@ -133,6 +137,7 @@ public class FirmwareService {
         FirmwareVersion v = buildVersion(fw, requestDTO.initialVersion(),
                                          file.getOriginalFilename(), filename, sha256,
                                          file.getSize(), null,
+                                         FirmwareManifestReader.read(file.getBytes()),
                                          requestDTO.sensors(),
                                          requestDTO.deepSleepEnabled(),
                                          requestDTO.deepSleepIntervalS());
@@ -173,6 +178,7 @@ public class FirmwareService {
         FirmwareVersion v = buildVersion(fw, requestDTO.version(),
                                          file.getOriginalFilename(), filename, sha256,
                                          file.getSize(), requestDTO.releaseNotes(),
+                                         FirmwareManifestReader.read(file.getBytes()),
                                          requestDTO.sensors(),
                                          requestDTO.deepSleepEnabled(),
                                          requestDTO.deepSleepIntervalS());
@@ -207,6 +213,29 @@ public class FirmwareService {
         return FirmwareVersionResponseDTO.from(v);
     }
 
+    @Auditable(action = AuditAction.FIRMWARE_REACTIVATED, targetType = "FIRMWARE", targetIdArg = 0)
+    @Transactional
+    public FirmwareVersionResponseDTO reactivateVersion(String versionId) {
+        FirmwareVersion v = firmwareVersionRepository.findByFirmwareVersionId(versionId)
+            .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.FIRMWARE_VERSION_NOT_FOUND,
+                "Versão " + versionId + " não encontrada."));
+
+        requireFirmwareManagement(v.getFirmware());
+
+        if (v.getStatus() != FirmwareStatus.DEPRECATED) {
+            return FirmwareVersionResponseDTO.from(v);
+        }
+
+        v.setStatus(v.getDeployCount() > 0 ? FirmwareStatus.DEPLOYED : FirmwareStatus.STAGED);
+        v.setReactivated(true);
+        firmwareVersionRepository.save(v);
+
+        log.info("Versão v{} de '{}' reativada ({})",
+                 v.getVersion(), v.getFirmware().getFirmwareName(), v.getStatus());
+
+        return FirmwareVersionResponseDTO.from(v);
+    }
+
     @Auditable(action = AuditAction.FIRMWARE_DEPLOYED, targetType = "FIRMWARE", targetIdArg = 0)
     @Transactional
     public CommandResultResponseDTO deploy(String versionId, List<String> targetDevices) throws Exception {
@@ -233,7 +262,8 @@ public class FirmwareService {
         Map<String, Object> payload = Map.of(
             "version", v.getVersion(),
             "url",     signedUrl,
-            "versionSHA", v.getSha256()
+            "versionSHA", v.getSha256(),
+            "force", v.isReactivated()
         );
 
         List<String> activeDevs = new ArrayList<>();
@@ -737,7 +767,8 @@ public class FirmwareService {
 
     private FirmwareVersion buildVersion(Firmware fw, String version, String originalFilename,
                                          String filename, String sha256, long sizeBytes,
-                                         String releaseNotes, List<SensorConfigDTO> sensors,
+                                         String releaseNotes, List<FirmwareManifestReader.SensorInfo> manifest,
+                                         List<SensorConfigDTO> sensors,
                                          boolean deepSleepEnabled, Integer deepSleepIntervalS) {
         if (deepSleepEnabled && (deepSleepIntervalS == null || deepSleepIntervalS < 30)) {
             throw new IllegalArgumentException(
@@ -755,17 +786,36 @@ public class FirmwareService {
         v.setStatus(FirmwareStatus.STAGED);
         v.setDeepSleepEnabled(deepSleepEnabled);
         v.setDeepSleepIntervalS(deepSleepEnabled ? deepSleepIntervalS : null);
-        attachSensors(v, sensors);
+        attachSensors(v, manifest, sensors);
         return v;
     }
 
-    private void attachSensors(FirmwareVersion v, List<SensorConfigDTO> sensors) {
+    // The manifest in the binary wins; the manual list is only for binaries without one
+    private void attachSensors(FirmwareVersion v, List<FirmwareManifestReader.SensorInfo> manifest,
+                               List<SensorConfigDTO> sensors) {
+        if (!manifest.isEmpty()) {
+            Map<String, Sensor> catalog = sensorService.ensureRegistered(
+                manifest.stream().map(FirmwareManifestReader.SensorInfo::code).toList());
+            for (FirmwareManifestReader.SensorInfo info : manifest) {
+                Sensor sensor = catalog.get(info.code());
+                if (sensor == null) continue;
+                FirmwareSensorConfig cfg = new FirmwareSensorConfig();
+                cfg.setFirmwareVersion(v);
+                cfg.setSensor(sensor);
+                cfg.setPinMap(info.pins());
+                cfg.setMetrics(String.join(",", info.metrics()));
+                v.getSensorConfigs().add(cfg);
+            }
+            log.info("Manifesto do binario: {} sensor(es) {}", manifest.size(),
+                     manifest.stream().map(FirmwareManifestReader.SensorInfo::code).toList());
+            return;
+        }
+
         if (sensors == null || sensors.isEmpty()) return;
         for (SensorConfigDTO sensorDto : sensors) {
             sensorRepository.findBySensorId(sensorDto.sensorId()).ifPresent(sensor -> {
                 FirmwareSensorConfig cfg = new FirmwareSensorConfig();
                 cfg.setFirmwareVersion(v);
-                cfg.setPin(sensorDto.pin());
                 cfg.setSensor(sensor);
                 v.getSensorConfigs().add(cfg);
             });

@@ -8,8 +8,9 @@ defineProps<{
 
 <template>
   <div class="card">
-    <div v-if="title || description" class="card-header">
-      <div>
+    <!-- Sem titulo (o nome da pagina ja esta na barra superior) o header so mostra as acoes -->
+    <div v-if="title || description || $slots.actions" class="card-header" :class="{ 'actions-only': !title && !description }">
+      <div v-if="title || description">
         <h3 v-if="title" class="card-title">{{ title }}</h3>
         <p v-if="description" class="card-description">{{ description }}</p>
       </div>
@@ -37,6 +38,8 @@ defineProps<{
   padding: var(--space-5) var(--space-5) 0;
   flex-wrap: wrap;
 }
+
+.card-header.actions-only { justify-content: flex-end; }
 
 .card-title {
   font-family: var(--font-sans);

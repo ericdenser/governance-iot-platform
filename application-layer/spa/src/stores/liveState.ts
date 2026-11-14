@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { withBase } from '@/utils/basePath'
 
 export interface DeviceLiveState {
   deviceId: string
@@ -70,7 +71,7 @@ export const useLiveStateStore = defineStore('liveState', {
       if (eventSource) return
       this.setStatus('connecting')
 
-      eventSource = new EventSource('/api/realtime/stream?scope=map', {
+      eventSource = new EventSource(withBase('api/realtime/stream?scope=map'), {
         withCredentials: true
       })
 

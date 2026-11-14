@@ -13,7 +13,7 @@ public record EventRegistryResponseDTO(
     String newStatus,
     boolean completed,
     String resultMessage,
-    Instant uploadedAt
+    Instant occurredAt
 ) {
     public static EventRegistryResponseDTO from(EventRegistry e) {
         return new EventRegistryResponseDTO(

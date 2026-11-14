@@ -14,3 +14,6 @@ export const relativeTime = (iso: string | null | undefined): string => {
   if (s < 7 * 86400) return `há ${Math.floor(s / 86400)} d`
   return new Date(iso).toLocaleDateString('pt-BR')
 }
+
+export const formatBytes = (n: number): string =>
+  n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`

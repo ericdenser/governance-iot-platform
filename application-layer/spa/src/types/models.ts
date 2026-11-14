@@ -69,8 +69,11 @@ export interface FirmwareResponseDTO {
 }
 
 export interface FirmwareSensorConfigResponseDTO {
+  sensorCode: string
   sensorName: string
-  pin: number
+  // pin name on the sensor module -> GPIO
+  pins: Record<string, number>
+  metrics: string[]
 }
 
 export interface FirmwareVersionResponseDTO {
@@ -116,7 +119,6 @@ export interface DeployableVersionProjection {
 // ── Firmware — requests ─────────────────────────────────────────────────────
 export interface SensorConfigDTO {
   sensorId: string
-  pin: number
 }
 
 export interface CreateFirmwareRequest {
@@ -300,6 +302,7 @@ export interface ErrorRecordResponseDTO {
 // ── Sensors ─────────────────────────────────────────────────────────────────
 export interface SensorResponseDTO {
   sensorId: string
+  code: string
   name: string
   createdByActorId: string | null
   createdByUsername: string | null
@@ -373,4 +376,22 @@ export interface Page<T> {
     totalElements: number
     totalPages: number
   }
+}
+
+// ── Provisioning ────────────────────────────────────────────────────────────
+export interface PendingDeviceDTO {
+  deviceId: string
+  name: string
+  chip: TargetChip
+  status: DeviceStatus
+  createdAt: string
+  createdByUsername: string | null
+  groupNames: string[]
+  tokenExpiresAt: string | null
+}
+
+// ── Telemetria (datalogger / Influx) ────────────────────────────────────────
+export interface TelemetryPointDTO {
+  timestamp: string
+  readings: Record<string, number>
 }

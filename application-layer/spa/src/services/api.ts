@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { BASE, stripBase, withBase } from '@/utils/basePath'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: withBase('api'),
   withCredentials: true,
   xsrfCookieName: 'XSRF-TOKEN',
   xsrfHeaderName: 'X-XSRF-TOKEN',
@@ -32,15 +33,16 @@ api.interceptors.response.use(
 
       // Já na tela de login: só limpa o estado. Redirecionar de novo recarrega
       // a página, zera este guard e cria loop infinito enquanto o BFF responder 401.
-      if (window.location.pathname !== '/') {
+      if (window.location.pathname !== BASE) {
         sessionExpiredHandled = true
 
-        const currentPath = window.location.pathname + window.location.search
+        // Router paths are stored without the base
+        const currentPath = stripBase(window.location.pathname) + window.location.search
         if (isSafeInternalPath(currentPath)) {
           sessionStorage.setItem(NEXT_STORAGE_KEY, currentPath)
         }
 
-        window.location.href = '/?expired=1'
+        window.location.href = withBase('?expired=1')
       }
     }
 

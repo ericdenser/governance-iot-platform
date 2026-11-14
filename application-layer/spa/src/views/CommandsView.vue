@@ -5,11 +5,14 @@ import AppCard from '@/components/AppCard.vue'
 import StatusLabel from '@/components/StatusLabel.vue'
 import BatchProgress from '@/components/BatchProgress.vue'
 import { absoluteTime, relativeTime } from '@/utils/format'
-import AppButton from '@/components/AppButton.vue'
+import AppSkeleton from '@/components/AppSkeleton.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import FirmwarePickerModal from '@/components/commands/FirmwarePickerModal.vue'
+import DeepSleepModal from '@/components/commands/DeepSleepModal.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { commandsApi } from '@/services/commands'
 import { devicesApi } from '@/services/devices'
-import { firmwareApi } from '@/services/firmware'
+import { isOnline } from '@/utils/connection'
 import type {
   CommandBatchDTO,
   CommandRecordResponseDTO,
@@ -105,58 +108,22 @@ const clearSelection = () => {
   selectedDeviceIds.value = new Set()
 }
 
-// ── Firmware picker modal (UPDATE) ─────────────────────────────────────────
+// ── Parameter modals (UPDATE picks a version, DEEP_SLEEP a duration) ────────
 
 const showFirmwareModal = ref(false)
-const firmwareList = ref<DeployableVersionProjection[]>([])
-const loadingFirmwares = ref(false)
-const pickedFirmware = ref<DeployableVersionProjection | null>(null)
-
-const openFirmwareModal = async () => {
-  pickedFirmware.value = null
-  showFirmwareModal.value = true
-  loadingFirmwares.value = true
-  try {
-    const r = await firmwareApi.listDeployable()
-    const all = Array.isArray(r.data) ? r.data : []
-    firmwareList.value = all.filter(fw => chipOf(fw.targetChip) === selectedChip.value)
-  } finally { loadingFirmwares.value = false }
-}
-
-const confirmFirmwareAndSend = async () => {
-  if (!pickedFirmware.value) return
-  showFirmwareModal.value = false
-  await send('UPDATE', { versionId: pickedFirmware.value.versionId })
-}
-
-// filtra devices que ja tem a versao escolhida
-const deviceHasVersion = (d: DeviceSummaryDTO) =>
-  !!pickedFirmware.value && d.firmwareVersionId === pickedFirmware.value.versionId
-
-const sameVersionSelectedCount = computed(() =>
-  targetDevices.value.filter(d => selectedDeviceIds.value.has(d.deviceId) && deviceHasVersion(d)).length,
-)
-
-// ── Deep sleep modal ───────────────────────────────────────────────────────
-
 const showDeepSleepModal = ref(false)
-const durationS = ref(300)
-const durationError = ref('')
 
-const openDeepSleepModal = () => {
-  durationS.value = 300
-  durationError.value = ''
-  showDeepSleepModal.value = true
+const selectedDevices = computed(() =>
+  targetDevices.value.filter(d => selectedDeviceIds.value.has(d.deviceId)))
+
+const onFirmwarePicked = async (fw: DeployableVersionProjection) => {
+  showFirmwareModal.value = false
+  await send('UPDATE', { versionId: fw.versionId })
 }
 
-const confirmDeepSleepAndSend = async () => {
-  const v = Number(durationS.value)
-  if (!Number.isFinite(v) || v < 10 || v > 259200) {
-    durationError.value = 'Duração deve estar entre 10 e 259200 segundos (3 dias).'
-    return
-  }
+const onDurationPicked = async (seconds: number) => {
   showDeepSleepModal.value = false
-  await send('DEEP_SLEEP', { duration_s: v })
+  await send('DEEP_SLEEP', { duration_s: seconds })
 }
 
 // ── Command dispatch ───────────────────────────────────────────────────────
@@ -168,8 +135,8 @@ const onCommandClick = async (cmd: CommandDef) => {
   }
   if (runningCommand.value || !isCommandSupported(cmd)) return
 
-  if (cmd.needsFirmware) return openFirmwareModal()
-  if (cmd.needsDuration) return openDeepSleepModal()
+  if (cmd.needsFirmware) { showFirmwareModal.value = true; return }
+  if (cmd.needsDuration) { showDeepSleepModal.value = true; return }
 
   if (cmd.destructive) {
     const ok = await confirm({
@@ -338,8 +305,9 @@ onUnmounted(() => {
           <span v-if="selectedCount" class="selected-count"> · {{ selectedCount }} selecionado(s) · {{ chipLabel(selectedChip) }}</span>
         </p>
 
-        <div v-if="loadingDevices" class="empty">Carregando devices...</div>
-        <div v-else-if="!targetDevices.length" class="empty">Nenhum device ACTIVE disponível</div>
+        <AppSkeleton v-if="loadingDevices" variant="list" :rows="5" />
+        <EmptyState v-else-if="!targetDevices.length" compact title="Nenhum dispositivo ativo"
+          hint="Comandos só vão para dispositivos com status ACTIVE. Provisione um ou espere ele terminar a ativação." />
         <div v-else class="device-groups">
           <section v-for="g in deviceGroups" :key="g.chip"
             class="device-group" :class="{ locked: isChipLocked(g.chip) }">
@@ -360,7 +328,8 @@ onUnmounted(() => {
                   <span class="dev-name">{{ d.name }}</span>
                   <span class="dev-meta mono">{{ d.firmwareVersion ? 'v' + d.firmwareVersion : '—' }}</span>
                 </div>
-                <span class="status-dot ok"></span>
+                <span class="status-dot" :class="isOnline(d.lastSeen) ? 'ok' : 'off'"
+                  :title="isOnline(d.lastSeen) ? 'Online' : `Offline · visto ${relativeTime(d.lastSeen)}`"></span>
               </label>
             </div>
           </section>
@@ -397,8 +366,9 @@ onUnmounted(() => {
       <AppCard title="Histórico">
         <p class="panel-hint">Últimos comandos. Clique para ver o resultado por dispositivo.</p>
 
-        <div v-if="loadingBatches" class="empty">Carregando histórico...</div>
-        <div v-else-if="!batches.length" class="empty">Nenhum comando enviado</div>
+        <AppSkeleton v-if="loadingBatches" variant="list" :rows="5" />
+        <EmptyState v-else-if="!batches.length" compact title="Nenhum comando enviado"
+          hint="Selecione dispositivos à esquerda e clique em um comando. O resultado por dispositivo aparece aqui." />
         <div v-else class="hist-list">
           <div v-for="b in batches" :key="b.batchId" class="hist-card">
             <button class="hist-header" @click="toggleExpand(b.batchId)">
@@ -422,7 +392,7 @@ onUnmounted(() => {
             </button>
 
             <div v-if="expanded.has(b.batchId)" class="hist-detail">
-              <div v-if="loadingRecords.has(b.batchId)" class="empty">Carregando...</div>
+              <AppSkeleton v-if="loadingRecords.has(b.batchId)" variant="list" :rows="2" />
               <div v-else-if="!(recordsByBatch[b.batchId] ?? []).length" class="empty">Nenhum device visível</div>
               <div v-else class="record-list">
                 <div v-for="c in recordsByBatch[b.batchId]" :key="c.commandId" class="record-row">
@@ -442,55 +412,11 @@ onUnmounted(() => {
       </AppCard>
     </div>
 
-    <!-- ── UPDATE: firmware picker modal ────────────────────────────────── -->
-    <div v-if="showFirmwareModal" class="modal-overlay" @click.self="showFirmwareModal = false">
-      <div class="modal">
-        <h3 class="modal-title">Escolher Firmware — UPDATE <span class="text-muted mono">{{ chipLabel(selectedChip) }}</span></h3>
-        <p class="modal-hint mono">{{ selectedCount }} device(s) alvo</p>
+    <FirmwarePickerModal v-if="showFirmwareModal" :chip="selectedChip" :targets="selectedDevices"
+      @close="showFirmwareModal = false" @confirm="onFirmwarePicked" />
 
-        <div v-if="loadingFirmwares" class="empty">Carregando firmwares...</div>
-        <div v-else-if="!firmwareList.length" class="empty">Nenhum firmware disponível para {{ chipLabel(selectedChip) }}</div>
-        <div v-else class="fw-list">
-          <button v-for="fw in firmwareList" :key="fw.versionId"
-            class="fw-row"
-            :class="{ selected: pickedFirmware?.versionId === fw.versionId }"
-            @click="pickedFirmware = fw">
-            <span class="fw-name">{{ fw.firmwareName }}</span>
-            <span class="fw-version mono">v{{ fw.version }}</span>
-            <StatusLabel kind="firmware" :code="fw.status" />
-          </button>
-        </div>
-
-        <p v-if="pickedFirmware && sameVersionSelectedCount > 0" class="modal-hint mono warn">
-          {{ sameVersionSelectedCount }} device(s) selecionados já rodam essa versão — serão ignorados pelo backend.
-        </p>
-
-        <div class="modal-footer">
-          <AppButton variant="ghost" @click="showFirmwareModal = false">Cancelar</AppButton>
-          <AppButton variant="primary" :disabled="!pickedFirmware" @click="confirmFirmwareAndSend">Enviar UPDATE</AppButton>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── DEEP_SLEEP: duration modal ───────────────────────────────────── -->
-    <div v-if="showDeepSleepModal" class="modal-overlay" @click.self="showDeepSleepModal = false">
-      <div class="modal">
-        <h3 class="modal-title">Duração — DEEP_SLEEP</h3>
-        <p class="modal-hint mono">{{ selectedCount }} device(s) alvo</p>
-
-        <div class="form-group">
-          <label>Duração <span class="text-muted">(segundos)</span></label>
-          <input type="number" min="10" max="259200" class="field" v-model.number="durationS" placeholder="ex: 300" />
-          <span class="field-hint mono">Mínimo 10s · Máximo 259200s (3 dias)</span>
-        </div>
-        <p v-if="durationError" class="field-error">{{ durationError }}</p>
-
-        <div class="modal-footer">
-          <AppButton variant="ghost" @click="showDeepSleepModal = false">Cancelar</AppButton>
-          <AppButton variant="primary" @click="confirmDeepSleepAndSend">Enviar DEEP_SLEEP</AppButton>
-        </div>
-      </div>
-    </div>
+    <DeepSleepModal v-if="showDeepSleepModal" :target-count="selectedCount"
+      @close="showDeepSleepModal = false" @confirm="onDurationPicked" />
   </AppLayout>
 </template>
 
@@ -515,8 +441,6 @@ onUnmounted(() => {
 .mini-btn:hover { border-color: var(--primary); color: var(--primary); }
 
 .empty { text-align: center; color: var(--text-muted); padding: var(--space-6) 0; font-size: var(--text-sm); }
-.mono { font-family: var(--font-mono); }
-.text-muted { color: var(--text-muted); }
 
 /* ── Target devices ───────────────────────────────────────────────────── */
 .device-groups { display: flex; flex-direction: column; gap: var(--space-3); max-height: 480px; overflow-y: auto; }
@@ -535,6 +459,7 @@ onUnmounted(() => {
 .dev-meta { font-size: var(--text-xs); color: var(--text-muted); }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .status-dot.ok { background: var(--success); }
+.status-dot.off { background: var(--status-unknown); }
 
 /* ── Commands list ────────────────────────────────────────────────────── */
 .cmd-list { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -584,25 +509,4 @@ onUnmounted(() => {
 .rec-status { font-size: var(--text-xs); }
 .rec-reason { color: var(--text-secondary); overflow-wrap: anywhere; line-height: 1.4; }
 
-/* ── Modals ───────────────────────────────────────────────────────────── */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
-.modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); width: 520px; max-width: 94vw; max-height: 85vh; display: flex; flex-direction: column; gap: var(--space-4); overflow: hidden; }
-.modal-title { font-family: var(--font-sans); font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0; }
-.modal-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
-.modal-hint.warn { color: var(--warning); }
-.modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); margin-top: auto; }
-
-.fw-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 320px; overflow-y: auto; }
-.fw-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; text-align: left; transition: border-color var(--transition); color: inherit; }
-.fw-row:hover { border-color: var(--primary); }
-.fw-row.selected { border-color: var(--accent-border); background: var(--accent-dim); }
-.fw-name { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fw-version { font-size: var(--text-sm); color: var(--text-muted); }
-
-.form-group { display: flex; flex-direction: column; gap: var(--space-2); }
-.form-group label { font-size: var(--text-sm); color: var(--text-muted); }
-.field { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; font-size: var(--text-sm); color: var(--text); outline: none; font-family: var(--font-mono); }
-.field:focus { border-color: var(--primary); }
-.field-hint { font-size: var(--text-xs); color: var(--text-muted); }
-.field-error { color: var(--danger); font-size: var(--text-sm); margin: 0; }
 </style>

@@ -1,5 +1,7 @@
 package com.eric.bff.controller;
 
+import java.net.URI;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +29,7 @@ public class ErrorRecordController {
     @GetMapping
     public ResponseEntity<String> getAllErrors(HttpServletRequest request) {
         return restClient.get()
-        .uri(govApiUrl + "/error" + queryString(request))
+        .uri(URI.create(govApiUrl + "/error" + queryString(request))) // already encoded by the browser, no re-encoding
         .retrieve()
         .toEntity(String.class);
     }

@@ -9,6 +9,8 @@ keys/
 **/certs/
 .env
 *.txt
+# sensor plugins: same CMakeLists on every branch
+!perceptive-layer/mqtt_protobuff/gov_plugins/*/CMakeLists.txt
 
 # Ignorar .md genéricos mas preservar arquivos raiz 
 *.md

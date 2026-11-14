@@ -1,6 +1,14 @@
 #include <string.h>
 #include "sdkconfig.h"
 #include "ui_common.h"
+#include "gov_sensor.h"
+
+#define UI_METRIC_MAX_AGE_MS 30000
+
+bool ui_metric(const char* code, const char* metric, float* value) {
+    int64_t age = 0;
+    return gov_sensor_get(code, metric, value, &age) && age < UI_METRIC_MAX_AGE_MS;
+}
 
 bool ui_local_time(struct tm* out) {
     time_t now = time(nullptr);

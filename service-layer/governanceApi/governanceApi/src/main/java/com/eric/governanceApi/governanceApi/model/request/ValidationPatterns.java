@@ -10,5 +10,8 @@ public final class ValidationPatterns {
     public static final String PROVISIONING_TOKEN_REGEX = "^[0-9a-fA-F]{32}$";
     public static final String PROVISIONING_TOKEN_MESSAGE = "deve ter 32 caracteres hexadecimais (UUID sem hífens)";
 
+    public static final String SENSOR_CODE_REGEX = "^[a-z0-9_]{1,24}$";
+    public static final String SENSOR_CODE_MESSAGE = "deve ter de 1 a 24 caracteres entre a-z, 0-9 e _";
+
     private ValidationPatterns() {}
 }

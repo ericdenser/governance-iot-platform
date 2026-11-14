@@ -36,6 +36,9 @@ void ui_label_update(lv_obj_t* label, const char* text);
 // false = relogio nao sincronizado
 bool ui_local_time(struct tm* out);
 
+// Recent value of a sensor plugin metric; false if absent or stale
+bool ui_metric(const char* code, const char* metric, float* value);
+
 lv_obj_t* ui_screen_create(ScreenId id, bool use_active);
 
 lv_obj_t* ui_card(lv_obj_t* parent, int w, int h);

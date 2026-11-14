@@ -4,8 +4,13 @@ SHELL := /bin/bash
 REPO_ROOT := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 ENV_FILE  := $(REPO_ROOT)/.env
 
-# Nome da rede docker compartilhada entre composes.
-DOCKER_NETWORK := app-net
+# Docker network shared by the composes: same value they read from .env (default app-net)
+DOCKER_NETWORK := $(or $(shell grep -E '^DOCKER_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r'),app-net)
+
+# Espera maxima (s) no up. Depois de um clean o Keycloak importa o realm e cria
+# o schema do zero. Sobrescreva na chamada: make up KEYCLOAK_WAIT_S=600
+KEYCLOAK_WAIT_S ?= 300
+SERVICE_WAIT_S  ?= 180
 
 # Composes de infra e serviços.
 INFRA_COMPOSE := $(REPO_ROOT)/docker-compose.yml
@@ -26,7 +31,7 @@ RESET  := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check-env init-secrets init-certs clean-certs net build up up-build down restart ps status logs clean setup upload-bin
+.PHONY: help check-env init-secrets init-minio init-certs clean-certs net build up up-build down restart ps status logs clean setup upload-bin
 
 help:  ## Lista todos os comandos disponiveis
 	@printf "$(CYAN)Governance IoT — comandos disponiveis:$(RESET)\n\n"
@@ -48,23 +53,30 @@ check-env:  ## Valida que .env existe e tem os campos obrigatorios
 	fi
 	@printf "$(GREEN)OK$(RESET) .env valido\n"
 
-init-secrets:  ## Gera secrets aleatorios (Keycloak clients + PKI + INFRA_API_KEY) no .env (idempotente)
+init-secrets:  ## Gera todos os secrets vazios ou "changeme" no .env, inclusive PKI e INFRA_API_KEY (idempotente)
 	@if [ ! -f "$(ENV_FILE)" ]; then \
 		printf "$(RED)ERRO:$(RESET) .env nao encontrado. Rode $(CYAN)cp .env.example .env$(RESET) antes.\n"; \
 		exit 1; \
 	fi
-	@# 32 chars alphanum: clients Keycloak + senhas dos p12 (consumidas por init_certs.sh e runtime).
+	@# Hex only: the Keycloak realm is rendered with sed, so |, & or quotes would break it.
+	@# MinIO limits: access key 3-20 chars, secret key 8-40 chars.
 	@for var in GOVAPI_CLIENT_SECRET BFF_CLIENT_SECRET AGENT_MQTT_CLIENT_SECRET \
+	            POSTGRES_PASSWORD INFLUX_PASSWORD INFLUX_TOKEN \
+	            MINIO_ROOT_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY \
 	            CA_PASSWORD AGENT_KEYSTORE_PASS AGENT_TRUSTSTORE_PASS; do \
 		current=$$(grep -E "^$$var=" "$(ENV_FILE)" | cut -d= -f2-); \
-		if [ -z "$$current" ] || [ "$$current" = "changeme" ]; then \
-			new=$$(openssl rand -base64 32 | tr -d '=+/\n' | cut -c1-32); \
+		if [ -z "$$current" ] || [ "$$current" = "changeme" ] || [ "$$current" = "changeme-influx-token" ]; then \
+			case $$var in \
+				MINIO_ACCESS_KEY) new="gov$$(openssl rand -hex 8)" ;; \
+				MINIO_*)          new=$$(openssl rand -hex 16) ;; \
+				*)                new=$$(openssl rand -hex 24) ;; \
+			esac; \
 			if grep -qE "^$$var=" "$(ENV_FILE)"; then \
 				sed -i "s|^$$var=.*|$$var=$$new|" "$(ENV_FILE)"; \
 			else \
 				echo "$$var=$$new" >> "$(ENV_FILE)"; \
 			fi; \
-			printf "$(GREEN)OK$(RESET) $$var gerado (32 chars aleatorios)\n"; \
+			printf "$(GREEN)OK$(RESET) $$var gerado\n"; \
 		else \
 			printf "$(YELLOW)SKIP$(RESET) $$var ja setado (nao sobrescreve)\n"; \
 		fi; \
@@ -82,7 +94,17 @@ init-secrets:  ## Gera secrets aleatorios (Keycloak clients + PKI + INFRA_API_KE
 	else \
 		printf "$(YELLOW)SKIP$(RESET) INFRA_API_KEY ja setado\n"; \
 	fi
+	@# Admin passwords are typed by people, so they are not generated here
+	@for var in KEYCLOAK_ADMIN_PASSWORD IOT_ADMIN_PASSWORD; do \
+		current=$$(grep -E "^$$var=" "$(ENV_FILE)" | cut -d= -f2-); \
+		if [ -z "$$current" ] || [ "$$current" = "admin" ]; then \
+			printf "$(RED)ATENCAO:$(RESET) $$var vazio ou 'admin'. Defina uma senha no .env antes do primeiro make up.\n"; \
+		fi; \
+	done
 	@printf "$(CYAN)Secrets prontos.$(RESET) Proximo: $(CYAN)make init-certs$(RESET) (PKI mTLS) e $(CYAN)make up-build$(RESET)\n"
+
+init-minio:  ## Cria bucket + access key no MinIO (idempotente, usa scripts/init_minio.sh)
+	@bash $(REPO_ROOT)/scripts/init_minio.sh
 
 init-certs:  ## Gera Root CA + certs (broker, agent) e distribui pros lugares certos (idempotente)
 	@bash $(REPO_ROOT)/scripts/init_certs.sh
@@ -121,13 +143,21 @@ up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 			printf "$(GREEN)OK$(RESET) postgres healthy\n"; break; \
 		fi; sleep 2; \
 	done
-	@printf "$(CYAN)Aguardando keycloak healthy (pode levar 30-60s no primeiro boot)...$(RESET)\n"
-	@for i in $$(seq 1 60); do \
+	@printf "$(CYAN)Aguardando minio healthy...$(RESET)\n"
+	@for i in $$(seq 1 30); do \
+		if docker inspect --format '{{.State.Health.Status}}' iot-minio 2>/dev/null | grep -q healthy; then \
+			printf "$(GREEN)OK$(RESET) minio healthy\n"; break; \
+		fi; sleep 2; \
+	done
+	@printf "$(CYAN)Bootstrap MinIO (bucket + access key)...$(RESET)\n"
+	@$(MAKE) --no-print-directory init-minio
+	@printf "$(CYAN)Aguardando keycloak healthy (ate $(KEYCLOAK_WAIT_S)s; primeiro boot apos clean e o mais lento)...$(RESET)\n"
+	@for i in $$(seq 1 $$(( $(KEYCLOAK_WAIT_S) / 2 ))); do \
 		if docker inspect --format '{{.State.Health.Status}}' iot-keycloak 2>/dev/null | grep -q healthy; then \
-			printf "$(GREEN)OK$(RESET) keycloak healthy\n"; break; \
+			printf "$(GREEN)OK$(RESET) keycloak healthy em ~$$(( i * 2 ))s\n"; break; \
 		fi; \
-		if [ $$i -eq 60 ]; then \
-			printf "$(RED)ERRO:$(RESET) keycloak nao ficou healthy em 120s. Rode $(CYAN)docker logs iot-keycloak$(RESET) pra investigar.\n"; \
+		if [ $$i -eq $$(( $(KEYCLOAK_WAIT_S) / 2 )) ]; then \
+			printf "$(RED)ERRO:$(RESET) keycloak nao ficou healthy em $(KEYCLOAK_WAIT_S)s. Rode $(CYAN)docker logs iot-keycloak$(RESET) pra investigar.\n"; \
 			exit 1; \
 		fi; \
 		sleep 2; \
@@ -137,8 +167,8 @@ up: check-env net  ## Sobe infra + servicos SEM rebuild (usa imagens existentes)
 	@# e nao continua puxando CPU pros seguintes.
 	@for f in $(SERVICE_COMPOSES); do \
 		printf "$(CYAN)=== up: $$f (aguardando healthy)$(RESET)\n"; \
-		if ! docker compose --env-file $(ENV_FILE) -f $$f up -d --wait --wait-timeout 120; then \
-			printf "$(RED)FALHOU:$(RESET) $$f nao ficou healthy em 120s.\n"; \
+		if ! docker compose --env-file $(ENV_FILE) -f $$f up -d --wait --wait-timeout $(SERVICE_WAIT_S); then \
+			printf "$(RED)FALHOU:$(RESET) $$f nao ficou healthy em $(SERVICE_WAIT_S)s.\n"; \
 			printf "Debug: $(CYAN)docker logs \$$(docker compose -f $$f ps -q | head -1)$(RESET)\n"; \
 			exit 1; \
 		fi; \
@@ -167,8 +197,11 @@ ps:  ## Lista status dos containers do stack
 
 status:  ## Status detalhado (health + restarts) de todos containers do stack
 	@printf "$(CYAN)Health + restart count por container:$(RESET)\n"
-	@for c in iot-postgres iot-keycloak iot-redis iot-redis-streams iot-broker iot-minio iot-influxdb govapi agent-mqtt event-handler datalogger bff spa; do \
-		if docker inspect $$c >/dev/null 2>&1; then \
+	@# Aceita tanto `govapi` quanto `iot-govapi` (varia por CONTAINER_NAME no .env).
+	@for base in postgres keycloak redis redis-streams broker minio influxdb govapi agent-mqtt event-handler datalogger bff spa; do \
+		c=$$(docker ps -a --format '{{.Names}}' | grep -x "iot-$$base" | head -1); \
+		[ -z "$$c" ] && c=$$(docker ps -a --format '{{.Names}}' | grep -x "$$base" | head -1); \
+		if [ -n "$$c" ]; then \
 			state=$$(docker inspect --format '{{.State.Status}}' $$c); \
 			health=$$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' $$c); \
 			restarts=$$(docker inspect --format '{{.RestartCount}}' $$c); \
@@ -180,6 +213,29 @@ status:  ## Status detalhado (health + restarts) de todos containers do stack
 		else \
 			printf "  $(YELLOW)%-20s$(RESET) (nao existe)\n" "$$c"; \
 		fi; \
+	done
+
+rebuild: check-env net  ## Rebuild + recria so os servicos citados. Uso: make rebuild SVC=spa (ou SVC="bff spa")
+	@if [ -z "$(SVC)" ]; then \
+		printf "$(RED)ERRO:$(RESET) especifique o servico. Ex: $(CYAN)make rebuild SVC=spa$(RESET) (govapi, agent-mqtt, event-handler, datalogger, bff, spa)\n"; \
+		exit 1; \
+	fi
+	@for svc in $(SVC); do \
+		found=; \
+		for f in $(SERVICE_COMPOSES); do \
+			if docker compose --env-file $(ENV_FILE) -f $$f config --services 2>/dev/null | grep -qx "$$svc"; then \
+				found=$$f; break; \
+			fi; \
+		done; \
+		if [ -z "$$found" ]; then \
+			printf "$(RED)ERRO:$(RESET) servico '$$svc' nao existe em nenhum compose de app\n"; exit 1; \
+		fi; \
+		printf "$(CYAN)=== rebuild: $$svc ===$(RESET)\n"; \
+		docker compose --env-file $(ENV_FILE) -f $$found build $$svc || exit 1; \
+		if ! docker compose --env-file $(ENV_FILE) -f $$found up -d --wait --wait-timeout $(SERVICE_WAIT_S) $$svc; then \
+			printf "$(RED)FALHOU:$(RESET) $$svc nao ficou healthy em $(SERVICE_WAIT_S)s\n"; exit 1; \
+		fi; \
+		printf "$(GREEN)OK$(RESET) $$svc no ar\n"; \
 	done
 
 logs:  ## Logs em tempo real de UM container. Uso: make logs SVC=iot-govapi

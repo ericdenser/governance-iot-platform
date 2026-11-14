@@ -6,6 +6,15 @@
     "GET": ["ROLE_ADMIN", "ROLE_USER"],
     "DELETE": ["ROLE_ADMIN"]
   },
+  "/devices/*/commands": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/devices/*/events": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/devices/*/errors": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
 
   "/firmware": {
     "GET": ["ROLE_ADMIN", "ROLE_USER"]
@@ -29,6 +38,9 @@
   "/firmware/versions/*/deprecate": {
     "PATCH": ["ROLE_ADMIN", "ROLE_USER"]
   },
+  "/firmware/versions/*/reactivate": {
+    "PATCH": ["ROLE_ADMIN", "ROLE_USER"]
+  },
   "/firmware/versions/*/binary": {
     "PUT": ["ROLE_ADMIN", "ROLE_USER"]
   },
@@ -46,7 +58,8 @@
   },
   "/sensors/**": {
     "GET":  ["ROLE_ADMIN", "ROLE_USER"],
-    "POST": ["ROLE_ADMIN"]
+    "POST": ["ROLE_ADMIN"],
+    "PATCH": ["ROLE_ADMIN"]
   },
 
   "/commands": {
@@ -81,6 +94,12 @@
   },
   "/provisioning/generate-package": {
     "POST": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/provisioning/pending": {
+    "GET": ["ROLE_ADMIN", "ROLE_USER"]
+  },
+  "/provisioning/*/pending": {
+    "DELETE": ["ROLE_ADMIN", "ROLE_USER"]
   },
   "/provisioning/**": {
     "POST": ["ROLE_ADMIN"]

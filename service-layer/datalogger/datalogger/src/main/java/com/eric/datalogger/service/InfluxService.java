@@ -1,8 +1,6 @@
 package com.eric.datalogger.service;
 
-import com.eric.datalogger.model.LastPositionDTO;
 import com.eric.datalogger.model.TelemetryDTO;
-import com.eric.datalogger.model.TelemetryFieldsDTO;
 import com.eric.datalogger.model.TelemetryPointDTO;
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.InfluxDBClientFactory;
@@ -14,13 +12,16 @@ import com.influxdb.exceptions.InfluxException;
 import com.influxdb.query.FluxRecord;
 import com.influxdb.query.FluxTable;
 
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,8 @@ import java.util.Set;
 
 @Service
 public class InfluxService {
+
+    private static final Logger log = LoggerFactory.getLogger(InfluxService.class);
 
     // Colunas de metadata que o pivot injeta — não são leituras de sensor
     private static final Set<String> IGNORED_COLUMNS = Set.of(
@@ -87,13 +90,16 @@ public class InfluxService {
         try {
             writeApi.writePoints(points);
         } catch (InfluxException e) {
-            throw new RuntimeException(e);
+            // 400/422 = ponto invalido (ex: conflito de tipo de field). O resto
+            // (0 = sem conexao, 5xx, 401/403) e o Influx indisponivel.
+            if (e.status() == 400 || e.status() == 422) throw e;
+            throw new InfluxUnavailableException("Influx indisponivel (status " + e.status() + "): " + e.getMessage(), e);
         }
     }
 
     // ESP sem SNTP manda deviceTimestamp = uptime desde epoch 0 (pontos vão pra
     // 1970, quebram Data Explorer e "last seen"). Aceita só ts dentro de janela
-    // sã; fora dela, usa o tempo do datalogger — não perde a leitura.
+    // sã; fora dela, usa o tempo do datalogger.
     private static final Instant MIN_VALID_TS = Instant.parse("2020-01-01T00:00:00Z");
 
     private static Instant sanitizeTimestamp(Instant deviceTs, Instant now) {
@@ -146,86 +152,9 @@ public class InfluxService {
             }
         }
 
+        // pivot appends rows of fields missing from earlier windows at the end, and the chart draws in list order
+        result.sort(Comparator.comparing(TelemetryPointDTO::timestamp));
         return result;
-    }
-
-    // -------------------------------------------------------------------------
-    //  Query — descoberta de campos
-    // -------------------------------------------------------------------------
-
-    /**
-     * Retorna quais fields (sensores) um device já reportou nos últimos 30 dias.
-     * Usado pelo BFF para saber quais gráficos renderizar no dashboard.
-     */
-    public TelemetryFieldsDTO queryFields(String deviceId) {
-        validateDeviceId(deviceId);
-
-        String flux = String.format("""
-            import "influxdata/influxdb/schema"
-            schema.fieldKeys(
-              bucket: "%s",
-              predicate: (r) => r["_measurement"] == "telemetry" and r["device_id"] == "%s",
-              start: -30d
-            )
-            """, bucket, deviceId);
-
-        List<FluxTable> tables = queryApi.query(flux, org);
-        List<String> fields = new ArrayList<>();
-
-        for (FluxTable table : tables) {
-            for (FluxRecord record : table.getRecords()) {
-                Object val = record.getValue();
-                if (val != null) fields.add(val.toString());
-            }
-        }
-
-        return new TelemetryFieldsDTO(deviceId, fields);
-    }
-
-    // -------------------------------------------------------------------------
-    //  Query — última posição conhecida
-    // -------------------------------------------------------------------------
-
-    /**
-     * Retorna a última leitura de latitude, longitude e altitude de um device.
-     * Retorna null se o device nunca reportou posição nos últimos 30 dias.
-     */
-    public LastPositionDTO queryLastPosition(String deviceId) {
-        validateDeviceId(deviceId);
-
-        String flux = String.format("""
-            from(bucket: "%s")
-              |> range(start: -30d)
-              |> filter(fn: (r) => r["_measurement"] == "telemetry")
-              |> filter(fn: (r) => r["device_id"] == "%s")
-              |> filter(fn: (r) => r["_field"] == "latitude" or r["_field"] == "longitude" or r["_field"] == "altitude")
-              |> last()
-            """, bucket, deviceId);
-
-        List<FluxTable> tables = queryApi.query(flux, org);
-
-        Double latitude   = null;
-        Double longitude  = null;
-        Double altitude   = null;
-        Instant recordedAt = null;
-
-        for (FluxTable table : tables) {
-            for (FluxRecord record : table.getRecords()) {
-                String field = record.getField();
-                Object value = record.getValue();
-                if (!(value instanceof Number num)) continue;
-
-                switch (field) {
-                    case "latitude"  -> { latitude  = num.doubleValue(); recordedAt = record.getTime(); }
-                    case "longitude" -> longitude  = num.doubleValue();
-                    case "altitude"  -> altitude   = num.doubleValue();
-                }
-            }
-        }
-
-        if (latitude == null || longitude == null) return null;
-
-        return new LastPositionDTO(deviceId, latitude, longitude, altitude, recordedAt);
     }
 
     // -------------------------------------------------------------------------
@@ -233,6 +162,17 @@ public class InfluxService {
     private void validateDeviceId(String deviceId) {
         if (deviceId == null || !deviceId.matches("[0-9a-fA-F\\-]{8,36}")) {
             throw new IllegalArgumentException("Invalid device ID: " + deviceId);
+        }
+    }
+
+
+    // ping nao usa token: a busca do bucket confirma tambem token e bucket
+    public boolean isUp() {
+        try {
+            return Boolean.TRUE.equals(influxDBClient.ping())
+                && influxDBClient.getBucketsApi().findBucketByName(bucket) != null;
+        } catch (Exception e) {
+            return false;
         }
     }
 }
